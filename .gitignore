@@ -1,0 +1,35 @@
+syntax: glob
+*.pyc
+*.pyo
+*.mo
+*.db
+*.egg
+*.egg-info
+.idea
+.mypy_cache
+/builds
+/config
+/log
+/data
+/docker/volumes
+/site
+/.env
+docker-compose.override.yml
+celerybeat-schedule
+dist
+build
+/dist
+
+
+# local env files
+.env.local
+.env.*.local
+
+# Editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
