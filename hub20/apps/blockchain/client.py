@@ -208,8 +208,12 @@ def run_ethereum_node_connection_check(w3: Web3):
     is_connected = is_connected_to_blockchain(w3=w3)
 
     if is_connected and not chain.online:
+        chain.online = True
+        chain.save()
         signals.ethereum_node_connected.send(sender=Chain, chain_id=chain.id)
     elif chain.online and not is_connected:
+        chain.online = False
+        chain.save()
         signals.ethereum_node_disconnected.send(sender=Chain, chain_id=chain.id)
     else:
         logger.debug(f"Ethereum node connected: {is_connected}")
