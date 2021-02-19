@@ -221,6 +221,27 @@ def run_ethereum_node_connection_check(w3: Web3):
     return is_connected
 
 
+def run_ethereum_node_sync_check(w3: Web3):
+    chain = Chain.make(chain_id=int(w3.net.version))
+    is_synced = bool(not w3.eth.syncing)
+
+    if is_synced and not chain.synced:
+        chain.current_block = w3.eth.blockNumber
+        chain.synced = True
+        chain.save()
+        signals.ethereum_node_sync_recovered.send(
+            sender=Chain, chain_id=chain.id, new_block_height=chain.current_block
+        )
+    elif chain.synced and not is_synced:
+        chain.synced = False
+        chain.save()
+        signals.ethereum_node_sync_lost.send(sender=Chain, chain_id=chain.id)
+    else:
+        logger.debug(f"Ethereum node synced: {is_synced}")
+
+    return is_synced
+
+
 def wait_for_connection(w3: Web3):
     while not is_connected_to_blockchain(w3=w3):
         logger.info("Not connected to blockchain. Waiting for reconnection...")
@@ -265,4 +286,5 @@ async def sync_chain(w3: Web3):
 async def run_heartbeat(w3: Web3):
     while True:
         await sync_to_async(run_ethereum_node_connection_check)(w3=w3)
+        await sync_to_async(run_ethereum_node_sync_check)(w3=w3)
         await asyncio.sleep(BLOCK_CREATION_INTERVAL)
