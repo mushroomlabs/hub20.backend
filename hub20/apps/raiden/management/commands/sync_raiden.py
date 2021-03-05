@@ -32,6 +32,7 @@ class Command(BaseCommand):
         client: Optional[RaidenClient] = get_raiden_client()
         if not client:
             logger.warning("Raiden is disabled or not yet setup")
+            return
 
         while True:
             try:
