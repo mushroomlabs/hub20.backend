@@ -1,16 +1,29 @@
 version: '3.4'
 
-x-disabled: &disabled_service
-  entrypoint: ["echo", "service is disabled"]
+x-envvars: &ci_environment
+  env_file:
+    - ../environments/ci.env
 
 services:
-  web:
-    volumes:
-      - .:/app
+  db:
+    <<: *ci_environment
+    image: postgres
 
-  ethereum: *disabled_service
-  raiden: *disabled_service
-  celery: *disabled_service
-  celery_beat: *disabled_service
-  job_listen_events: *disabled_service
-  job_listen_raiden: *disabled_service
+  redis:
+    image: redis:latest
+
+  web:
+    <<: *ci_environment
+    image: "hub20:${TAG:-latest}"
+    command: >
+      /bin/bash -c "
+        while ! nc -w 1 -z db 5432; do sleep 0.5; done;
+        django-admin migrate;
+        django-admin collectstatic --noinput
+        uvicorn hub20.api.asgi:application --port 80 --host 0.0.0.0 --root-path="/api" --reload --reload-dir /app/hub20
+      "
+    build:
+      context: ../../
+    depends_on:
+      - db
+      - redis
