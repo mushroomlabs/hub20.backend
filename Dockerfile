@@ -1,5 +1,5 @@
 # Start with a Python image.
-FROM python:latest
+FROM python:3.8
 
 ENV PYTHONUNBUFFERED 1
 
