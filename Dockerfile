@@ -12,6 +12,7 @@ COPY ./hub20 /app/hub20
 COPY ./requirements.txt /app
 COPY ./README.md /app
 COPY ./setup.py /app
+COPY ./pytest.ini /app
 WORKDIR /app
 
 # Install our requirements.

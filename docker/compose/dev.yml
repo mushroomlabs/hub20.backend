@@ -1,20 +1,35 @@
 version: '3.4'
 
+x-backend: &hub20_backend
+  image: "hub20:${TAG:-latest}"
+  build:
+    context: ../../
+  env_file:
+    - ./docker/environments/dev.env
+
+
 x-development: &development_service
   networks:
     dev:
 
 services:
+  # Redis for cache, session engine, celery and channels transport
   redis:
+    image: redis:latest
     <<: *development_service
 
   db:
-    <<: *development_service
+    image: postgres
     volumes:
       - "./docker/volumes/database/${HUB20_DATABASE_NAME}:/var/lib/postgresql/data"
+    <<: *development_service
 
   ethereum:
     <<: *development_service
+    image: ethereum/client-go:stable
+    stop_signal: SIGINT
+    stop_grace_period: 1m
+
     networks:
       dev:
         ipv4_address: 10.0.20.90
@@ -44,7 +59,16 @@ services:
 
   # Admin backend
   admin:
+    <<: *hub20_backend
     <<: *development_service
+
+    command: >
+      /bin/bash -c "
+        while ! nc -w 1 -z db 5432; do sleep 0.5; done;
+        while ! nc -w 1 -z redis 6379; do sleep 0.5; done;
+        django-admin collectstatic --noinput
+        uvicorn hub20.admin.asgi:application --port 80 --host 0.0.0.0 --root-path="/admin" --reload --reload-dir /app/hub20
+      "
     stdin_open: true
     tty: true
     volumes:
@@ -54,9 +78,29 @@ services:
       dev:
         ipv4_address: 10.0.20.98
 
+    depends_on:
+      - db
+      - redis
+    environment:
+      HUB20_URLCONF_MODULE: hub20.admin.urls
+
+
   # Web API
   web:
+    <<: *hub20_backend
     <<: *development_service
+    command: >
+      /bin/bash -c "
+        while ! nc -w 1 -z db 5432; do sleep 0.5; done;
+        while ! nc -w 1 -z redis 6379; do sleep 0.5; done;
+        django-admin migrate;
+        django-admin collectstatic --noinput
+        uvicorn hub20.api.asgi:application --port 80 --host 0.0.0.0 --root-path="/api" --reload --reload-dir /app/hub20
+      "
+    depends_on:
+      - db
+      - redis
+
     stdin_open: true
     tty: true
     volumes:
@@ -66,23 +110,51 @@ services:
       dev:
         ipv4_address: 10.0.20.99
 
+
   # Celery app
   celery:
+    <<: *hub20_backend
     <<: *development_service
     stdin_open: true
     tty: true
     volumes:
       - .:/app
 
+    command: >
+      /bin/bash -c "
+      while ! nc -w 1 -z db 5432; do sleep 0.5; done;
+      while ! nc -w 1 -z redis 6379; do sleep 0.5; done;
+      celery -A hub20.api worker -l info
+      "
+    depends_on:
+      - db
+      - redis
+    environment:
+      COLUMNS: 80
+
   # Celery beat (periodic tasks)
   celery_beat:
+    <<: *hub20_backend
     <<: *development_service
     volumes:
       - .:/app
       - "./docker/volumes/celery:${HUB20_DATA_FOLDER}/celery"
+    command: >
+      /bin/bash -c "
+        mkdir -p ${HUB20_DATA_FOLDER}/celery;
+        while ! nc -w 1 -z db 5432; do sleep 0.5; done;
+        while ! nc -w 1 -z redis 6379; do sleep 0.5; done;
+        celery -A hub20.api beat -l info -s ${HUB20_DATA_FOLDER}/celery/celerybeat-schedule.db --pidfile=${HUB20_DATA_FOLDER}/celery/celerybeat.pid
+      "
+
+    depends_on:
+      - db
+      - redis
+
 
   # Background command to listen to blockchain and raiden events
   job_listen_events:
+    <<: *hub20_backend
     <<: *development_service
     stdin_open: true
     tty: true
@@ -93,6 +165,14 @@ services:
       - redis
       - ethereum
 
+
+    command: >
+      /bin/bash -c "
+        while ! nc -w 1 -z db 5432; do sleep 0.5; done;
+        while ! nc -w 1 -z redis 6379; do sleep 0.5; done;
+        django-admin sync_raiden
+      "
+
   # Background command to listen to blockchain and raiden events
   job_listen_raiden:
     <<: *development_service
@@ -102,6 +182,33 @@ services:
       - .:/app
 
   raiden:
+  # Run raiden via django-admin command
+    <<: *hub20_backend
+
+    command: >
+      /bin/bash -c "
+        while ! nc -w 1 -z db 5432; do sleep 0.5; done;
+        while ! nc -w 1 -z redis 6379; do sleep 0.5; done;
+        django-admin run_raiden
+      "
+    depends_on:
+      - db
+      - redis
+
+  # Background command to listen to blockchain and raiden events
+  job_listen_events:
+    <<: *hub20_backend
+
+    command: >
+      /bin/bash -c "
+        while ! nc -w 1 -z db 5432; do sleep 0.5; done;
+        while ! nc -w 1 -z redis 6379; do sleep 0.5; done;
+        django-admin run_event_listeners
+      "
+    depends_on:
+      - db
+      - redis
+
     <<: *development_service
     networks:
       dev:
