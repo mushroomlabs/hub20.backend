@@ -4,25 +4,29 @@ x-backend: &hub20_backend
   image: "hub20:${TAG:-latest}"
   build:
     context: ../../
+  volumes:
+    - ../../:/app
   env_file:
-    - ./docker/environments/dev.env
-
+    - ../environments/dev.env
+  depends_on:
+    - db
+    - redis
 
 x-development: &development_service
   networks:
-    dev:
+    internal:
 
 services:
   # Redis for cache, session engine, celery and channels transport
   redis:
-    image: redis:latest
     <<: *development_service
+    image: redis:latest
 
   db:
-    image: postgres
-    volumes:
-      - "./docker/volumes/database/${HUB20_DATABASE_NAME}:/var/lib/postgresql/data"
     <<: *development_service
+    image: postgres:11
+    volumes:
+      - "../volumes/database/${HUB20_DATABASE_NAME}:/var/lib/postgresql/data"
 
   ethereum:
     <<: *development_service
@@ -31,7 +35,7 @@ services:
     stop_grace_period: 1m
 
     networks:
-      dev:
+      internal:
         ipv4_address: 10.0.20.90
     ports:
       - "30303:30303"
@@ -40,7 +44,7 @@ services:
       - "8546:8546"
       - "8547:8547"
     volumes:
-      - "./docker/volumes/geth/goerli:/chaindata"
+      - "../volumes/geth/goerli:/chaindata"
     entrypoint:
       - "geth"
       - "--goerli"
@@ -69,18 +73,16 @@ services:
         django-admin collectstatic --noinput
         uvicorn hub20.admin.asgi:application --port 80 --host 0.0.0.0 --root-path="/admin" --reload --reload-dir /app/hub20
       "
+
     stdin_open: true
     tty: true
     volumes:
-      - .:/app
-      - ./docker/volumes/media/hub20/static:${HUB20_STATIC_ROOT}
+      - ../../:/app
+      - ../volumes/media/hub20/static:${HUB20_STATIC_ROOT}
     networks:
-      dev:
+      internal:
         ipv4_address: 10.0.20.98
 
-    depends_on:
-      - db
-      - redis
     environment:
       HUB20_URLCONF_MODULE: hub20.admin.urls
 
@@ -97,17 +99,14 @@ services:
         django-admin collectstatic --noinput
         uvicorn hub20.api.asgi:application --port 80 --host 0.0.0.0 --root-path="/api" --reload --reload-dir /app/hub20
       "
-    depends_on:
-      - db
-      - redis
 
     stdin_open: true
     tty: true
     volumes:
-      - .:/app
-      - ./docker/volumes/media/hub20/static:${HUB20_STATIC_ROOT}
+      - ../../:/app
+      - ../volumes/media/hub20/static:${HUB20_STATIC_ROOT}
     networks:
-      dev:
+      internal:
         ipv4_address: 10.0.20.99
 
 
@@ -117,8 +116,6 @@ services:
     <<: *development_service
     stdin_open: true
     tty: true
-    volumes:
-      - .:/app
 
     command: >
       /bin/bash -c "
@@ -126,9 +123,6 @@ services:
       while ! nc -w 1 -z redis 6379; do sleep 0.5; done;
       celery -A hub20.api worker -l info
       "
-    depends_on:
-      - db
-      - redis
     environment:
       COLUMNS: 80
 
@@ -137,8 +131,8 @@ services:
     <<: *hub20_backend
     <<: *development_service
     volumes:
-      - .:/app
-      - "./docker/volumes/celery:${HUB20_DATA_FOLDER}/celery"
+      - ../../:/app
+      - "../volumes/celery:${HUB20_DATA_FOLDER}/celery"
     command: >
       /bin/bash -c "
         mkdir -p ${HUB20_DATA_FOLDER}/celery;
@@ -147,10 +141,6 @@ services:
         celery -A hub20.api beat -l info -s ${HUB20_DATA_FOLDER}/celery/celerybeat-schedule.db --pidfile=${HUB20_DATA_FOLDER}/celery/celerybeat.pid
       "
 
-    depends_on:
-      - db
-      - redis
-
 
   # Background command to listen to blockchain and raiden events
   job_listen_events:
@@ -158,46 +148,8 @@ services:
     <<: *development_service
     stdin_open: true
     tty: true
-    volumes:
-      - .:/app
     depends_on:
-      - db
-      - redis
       - ethereum
-
-
-    command: >
-      /bin/bash -c "
-        while ! nc -w 1 -z db 5432; do sleep 0.5; done;
-        while ! nc -w 1 -z redis 6379; do sleep 0.5; done;
-        django-admin sync_raiden
-      "
-
-  # Background command to listen to blockchain and raiden events
-  job_listen_raiden:
-    <<: *development_service
-    stdin_open: true
-    tty: true
-    volumes:
-      - .:/app
-
-  raiden:
-  # Run raiden via django-admin command
-    <<: *hub20_backend
-
-    command: >
-      /bin/bash -c "
-        while ! nc -w 1 -z db 5432; do sleep 0.5; done;
-        while ! nc -w 1 -z redis 6379; do sleep 0.5; done;
-        django-admin run_raiden
-      "
-    depends_on:
-      - db
-      - redis
-
-  # Background command to listen to blockchain and raiden events
-  job_listen_events:
-    <<: *hub20_backend
 
     command: >
       /bin/bash -c "
@@ -205,25 +157,40 @@ services:
         while ! nc -w 1 -z redis 6379; do sleep 0.5; done;
         django-admin run_event_listeners
       "
-    depends_on:
-      - db
-      - redis
 
+  # Background command to listen to blockchain and raiden events
+  job_listen_raiden:
+    <<: *hub20_backend
     <<: *development_service
+    stdin_open: true
+    tty: true
+    command: >
+      /bin/bash -c "
+        while ! nc -w 1 -z db 5432; do sleep 0.5; done;
+        while ! nc -w 1 -z redis 6379; do sleep 0.5; done;
+        django-admin sync_raiden
+      "
+
+  raiden:
+  # Run raiden via django-admin command
+    <<: *hub20_backend
+    <<: *development_service
+    command: >
+      /bin/bash -c "
+        while ! nc -w 1 -z db 5432; do sleep 0.5; done;
+        while ! nc -w 1 -z redis 6379; do sleep 0.5; done;
+        django-admin run_raiden
+      "
     networks:
-      dev:
+      internal:
         ipv4_address: 10.0.20.100
-    restart: always
-    depends_on:
-      - db
-      - redis
-      - ethereum
+
     volumes:
-      - .:/app
-      - "./docker/volumes/raiden:${RAIDEN_DATADIR:-/root/.raiden}"
+      - ../../:/app
+      - "../volumes/raiden:${RAIDEN_DATADIR:-/root/.raiden}"
 
 networks:
-  dev:
+  internal:
     ipam:
       driver: default
       config:
