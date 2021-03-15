@@ -241,7 +241,9 @@ def process_latest_transfers(w3: Web3, chain: Chain, block_filter):
     for block_hash in block_filter.get_new_entries():
         block_data = w3.eth.getBlock(block_hash.hex(), full_transactions=True)
 
-        logger.info(f"Checking block {block_hash.hex()} for relevant transfers")
+        logger.info(f"Checking transfers in block #{block_data.number} {block_hash.hex()}")
+        logger.info(f"Block has {len(block_data.transactions)} transactions")
+
         for tx_data in block_data.transactions:
             tx_hash = tx_data.hash
             logger.info(f"Checking Tx {tx_hash.hex()}")
@@ -262,7 +264,7 @@ def process_latest_transfers(w3: Web3, chain: Chain, block_filter):
             recipient_account = accounts_by_address.get(recipient_address)
 
             if not any((sender_account, recipient_account)):
-                return
+                continue
 
             try:
                 logger.info(f"Saving tx {tx_hash.hex()}: {sender_address} -> {recipient_address}")

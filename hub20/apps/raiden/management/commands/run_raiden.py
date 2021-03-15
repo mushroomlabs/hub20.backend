@@ -2,6 +2,7 @@ import hashlib
 import json
 import logging
 import os
+import shutil
 import subprocess
 import tempfile
 import time
@@ -88,4 +89,6 @@ class Command(BaseCommand):
                         "RAIDEN_NETWORK_ID": str(chain.id),
                     }
                 )
-                subprocess.call(["raiden"], env=raiden_environment)
+
+                raiden_bin_path = shutil.which("raiden")
+                subprocess.call([raiden_bin_path], env=raiden_environment)

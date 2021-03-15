@@ -10,7 +10,7 @@ from hub20.apps.blockchain.tests.mocks import (
     Web3Model,
 )
 from hub20.apps.ethereum_money.client import encode_transfer_data
-from hub20.apps.ethereum_money.factories import Erc20TokenAmountFactory
+from hub20.apps.ethereum_money.factories import Erc20TokenAmountFactory, EtherAmountFactory
 
 factory.Faker.add_provider(EthereumProvider)
 
@@ -35,8 +35,27 @@ def make_transfer_logs(tx_receipt_mock) -> List[Web3Model]:
     ]
 
 
+class EtherTransferDataMock(TransactionDataMock):
+    to = factory.LazyAttribute(lambda obj: obj.recipient)
+    gas = 21000
+    value = factory.LazyAttribute(lambda obj: obj.amount.as_wei)
+
+    class Params:
+        recipient = factory.Faker("hex64")
+        amount = factory.SubFactory(EtherAmountFactory)
+
+
 class Erc20TransferDataMock(TransactionDataMock):
     input = factory.LazyAttribute(lambda obj: encode_transfer_data(obj.recipient, obj.amount))
+
+    class Params:
+        recipient = factory.Faker("hex64")
+        amount = factory.SubFactory(Erc20TokenAmountFactory)
+
+
+class EtherTransferReceiptMock(TransactionReceiptDataMock):
+    to = factory.LazyAttribute(lambda obj: obj.recipient)
+    value = factory.LazyAttribute(lambda obj: obj.amount.as_wei)
 
     class Params:
         recipient = factory.Faker("hex64")
