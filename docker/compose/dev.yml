@@ -5,7 +5,7 @@ x-backend: &hub20_backend
   build:
     context: ../../
   env_file:
-    - ./docker/environments/dev.env
+    - ../environments/dev.env
 
 
 x-development: &development_service
@@ -19,10 +19,12 @@ services:
     <<: *development_service
 
   db:
-    image: postgres
+    image: postgres:latest
     volumes:
       - "./docker/volumes/database/${HUB20_DATABASE_NAME}:/var/lib/postgresql/data"
     <<: *development_service
+    environment:
+      POSTGRES_PASSWORD: $HUB20_DATABASE_PASSWORD
 
   ethereum:
     <<: *development_service
@@ -175,6 +177,7 @@ services:
 
   # Background command to listen to blockchain and raiden events
   job_listen_raiden:
+    <<: *hub20_backend
     <<: *development_service
     stdin_open: true
     tty: true
