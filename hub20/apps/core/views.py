@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Optional
 
 from django.contrib.auth import get_user_model
 from django.db.models import ProtectedError, Q
@@ -16,11 +16,7 @@ from rest_framework.viewsets import GenericViewSet, ModelViewSet
 
 from hub20.apps.blockchain.models import Chain
 from hub20.apps.blockchain.serializers import ChainSerializer
-from hub20.apps.ethereum_money.models import (
-    BaseEthereumAccount,
-    EthereumToken,
-    EthereumTokenAmount,
-)
+from hub20.apps.ethereum_money.models import EthereumToken
 
 from . import models, serializers
 
