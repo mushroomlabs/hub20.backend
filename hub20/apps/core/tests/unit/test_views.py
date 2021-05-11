@@ -65,7 +65,9 @@ class CheckoutViewTestCase(TestCase):
         url = reverse("checkout-list")
         post_data = {
             "amount": amount.amount,
-            "token": amount.currency.address,
+            "token": reverse(
+                "ethereum_money:token-detail", kwargs={"address": amount.currency.address}
+            ),
             "store": self.store.id,
             "external_identifier": "API Test",
         }
