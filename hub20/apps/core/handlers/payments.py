@@ -60,6 +60,15 @@ def _check_for_blockchain_payment_confirmations(block_number):
         PaymentConfirmation.objects.create(payment=payment)
 
 
+def _publish_block_created_event(block_number):
+    for checkout in Checkout.objects.unpaid().with_blockchain_route(block_number):
+        tasks.publish_checkout_event.delay(
+            checkout.id,
+            event=Events.BLOCKCHAIN_BLOCK_CREATED.value,
+            block=block_number,
+        )
+
+
 @receiver(post_save, sender=Chain)
 def on_chain_updated_check_payment_confirmations(sender, **kw):
     chain = kw["instance"]
@@ -176,9 +185,15 @@ def on_order_created_set_raiden_route(sender, **kw):
 
 
 @receiver(block_sealed, sender=Block)
+def on_block_sealed_publish_block_created_event(sender, **kw):
+    block_data = kw["block_data"]
+    _publish_block_created_event(block_data.get("number"))
+
+
+@receiver(block_sealed, sender=Block)
 def on_block_sealed_check_confirmed_payments(sender, **kw):
     block_data = kw["block_data"]
-    _check_for_blockchain_payment_confirmations(block_data.number)
+    _check_for_blockchain_payment_confirmations(block_data.get("number"))
 
 
 @receiver(post_save, sender=Block)
@@ -191,13 +206,7 @@ def on_block_created_check_confirmed_payments(sender, **kw):
 @receiver(post_save, sender=Block)
 def on_block_added_publish_block_created_event(sender, **kw):
     block = kw["instance"]
-
-    for checkout in Checkout.objects.unpaid().with_blockchain_route(block.number):
-        tasks.publish_checkout_event.delay(
-            checkout.id,
-            event=Events.BLOCKCHAIN_BLOCK_CREATED.value,
-            block=block.number,
-        )
+    _publish_block_created_event(block.number)
 
 
 @receiver(post_save, sender=Block)
@@ -263,11 +272,17 @@ def on_payment_confirmed_publish_checkout(sender, **kw):
         RaidenPayment: PAYMENT_NETWORKS.raiden,
     }.get(type(payment))
 
+    event = {
+        InternalPayment: Events.INTERNAL_DEPOSIT_CONFIRMED,
+        BlockchainPayment: Events.BLOCKCHAIN_DEPOSIT_CONFIRMED,
+        RaidenPayment: Events.RAIDEN_DEPOSIT_CONFIRMED,
+    }.get(type(payment))
+
     tasks.publish_checkout_event.delay(
         checkout_id,
         amount=payment.amount,
         token=payment.currency.address,
-        event="payment.confirmed",
+        event=event and event.value,
         payment_method=payment_method,
     )
 

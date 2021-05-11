@@ -1,11 +1,10 @@
-import json
 import logging
+from typing import Dict
 
 from django.contrib.auth import get_user_model
 from django.contrib.sessions.models import Session
 from django.dispatch import receiver
 from django.utils import timezone
-from web3 import Web3
 
 from hub20.apps.blockchain.models import Block, Chain
 from hub20.apps.blockchain.signals import (
@@ -29,11 +28,10 @@ def _get_open_session_keys():
 
 @receiver(block_sealed, sender=Block)
 def on_block_sealed_send_notification(sender, **kw):
-    # We are converting a AttributeDict from Web3 into a standard python dict
-    # so that it can be serialized for celery
-    block_data = json.loads(Web3.toJSON(kw.get("block_data")))
 
-    block_number = block_data.get("number")
+    block_data: Dict = kw["block_data"]
+
+    block_number = block_data["number"]
     for session_key in _get_open_session_keys():
         logger.info(f"Publishing block {block_number} update for session {session_key}")
         tasks.send_session_event.delay(
