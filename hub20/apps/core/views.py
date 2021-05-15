@@ -249,6 +249,8 @@ class StatusView(APIView):
 
 
 class NetworkStatusView(StatusView):
+    permission_classes = (AllowAny,)
+
     def get(self, request, **kw):
         chain = Chain.make()
         return Response({"ethereum": ChainSerializer(chain).data})

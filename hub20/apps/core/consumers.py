@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 class Events(Enum):
+    INTERNAL_DEPOSIT_CONFIRMED = "internal.deposit.confirmed"
     BLOCKCHAIN_BLOCK_CREATED = "blockchain.block.created"
     BLOCKCHAIN_DEPOSIT_RECEIVED = "blockchain.deposit.received"
     BLOCKCHAIN_DEPOSIT_BROADCAST = "blockchain.deposit.broadcast"
@@ -21,6 +22,7 @@ class Events(Enum):
     ETHEREUM_NODE_OK = "ethereum_node.ok"
     RAIDEN_ROUTE_EXPIRED = "raiden.payment_route.expired"
     RAIDEN_DEPOSIT_RECEIVED = "raiden.deposit.received"
+    RAIDEN_DEPOSIT_CONFIRMED = "raiden.deposit.confirmed"
 
 
 def accept_subprotocol(consumer):
@@ -60,24 +62,17 @@ class CheckoutConsumer(JsonWebsocketConsumer):
 
     def connect(self):
         checkout_id = self.scope["url_route"]["kwargs"].get("pk")
-        checkout = models.Checkout.objects.filter(id=checkout_id).first()
 
-        if not checkout:
+        if not models.Checkout.objects.filter(id=checkout_id).first():
             self.close()
 
-        self.checkout = checkout
         group_name = self.__class__.get_group_name(checkout_id)
         async_to_sync(self.channel_layer.group_add)(group_name, self.channel_name)
 
         accept_subprotocol(self)
 
-    def _refresh(self):
-        self.checkout.refresh_from_db()
-
     def checkout_event(self, message):
         logger.info(f"Message received: {message}")
-        self._refresh()
         message.pop("type", None)
         message["event"] = message.pop("event_name", None)
-        message["voucher"] = self.checkout.issue_voucher()
         self.send_json(message)

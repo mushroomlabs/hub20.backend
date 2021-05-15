@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import time
 from typing import Dict, Optional, Tuple
@@ -183,7 +184,10 @@ def fetch_new_block_entries(w3: Web3, block_filter):
     for event in block_filter.get_new_entries():
         block_hash = event.hex()
         logger.info(f"New block: {block_hash}")
-        block_data = w3.eth.getBlock(block_hash, full_transactions=True)
+        # We are converting a AttributeDict from Web3 into a standard python dict
+        # so that it can be serialized for celery
+        block_data = json.loads(Web3.toJSON(w3.eth.getBlock(block_hash, full_transactions=True)))
+
         signals.block_sealed.send(sender=Block, block_data=block_data)
 
 

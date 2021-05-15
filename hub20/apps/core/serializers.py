@@ -10,6 +10,7 @@ from hub20.apps.blockchain.serializers import EthereumAddressField, HexadecimalF
 from hub20.apps.ethereum_money.models import EthereumToken, EthereumTokenAmount
 from hub20.apps.ethereum_money.serializers import (
     CurrencyRelatedField,
+    EthereumTokenSelectorField,
     EthereumTokenSerializer,
     TokenValueField,
 )
@@ -240,7 +241,7 @@ class RaidenPaymentSerializer(PaymentSerializer):
 
 class DepositSerializer(serializers.ModelSerializer):
     url = serializers.HyperlinkedIdentityField(view_name="deposit-detail")
-    token = CurrencyRelatedField(source="currency")
+    token = EthereumTokenSelectorField(source="currency")
     routes = serializers.SerializerMethodField()
     payments = serializers.SerializerMethodField()
 

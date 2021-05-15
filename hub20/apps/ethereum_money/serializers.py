@@ -20,6 +20,12 @@ class CurrencyRelatedField(serializers.SlugRelatedField):
         super().__init__(*args, **kw)
 
 
+class EthereumTokenSelectorField(serializers.HyperlinkedRelatedField):
+    queryset = models.EthereumToken.tracked.all()
+    view_name = "ethereum_money:token-detail"
+    lookup_field = "address"
+
+
 class EthereumTokenSerializer(serializers.ModelSerializer):
     network_id = serializers.IntegerField(source="chain_id")
 
