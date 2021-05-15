@@ -260,7 +260,7 @@ def process_latest_transfers(w3: Web3, chain: Chain, block_filter):
             recipient_account = accounts_by_address.get(recipient_address)
 
             if not any((sender_account, recipient_account)):
-                return
+                continue
 
             try:
                 logger.info(f"Saving tx {tx_hash.hex()}: {sender_address} -> {recipient_address}")
