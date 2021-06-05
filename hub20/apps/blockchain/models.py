@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 from django.conf import settings
 from django.contrib.postgres.fields import ArrayField
 from django.db import models
-from django.db.models import Avg, Max
+from django.db.models import Avg, Max, Q
 from django.utils import timezone
 from hexbytes import HexBytes
 from model_utils.managers import InheritanceManager
@@ -16,7 +16,7 @@ from web3.types import TxParams, Wei
 from .app_settings import CHAIN_ID, START_BLOCK_NUMBER
 from .choices import ETHEREUM_CHAINS
 from .fields import EthereumAddressField, HexField, Uint256Field
-from .managers import TransactionManager
+from .typing import Address
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +32,19 @@ def database_history_gas_price_strategy(w3: Web3, params: TxParams = None) -> We
         block__chain=chain_id, block__number__gte=current_block_number - BLOCK_HISTORY_SIZE
     )
     return Wei(txs.aggregate(avg_price=Avg("gas_price")).get("avg_price")) or default_price
+
+
+class TransactionQuerySet(models.QuerySet):
+    def involving_address(self, chain, address):
+        return self.filter(block__chain=chain).filter(
+            Q(from_address=address)
+            | Q(to_address=address)
+            | Q(baseethereumaccount__address=address)
+        )
+
+    def last_block_with(self, chain, address):
+        qs = self.involving_address(chain, address).select_related("block")
+        return qs.aggregate(highest=Max("block__number")).get("highest") or 0
 
 
 class Chain(models.Model):
@@ -122,7 +135,7 @@ class Transaction(models.Model):
     value = Uint256Field()
     data = models.TextField()
 
-    objects = TransactionManager()
+    objects = TransactionQuerySet.as_manager()
 
     @property
     def hash_hex(self):
@@ -193,6 +206,12 @@ class BaseEthereumAccount(models.Model):
     address = EthereumAddressField(unique=True, db_index=True)
     objects = InheritanceManager()
     transactions = models.ManyToManyField(Transaction)
+
+    def last_contract_interaction(
+        self, chain: Chain, contract_address: Address
+    ) -> Optional[Transaction]:
+        q_contract_transaction = Q(from_address=contract_address) | Q(to_address=contract_address)
+        return self.transactions.filter(q_contract_transaction).order_by("-block__number").first()
 
     @property
     def private_key(self):

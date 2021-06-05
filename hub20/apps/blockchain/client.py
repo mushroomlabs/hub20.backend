@@ -320,24 +320,17 @@ async def run_transaction_indexer(w3: Web3, **kw):
     chain_id = int(w3.net.version)
     chain = await sync_to_async(Chain.make)(chain_id=chain_id)
 
-    last_seen = 0
+    accounts = await sync_to_async(list)(BaseEthereumAccount.objects.all())
 
-    while True:
-        accounts = await sync_to_async(list)(BaseEthereumAccount.objects.all())
-
-        for account in accounts:
-            account_last_block = await sync_to_async(Transaction.objects.last_block_with)(
-                chain=chain, address=account.address
+    for account in accounts:
+        current_block = await sync_to_async(Transaction.objects.last_block_with)(
+            chain=chain, address=account.address
+        )
+        while current_block < chain.highest_block:
+            end = min(current_block + BLOCK_SCAN_RANGE, chain.highest_block)
+            logger.info(f"Checking {account.address} txs between {current_block} and {end}")
+            await sync_to_async(index_account_transactions)(
+                w3=w3, account=account, starting_block=current_block, end_block=end
             )
-            current_block = max(account_last_block or 0, last_seen)
-            while current_block < chain.highest_block:
-                end = min(current_block + BLOCK_SCAN_RANGE, chain.highest_block)
-                logger.info(f"Checking {account.address} txs between {current_block} and {end}")
-                await sync_to_async(index_account_transactions)(
-                    w3=w3, account=account, starting_block=current_block, end_block=end
-                )
-                current_block += BLOCK_SCAN_RANGE
-
-        # We caught up with historical data, now we only listen to current blocks
-        last_seen = chain.highest_block
-        await asyncio.sleep(BLOCK_CREATION_INTERVAL)
+            current_block += BLOCK_SCAN_RANGE
+            await asyncio.sleep(BLOCK_CREATION_INTERVAL * 2)
