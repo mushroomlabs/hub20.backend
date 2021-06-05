@@ -1,232 +1,136 @@
-version: '3.4'
-
-x-backend: &hub20_backend
-  image: "hub20:${TAG:-latest}"
-  build:
-    context: ../../
-  env_file:
-    - ../environments/dev.env
-
-
 x-development: &development_service
   networks:
     dev:
 
+  environment:
+    DJANGO_SETTINGS_MODULE: hub20.api.settings
+    HUB20_DATA_FOLDER: /var/hub20
+    HUB20_STATIC_ROOT: /var/hub20/static
+    HUB20_BROKER_URL: redis://redis:6379/0
+    HUB20_CACHE_BACKEND: django_redis.cache.RedisCache
+    HUB20_CACHE_LOCATION: redis://redis:6379/1
+    HUB20_CHANNEL_LAYER_HOST: redis
+    HUB20_CORS_HEADERS_ENABLED: 1
+    HUB20_DATABASE_HOST: db
+    HUB20_DATABASE_PORT: 5432
+    HUB20_DATABASE_NAME: hub20
+    HUB20_DATABASE_USER: hub20
+    HUB20_DATABASE_PASSWORD: hub20_pass
+    HUB20_EMAIL_MAILER_ADDRESS: noreply@hub20.example.com
+    HUB20_EMAIL_BACKEND: django.core.mail.backends.console.EmailBackend
+    HUB20_SECRET_KEY: base-hub20-secret-key
+    HUB20_RAIDEN_ENABLED: 1
+    HUB20_RAIDEN_API_ADDRESS: http://raiden:5001
+    HUB20_RAIDEN_ACCOUNT_PRIVATE_KEY: "${HUB20_RAIDEN_ACCOUNT_PRIVATE_KEY}"
+    HUB20_DEBUG: 1
+    HUB20_BLOCKCHAIN_NETWORK_ID: 5
+    HUB20_TRACKED_TOKENS: 0x0000000000000000000000000000000000000000,0x1c36690810ad06fb15552657c7a8ff653eb46f76,0xA9cad81fD505DBD678599F2541D0101dd01fc94E,0x95B2d84De40a0121061b105E6B54016a49621B44,0x59105441977ecd9d805a4f5b060e34676f50f806,0x709118121A1ccA0f32FC2C0c59752E8FEE3c2834,0xC563388e2e2fdD422166eD5E76971D11eD37A466
+    HUB20_ETHEREUM_HD_WALLET_ROOT_KEY: deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef
+    WEB3_PROVIDER_URI: http://ethereum:8545
+
+x-raiden: &raiden_service
+  volumes:
+    - "${HUB20_RAIDEN_MOUNT_PATH:-../../docker/volumes/raiden/data}:/root/.raiden"
+  environment:
+    RAIDEN_ACCEPT_DISCLAIMER: "true"
+    RAIDEN_API_ADDRESS: 0.0.0.0:5001
+    RAIDEN_ENABLE_MONITORING: "true"
+    RAIDEN_ENVIRONMENT_TYPE: development
+    RAIDEN_ETH_RPC_ENDPOINT: http://10.0.20.90:8545
+    RAIDEN_KEYSTORE_PATH: /keystore
+    RAIDEN_WEB_UI: "true"
+    RAIDEN_MATRIX_SERVER: https://transport.demo001.env.raiden.network
+    RAIDEN_NETWORK_ID: goerli
+    RAIDEN_PATHFINDING_SERVICE_ADDRESS: https://pfs.demo001.env.raiden.network
+    RAIDEN_ROUTING_MODE: pfs
+    RAIDEN_PRIVATE_KEY: "${HUB20_RAIDEN_ACCOUNT_PRIVATE_KEY}"
+
 services:
-  # Redis for cache, session engine, celery and channels transport
   redis:
-    image: redis:latest
     <<: *development_service
 
   db:
-    image: postgres:latest
-    volumes:
-      - "./docker/volumes/database/${HUB20_DATABASE_NAME}:/var/lib/postgresql/data"
     <<: *development_service
-    environment:
-      POSTGRES_PASSWORD: $HUB20_DATABASE_PASSWORD
+
+    volumes:
+      - "${HUB20_DATABASE_MOUNT_PATH:-../../docker/volumes/database/hub20}:/var/lib/postgresql/data"
 
   ethereum:
     <<: *development_service
-    image: ethereum/client-go:stable
-    stop_signal: SIGINT
-    stop_grace_period: 1m
-
     networks:
       dev:
         ipv4_address: 10.0.20.90
-    ports:
-      - "30303:30303"
-      - "30303:30303/udp"
-      - "8545:8545"
-      - "8546:8546"
-      - "8547:8547"
-    volumes:
-      - "./docker/volumes/geth/goerli:/chaindata"
-    entrypoint:
-      - "geth"
-      - "--goerli"
-      - "--nousb"
-      - "--http"
-      - "--http.addr=0.0.0.0"
-      - "--http.api=eth,net,web3"
-      - "--http.vhosts=*"
-      - "--ws"
-      - "--ws.origins=*"
-      - "--ws.addr=0.0.0.0"
-      - "--ws.api=eth,net,web3"
-      - "--datadir=/chaindata"
-      - "--cache=4096"
 
+    volumes:
+      - "${HUB20_GETH_MOUNT_PATH:-../../docker/volumes/geth/goerli}:/chaindata"
+
+  # Run raiden
+  raiden:
+    <<: *development_service
+    <<: *raiden_service
+    ports:
+      - "5001:5001"
+    depends_on:
+      - ethereum
 
   # Admin backend
   admin:
-    <<: *hub20_backend
     <<: *development_service
-
-    command: >
-      /bin/bash -c "
-        while ! nc -w 1 -z db 5432; do sleep 0.5; done;
-        while ! nc -w 1 -z redis 6379; do sleep 0.5; done;
-        django-admin collectstatic --noinput
-        uvicorn hub20.admin.asgi:application --port 80 --host 0.0.0.0 --root-path="/admin" --reload --reload-dir /app/hub20
-      "
     stdin_open: true
     tty: true
     volumes:
-      - .:/app
-      - ./docker/volumes/media/hub20/static:${HUB20_STATIC_ROOT}
+      - "${HUB20_APP_MOUNT_PATH:-./}:/app"
+      - "${HUB20_MEDIA_MOUNT_PATH:-./docker/volumes/media/hub20/static}:/var/hub20/static"
     networks:
       dev:
         ipv4_address: 10.0.20.98
 
-    depends_on:
-      - db
-      - redis
-    environment:
-      HUB20_URLCONF_MODULE: hub20.admin.urls
-
-
   # Web API
   web:
-    <<: *hub20_backend
     <<: *development_service
+    stdin_open: true
+    tty: true
+    volumes:
+      - "${HUB20_APP_MOUNT_PATH:-./}:/app"
+      - "${HUB20_MEDIA_MOUNT_PATH:-../../docker/volumes/media/hub20/static}:/var/hub20/static"
     command: >
       /bin/bash -c "
-        while ! nc -w 1 -z db 5432; do sleep 0.5; done;
-        while ! nc -w 1 -z redis 6379; do sleep 0.5; done;
         django-admin migrate;
         django-admin collectstatic --noinput
         uvicorn hub20.api.asgi:application --port 80 --host 0.0.0.0 --root-path="/api" --reload --reload-dir /app/hub20
       "
-    depends_on:
-      - db
-      - redis
-
-    stdin_open: true
-    tty: true
-    volumes:
-      - .:/app
-      - ./docker/volumes/media/hub20/static:${HUB20_STATIC_ROOT}
     networks:
       dev:
         ipv4_address: 10.0.20.99
 
-
   # Celery app
   celery:
-    <<: *hub20_backend
     <<: *development_service
     stdin_open: true
     tty: true
     volumes:
-      - .:/app
-
-    command: >
-      /bin/bash -c "
-      while ! nc -w 1 -z db 5432; do sleep 0.5; done;
-      while ! nc -w 1 -z redis 6379; do sleep 0.5; done;
-      celery -A hub20.api worker -l info
-      "
-    depends_on:
-      - db
-      - redis
-    environment:
-      COLUMNS: 80
+      - "${HUB20_APP_MOUNT_PATH:-./}:/app"
+    command: celery -A hub20.api worker -l info
 
   # Celery beat (periodic tasks)
   celery_beat:
-    <<: *hub20_backend
     <<: *development_service
     volumes:
-      - .:/app
-      - "./docker/volumes/celery:${HUB20_DATA_FOLDER}/celery"
-    command: >
-      /bin/bash -c "
-        mkdir -p ${HUB20_DATA_FOLDER}/celery;
-        while ! nc -w 1 -z db 5432; do sleep 0.5; done;
-        while ! nc -w 1 -z redis 6379; do sleep 0.5; done;
-        celery -A hub20.api beat -l info -s ${HUB20_DATA_FOLDER}/celery/celerybeat-schedule.db --pidfile=${HUB20_DATA_FOLDER}/celery/celerybeat.pid
-      "
-
-    depends_on:
-      - db
-      - redis
-
+      - "${HUB20_APP_MOUNT_PATH:-./}:/app"
+      - "${HUB20_CELERY_MOUNT_PATH:-../../docker/volumes/celery}:/var/hub20/celery"
 
   # Background command to listen to blockchain and raiden events
   job_listen_events:
-    <<: *hub20_backend
     <<: *development_service
     stdin_open: true
     tty: true
     volumes:
-      - .:/app
-    depends_on:
-      - db
-      - redis
-      - ethereum
+      - "${HUB20_APP_MOUNT_PATH:-./}:/app"
 
-
-    command: >
-      /bin/bash -c "
-        while ! nc -w 1 -z db 5432; do sleep 0.5; done;
-        while ! nc -w 1 -z redis 6379; do sleep 0.5; done;
-        django-admin sync_raiden
-      "
-
-  # Background command to listen to blockchain and raiden events
-  job_listen_raiden:
-    <<: *hub20_backend
-    <<: *development_service
-    stdin_open: true
-    tty: true
-    volumes:
-      - .:/app
-
-  raiden:
-  # Run raiden via django-admin command
-    <<: *hub20_backend
-
-    command: >
-      /bin/bash -c "
-        while ! nc -w 1 -z db 5432; do sleep 0.5; done;
-        while ! nc -w 1 -z redis 6379; do sleep 0.5; done;
-        django-admin run_raiden
-      "
-    depends_on:
-      - db
-      - redis
-
-  # Background command to listen to blockchain and raiden events
-  job_listen_events:
-    <<: *hub20_backend
-
-    command: >
-      /bin/bash -c "
-        while ! nc -w 1 -z db 5432; do sleep 0.5; done;
-        while ! nc -w 1 -z redis 6379; do sleep 0.5; done;
-        django-admin run_event_listeners
-      "
-    depends_on:
-      - db
-      - redis
-
-    <<: *development_service
-    networks:
-      dev:
-        ipv4_address: 10.0.20.100
-    restart: always
-    depends_on:
-      - db
-      - redis
-      - ethereum
-    volumes:
-      - .:/app
-      - "./docker/volumes/raiden:${RAIDEN_DATADIR:-/root/.raiden}"
 
 networks:
   dev:
+    name: hub20_development
     ipam:
       driver: default
       config:
