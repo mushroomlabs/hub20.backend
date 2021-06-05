@@ -12,9 +12,9 @@ variables:
   HUB20_DATABASE_PORT: "5432"
   HUB20_EMAIL_MAILER_ADDRESS: "noreply@gitlab.example.com"
   HUB20_EMAIL_BACKEND: "django.core.mail.backends.console.EmailBackend"
-  HUB20_RAIDEN_ENABLED: "1"
   HUB20_STATIC_ROOT: "/var/hub20/static"
   HUB20_SECRET_KEY: "base-hub20-secret-key"
+  HUB20_RAIDEN_ADDRESS_URL: "http://raiden.example.com:5001"
 
 cache:
   paths:
@@ -26,7 +26,7 @@ stages:
   - release
 
 test:
-  image: python:3.7
+  image: python:3.8
   stage: test
   services:
     - postgres:latest
