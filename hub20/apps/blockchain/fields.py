@@ -1,11 +1,9 @@
-from django.db import DefaultConnectionProxy, models
+from django.db import connection, models
 from django.utils.translation import gettext_lazy as _
 from ethereum.utils import checksum_encode
 from hexbytes import HexBytes
 
 from .validators import validate_checksumed_address
-
-connection = DefaultConnectionProxy()
 
 
 class EthereumAddressField(models.CharField):
@@ -85,7 +83,7 @@ class HexField(models.CharField):
             return HexBytes(value).hex()[2:]
 
     def formfield(self, **kwargs):
-        # We need max_lenght + 2 on forms because of `0x`
+        # We need max_length + 2 on forms because of `0x`
         defaults = {"max_length": self.max_length + 2}
         # TODO: Handle multiple backends with different feature flags.
         if self.null and not connection.features.interprets_empty_strings_as_nulls:

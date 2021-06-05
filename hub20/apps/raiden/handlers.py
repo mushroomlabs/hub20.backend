@@ -78,17 +78,18 @@ def on_service_deposit_created_schedule_task(sender, **kw):
 @receiver(service_deposit_sent, sender=Transaction)
 def on_service_deposit_transaction_create_record(sender, **kw):
     deposit_amount = kw["amount"]
-
+    raiden = kw["raiden"]
     order = UserDepositContractOrder.objects.filter(
-        amount=deposit_amount.amount, currency=deposit_amount.currency, result__isnull=True,
+        raiden=raiden,
+        amount=deposit_amount.amount,
+        currency=deposit_amount.currency,
+        result__isnull=True,
     ).first()
 
     if not order:
         return
 
-    RaidenManagementOrderResult.objects.create(
-        transaction=kw["transaction"], raiden=kw["raiden"], order=order
-    )
+    RaidenManagementOrderResult.objects.create(transaction=kw["transaction"], order=order)
 
 
 @receiver(post_save, sender=JoinTokenNetworkOrder)

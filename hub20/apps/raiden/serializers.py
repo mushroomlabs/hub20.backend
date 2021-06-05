@@ -5,7 +5,6 @@ from hub20.apps.blockchain.serializers import HexadecimalField
 from hub20.apps.ethereum_money.app_settings import TRACKED_TOKENS
 from hub20.apps.ethereum_money.models import EthereumTokenAmount
 from hub20.apps.ethereum_money.serializers import (
-    CurrencyRelatedField,
     EthereumTokenSerializer,
     HyperlinkedEthereumTokenSerializer,
     TokenValueField,
@@ -39,6 +38,7 @@ class ServiceDepositSerializer(serializers.ModelSerializer):
     transaction = HexadecimalField(read_only=True, source="result.transaction.hash")
     token = EthereumTokenSerializer(source="currency", read_only=True)
     amount = TokenValueField()
+    error = serializers.CharField(source="error.message", read_only=True)
 
     def create(self, validated_data):
         raiden = models.Raiden.get()
@@ -52,13 +52,13 @@ class ServiceDepositSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = models.UserDepositContractOrder
-        fields = ("url", "created", "amount", "token", "transaction")
-        read_only_fields = ("url", "created", "token", "transaction")
+        fields = ("url", "created", "amount", "token", "transaction", "error")
+        read_only_fields = ("url", "created", "token", "transaction", "error")
 
 
 class ChannelSerializer(serializers.ModelSerializer):
     url = serializers.HyperlinkedIdentityField(view_name="channel-detail")
-    token = CurrencyRelatedField(queryset=None, source="token_network.token", read_only=True)
+    token = HyperlinkedEthereumTokenSerializer(source="token_network.token", read_only=True)
 
     class Meta:
         model = models.Channel

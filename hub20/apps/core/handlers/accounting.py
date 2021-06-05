@@ -5,7 +5,7 @@ from django.db.models.signals import post_save
 from django.db.transaction import atomic
 from django.dispatch import receiver
 
-from hub20.apps.blockchain.models import Chain, Transaction
+from hub20.apps.blockchain.models import BaseEthereumAccount, Chain, Transaction
 from hub20.apps.core.models.accounting import (
     ExternalAddressAccount,
     RaidenClientAccount,
@@ -22,16 +22,16 @@ from hub20.apps.core.models.transfers import (
     TransferExecution,
     TransferFailure,
 )
-from hub20.apps.ethereum_money.models import (
-    BaseEthereumAccount,
-    HierarchicalDeterministicWallet,
-    KeystoreAccount,
-)
+from hub20.apps.ethereum_money import get_ethereum_account_model
 from hub20.apps.ethereum_money.signals import account_deposit_received
 from hub20.apps.raiden.models import Payment as RaidenPayment, Raiden
+from hub20.apps.raiden.signals import service_deposit_sent
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
+
+
+EthereumAccount = get_ethereum_account_model()
 
 
 @receiver(post_save, sender=User)
@@ -52,10 +52,9 @@ def on_raiden_created_create_account(sender, **kw):
         RaidenClientAccount.objects.get_or_create(raiden=kw["instance"])
 
 
-@receiver(post_save, sender=HierarchicalDeterministicWallet)
-@receiver(post_save, sender=KeystoreAccount)
 @receiver(post_save, sender=BaseEthereumAccount)
 @receiver(post_save, sender=Raiden)
+@receiver(post_save, sender=EthereumAccount)
 def on_wallet_created_create_account(sender, **kw):
     if kw["created"]:
         WalletAccount.objects.get_or_create(account=kw["instance"])
@@ -255,6 +254,27 @@ def on_reverted_transaction_move_funds_from_treasury_to_sender(sender, **kw):
             logger.exception(exc)
 
 
+@receiver(service_deposit_sent, sender=Transaction)
+def on_service_deposit_transaction_move_funds_from_raiden_wallet_to_external_account(sender, **kw):
+    deposit = kw["amount"]
+    transaction = kw["transaction"]
+    udc_address = kw["contract_address"]
+    raiden = kw["raiden"]
+
+    token = deposit.currency
+
+    params = dict(reference=transaction, currency=token, amount=deposit.amount)
+
+    external_account, _ = ExternalAddressAccount.objects.get_or_create(address=udc_address)
+    raiden_wallet_account, _ = WalletAccount.objects.get_or_create(account=raiden)
+
+    external_account_book = external_account.get_book(token=token)
+    raiden_book = raiden_wallet_account.get_book(token=token)
+
+    raiden_book.debits.create(**params)
+    external_account_book.credits.create(**params)
+
+
 __all__ = [
     "on_user_created_create_account",
     "on_chain_created_create_treasury",
@@ -269,4 +289,5 @@ __all__ = [
     "on_internal_transfer_executed_move_funds_from_treasury_to_receiver",
     "on_payment_confirmed_move_funds_from_treasury_to_payee",
     "on_reverted_transaction_move_funds_from_treasury_to_sender",
+    "on_service_deposit_transaction_move_funds_from_raiden_wallet_to_external_account",
 ]

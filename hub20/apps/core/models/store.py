@@ -82,7 +82,7 @@ class Checkout(PaymentOrder):
         )
 
         private_key = self.store.rsa.private_key_pem.encode()
-        return jwt.encode(data, private_key, algorithm="RS256").decode()
+        return jwt.encode(data, private_key, algorithm="RS256")
 
 
 __all__ = ["Store", "StoreRSAKeyPair", "Checkout"]

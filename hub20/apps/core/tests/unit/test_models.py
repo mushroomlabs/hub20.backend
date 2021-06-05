@@ -30,10 +30,10 @@ from hub20.apps.core.tests.unit.mocks import (
 from hub20.apps.ethereum_money import get_ethereum_account_model
 from hub20.apps.ethereum_money.factories import EthereumAccountFactory
 from hub20.apps.ethereum_money.tests.base import add_eth_to_account, add_token_to_account
+from hub20.apps.raiden.models import Raiden
 from hub20.apps.raiden.factories import (
     ChannelFactory,
     PaymentEventFactory,
-    RaidenFactory,
     TokenNetworkFactory,
 )
 
@@ -140,7 +140,7 @@ class TransferTestCase(BaseTestCase):
         self.fee_amount = mock_fee_estimation()
         self.chain = self.fee_amount.currency.chain
 
-        self.raiden = RaidenFactory()
+        self.raiden = Raiden.generate()
 
 
 class InternalTransferTestCase(TransferTestCase):

@@ -20,7 +20,8 @@ from web3.types import TxParams, TxReceipt, Wei
 from . import signals
 from .app_settings import BLOCK_SCAN_RANGE
 from .exceptions import Web3TransactionError
-from .models import Block, Chain, Transaction
+from .models import BaseEthereumAccount, Block, Chain, Transaction
+from .typing import EthereumAccount_T
 
 BLOCK_CREATION_INTERVAL = 10  # In seconds
 WEB3_CLIENTS: Dict[str, Web3] = {}
@@ -203,6 +204,26 @@ def run_backfill(w3: Web3, start: int, end: int):
         get_block_by_number(w3=w3, block_number=block_number)
 
 
+def index_account_transactions(
+    w3: Web3, account: EthereumAccount_T, starting_block: int, end_block: int
+):
+    chain_id = int(w3.net.version)
+
+    logger.info(f"Checking blocks {starting_block}-{end_block} from txs with {account}")
+    for block_number in range(starting_block, end_block):
+        block_data = w3.eth.getBlock(block_number, full_transactions=True)
+        block = None
+        for tx in block_data.transactions:
+            if account.address in (tx.to, tx["from"]):
+                if block is None:
+                    block = Block.make(block_data, chain_id=chain_id)
+                transaction = get_transaction_by_hash(
+                    w3=w3, transaction_hash=tx.hash.hex(), block=block
+                )
+                if transaction:
+                    account.transactions.add(transaction)
+
+
 def is_connected_to_blockchain(w3: Web3):
     return w3.isConnected() and (w3.net.peer_count > 0)
 
@@ -252,7 +273,7 @@ def wait_for_connection(w3: Web3):
         time.sleep(BLOCK_CREATION_INTERVAL / 2)
 
 
-async def download_all_chain(w3: Web3):
+async def download_all_chain(w3: Web3, **kw):
     await sync_to_async(wait_for_connection)(w3)
     start = 0
     highest = w3.eth.blockNumber
@@ -264,7 +285,7 @@ async def download_all_chain(w3: Web3):
         start = end
 
 
-async def listen_new_blocks(w3: Web3):
+async def listen_new_blocks(w3: Web3, **kw):
     await sync_to_async(wait_for_connection)(w3)
     block_filter = w3.eth.filter("latest")
     while True:
@@ -273,7 +294,7 @@ async def listen_new_blocks(w3: Web3):
         await asyncio.sleep(BLOCK_CREATION_INTERVAL)
 
 
-async def sync_chain(w3: Web3):
+async def sync_chain(w3: Web3, **kw):
     while True:
         await sync_to_async(wait_for_connection)(w3)
         has_peers = w3.net.peer_count > 0
@@ -287,8 +308,36 @@ async def sync_chain(w3: Web3):
         await asyncio.sleep(BLOCK_CREATION_INTERVAL)
 
 
-async def run_heartbeat(w3: Web3):
+async def run_heartbeat(w3: Web3, **kw):
     while True:
         await sync_to_async(run_ethereum_node_connection_check)(w3=w3)
         await sync_to_async(run_ethereum_node_sync_check)(w3=w3)
+        await asyncio.sleep(BLOCK_CREATION_INTERVAL)
+
+
+async def run_transaction_indexer(w3: Web3, **kw):
+    await sync_to_async(wait_for_connection)(w3)
+    chain_id = int(w3.net.version)
+    chain = await sync_to_async(Chain.make)(chain_id=chain_id)
+
+    last_seen = 0
+
+    while True:
+        accounts = await sync_to_async(list)(BaseEthereumAccount.objects.all())
+
+        for account in accounts:
+            account_last_block = await sync_to_async(Transaction.objects.last_block_with)(
+                chain=chain, address=account.address
+            )
+            current_block = max(account_last_block or 0, last_seen)
+            while current_block < chain.highest_block:
+                end = min(current_block + BLOCK_SCAN_RANGE, chain.highest_block)
+                logger.info(f"Checking {account.address} txs between {current_block} and {end}")
+                await sync_to_async(index_account_transactions)(
+                    w3=w3, account=account, starting_block=current_block, end_block=end
+                )
+                current_block += BLOCK_SCAN_RANGE
+
+        # We caught up with historical data, now we only listen to current blocks
+        last_seen = chain.highest_block
         await asyncio.sleep(BLOCK_CREATION_INTERVAL)

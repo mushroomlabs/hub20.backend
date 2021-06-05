@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from django.core.management.base import BaseCommand
 
-from hub20.apps.blockchain.models import Chain, Transaction
+from hub20.apps.blockchain.models import BaseEthereumAccount, Chain, Transaction
 from hub20.apps.core.models.accounting import (
     ExternalAddressAccount,
     RaidenClientAccount,
@@ -12,7 +12,7 @@ from hub20.apps.core.models.accounting import (
     UserAccount,
     WalletAccount,
 )
-from hub20.apps.ethereum_money.models import BaseEthereumAccount, EthereumToken
+from hub20.apps.ethereum_money.models import EthereumToken
 from hub20.apps.raiden.models import Payment as RaidenPayment, Raiden
 
 User = get_user_model()

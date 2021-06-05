@@ -34,6 +34,7 @@ def send_session_event(session_key, event, **event_data):
     layer = get_channel_layer()
     channel_group_name = SessionEventsConsumer.get_group_name(session_key)
     event_data.update({"type": "notify_event", "event": event})
+    logger.info(f"Sending session event to {session_key}")
     async_to_sync(layer.group_send)(channel_group_name, event_data)
 
 
@@ -42,7 +43,7 @@ def publish_checkout_event(checkout_id, event="checkout.event", **event_data):
     layer = get_channel_layer()
     channel_group_name = CheckoutConsumer.get_group_name(checkout_id)
 
-    logger.info(f"Publishing event {event}. Data: {event_data}")
+    logger.info(f"Publishing checkout event {event}. Data: {event_data}")
 
     event_data.update({"type": "checkout_event", "event_name": event})
 

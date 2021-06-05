@@ -5,7 +5,7 @@ import factory.fuzzy
 from django.utils import timezone
 
 from ..app_settings import START_BLOCK_NUMBER
-from ..models import Block, Chain, Transaction, TransactionLog
+from ..models import BaseEthereumAccount, Block, Chain, Transaction, TransactionLog
 from .providers import EthereumProvider
 
 factory.Faker.add_provider(EthereumProvider)
@@ -21,6 +21,14 @@ def find_parent_by_block_number(block):
 def make_parent_hash(block):
     parent = find_parent_by_block_number(block)
     return parent and parent.hash or block.default_parent_hash
+
+
+class BaseWalletFactory(factory.django.DjangoModelFactory):
+    address = factory.Faker("ethereum_address")
+
+    class Meta:
+        model = BaseEthereumAccount
+        django_get_or_create = ("address",)
 
 
 class ChainFactory(factory.django.DjangoModelFactory):

@@ -12,12 +12,8 @@ from django.utils import timezone
 from model_utils.managers import InheritanceManager
 from model_utils.models import TimeStampedModel
 
-from hub20.apps.blockchain.models import Chain, Transaction
-from hub20.apps.ethereum_money.models import (
-    BaseEthereumAccount,
-    EthereumToken,
-    EthereumTokenValueModel,
-)
+from hub20.apps.blockchain.models import BaseEthereumAccount, Chain, Transaction
+from hub20.apps.ethereum_money.models import EthereumToken, EthereumTokenValueModel
 from hub20.apps.raiden.models import Payment as RaidenPaymentEvent, Raiden
 
 from ..choices import DEPOSIT_STATUS

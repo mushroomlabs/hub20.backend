@@ -13,19 +13,15 @@ from hexbytes import HexBytes
 from model_utils.choices import Choices
 from model_utils.managers import InheritanceManager, QueryManager
 from model_utils.models import StatusModel, TimeStampedModel
-from raiden_contracts.constants import CONTRACT_TOKEN_NETWORK
-from raiden_contracts.contract_manager import ContractManager, contracts_precompiled_path
-from web3 import Web3
 
 from hub20.apps.blockchain.fields import EthereumAddressField, Uint256Field
-from hub20.apps.blockchain.models import Transaction
+from hub20.apps.blockchain.models import BaseEthereumAccount, Chain, Transaction
 from hub20.apps.ethereum_money.app_settings import TRACKED_TOKENS
 from hub20.apps.ethereum_money.models import (
     EthereumToken,
     EthereumTokenAmount,
     EthereumTokenAmountField,
     EthereumTokenValueModel,
-    KeystoreAccount,
 )
 
 CHANNEL_STATUSES = Choices("opened", "settling", "settled", "unusable", "closed", "closing")
@@ -55,11 +51,6 @@ class TokenNetwork(models.Model):
     def events(self):
         return TokenNetworkChannelEvent.objects.filter(channel__token_network=self)
 
-    def get_contract(self, w3: Web3):
-        manager = ContractManager(contracts_precompiled_path())
-        abi = manager.get_contract_abi(CONTRACT_TOKEN_NETWORK)
-        return w3.eth.contract(abi=abi, address=self.address)
-
     def __str__(self):
         return f"{self.address} - ({self.token.code} @ {self.token.chain_id})"
 
@@ -70,7 +61,6 @@ class TokenNetworkChannel(models.Model):
     )
     identifier = Uint256Field()
     participant_addresses = ArrayField(EthereumAddressField(), size=2)
-    objects = models.Manager()
 
     @property
     def events(self):
@@ -108,7 +98,14 @@ class TokenNetworkChannelEvent(models.Model):
         unique_together = ("channel", "transaction")
 
 
-class Raiden(KeystoreAccount):
+class Raiden(BaseEthereumAccount):
+    @property
+    def private_key(self):
+        if not settings.HUB20_RAIDEN_ENABLED:
+            return None
+
+        return settings.HUB20_RAIDEN_ACCOUNT_PRIVATE_KEY
+
     @property
     def api_root_url(self):
         return f"{settings.HUB20_RAIDEN_URL}/api/v1"
@@ -140,22 +137,18 @@ class Raiden(KeystoreAccount):
         if not settings.HUB20_RAIDEN_ENABLED:
             return None
 
-        return Raiden.generate()
+        return Raiden.objects.first() or Raiden.generate()
 
     @classmethod
     def generate(cls):
         private_key = HexBytes(settings.HUB20_RAIDEN_ACCOUNT_PRIVATE_KEY)
         raiden, _ = cls.objects.get_or_create(
-            private_key=private_key.hex(),
-            defaults={"address": checksum_encode(privtoaddr(private_key).hex())},
+            address=checksum_encode(privtoaddr(private_key).hex()),
         )
         return raiden
 
     def __str__(self):
         return f"Raiden @ {self.address}"
-
-    class Meta:
-        proxy = True
 
 
 class Channel(StatusModel):
@@ -205,12 +198,22 @@ class Channel(StatusModel):
         return f"Channel {self.identifier} ({self.partner_address})"
 
     @classmethod
-    def make(cls, raiden: Raiden, **channel_data):
-        token_network = TokenNetwork.objects.get(address=channel_data.pop("token_network_address"))
-        token = token_network.token
+    def make(cls, raiden: Raiden, **channel_data) -> Optional[Channel]:
+        token_network_address = channel_data.pop("token_network_address")
+        token_address = channel_data.pop("token_address")
 
-        assert token.address is not None
-        assert token.address == channel_data.pop("token_address")
+        token = EthereumToken.ERC20tokens.filter(address=token_address).first()
+
+        if token is None:
+            chain = Chain.make()
+            token = EthereumToken.make(address=token_address, chain=chain)
+
+        token_network = TokenNetwork.objects.filter(address=token_network_address).first()
+        if token_network is None:
+            token_network = TokenNetwork.objects.create(address=token_network_address, token=token)
+
+        assert token_network.address == token_network_address
+        assert token_network.token.address == token_address
 
         balance = token.from_wei(channel_data.pop("balance"))
         total_deposit = token.from_wei(channel_data.pop("total_deposit"))
@@ -324,7 +327,14 @@ class RaidenManagementOrderResult(TimeStampedModel):
     order = models.OneToOneField(
         RaidenManagementOrder, on_delete=models.CASCADE, related_name="result"
     )
-    success = models.BooleanField(default=True)
+    transaction = models.OneToOneField(Transaction, null=True, on_delete=models.SET_NULL)
+
+
+class RaidenManagementOrderError(TimeStampedModel):
+    order = models.OneToOneField(
+        RaidenManagementOrder, on_delete=models.CASCADE, related_name="error"
+    )
+    message = models.TextField(null=True, blank=True)
     transaction = models.OneToOneField(Transaction, null=True, on_delete=models.SET_NULL)
 
 
@@ -341,4 +351,5 @@ __all__ = [
     "ChannelWithdrawOrder",
     "UserDepositContractOrder",
     "RaidenManagementOrderResult",
+    "RaidenManagementOrderError",
 ]

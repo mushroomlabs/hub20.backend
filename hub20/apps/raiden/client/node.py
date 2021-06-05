@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 
 import requests
+from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.utils.timezone import make_aware
 from web3.datastructures import AttributeDict
@@ -35,8 +37,11 @@ def _make_request(url: str, method: str = "GET", **payload: Any) -> Union[List, 
 
 
 class RaidenClient:
-    def __init__(self, account: Raiden, *args, **kw) -> None:
-        self.raiden = account
+    def __init__(self, *args, **kw) -> None:
+        if not settings.HUB20_RAIDEN_ENABLED:
+            raise ValueError("Raiden is not properly configured")
+
+        self.raiden = Raiden.generate()
 
     def _parse_payment(self, payment_data: Dict, channel: Channel) -> Optional[AttributeDict]:
         event_name = payment_data.pop("event")
@@ -64,16 +69,21 @@ class RaidenClient:
         return channel
 
     def get_channels(self):
-        return _make_request(f"{self.raiden.api_root_url}/channels")
+        return [
+            Channel.make(self.raiden, **channel_data)
+            for channel_data in _make_request(f"{self.raiden.api_root_url}/channels")
+        ]
 
-    def get_new_payments(self, channel: Channel) -> List[AttributeDict]:
+    def get_new_payments(self):
+        for channel in self.raiden.channels.all():
+            offset = channel.payments.count()
+            events = _make_request(channel.payments_url, offset=offset)
+            assert type(events) is list
 
-        offset = channel.payments.count()
-        events = _make_request(channel.payments_url, offset=offset)
-        assert type(events) is list
+            payments = [self._parse_payment(ev, channel) for ev in events]
 
-        payments = [self._parse_payment(ev, channel) for ev in events]
-        return [payment for payment in payments if payment is not None]
+            for payment_data in [payment for payment in payments if payment is not None]:
+                Payment.make(channel, **payment_data)
 
     def get_token_addresses(self):
         return _make_request(f"{self.raiden.api_root_url}/tokens")
@@ -159,6 +169,19 @@ class RaidenClient:
         return cls(Raiden.get())
 
 
-def get_raiden_client() -> Optional[RaidenClient]:
-    raiden = Raiden.get()
-    return raiden and RaidenClient(raiden)
+async def sync_channels(raiden: RaidenClient, **kw):
+    while True:
+        await asyncio.sleep(30)
+        try:
+            await sync_to_async(raiden.get_channels)()
+        except RaidenConnectionError as exc:
+            logger.error(f"Failed to connect to raiden node: {exc}")
+
+
+async def sync_payments(raiden: RaidenClient, **kw):
+    while True:
+        await asyncio.sleep(5)
+        try:
+            await sync_to_async(raiden.get_new_payments)()
+        except RaidenConnectionError as exc:
+            logger.error(f"Failed to connect to raiden node: {exc}")

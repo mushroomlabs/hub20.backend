@@ -4,10 +4,10 @@ from eth_utils import to_wei
 
 from hub20.apps.blockchain.factories import TransactionFactory
 from hub20.apps.blockchain.models import Chain
+from hub20.apps.blockchain.typing import EthereumAccount_T
 from hub20.apps.ethereum_money import get_ethereum_account_model
 from hub20.apps.ethereum_money.factories import Erc20TransferFactory
 from hub20.apps.ethereum_money.models import EthereumTokenAmount, encode_transfer_data
-from hub20.apps.ethereum_money.typing import EthereumAccount_T
 
 EthereumAccount = get_ethereum_account_model()
 logger = logging.getLogger(__name__)

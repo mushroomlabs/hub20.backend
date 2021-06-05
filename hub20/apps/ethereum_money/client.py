@@ -11,11 +11,12 @@ from web3.exceptions import TimeExhausted, TransactionNotFound
 from hub20.apps.blockchain.client import (
     BLOCK_CREATION_INTERVAL,
     BLOCK_SCAN_RANGE,
+    get_transaction_by_hash,
     get_web3,
     wait_for_connection,
 )
-from hub20.apps.blockchain.models import Block, Chain, Transaction
-from hub20.apps.blockchain.typing import Address
+from hub20.apps.blockchain.models import BaseEthereumAccount, Block, Chain, Transaction
+from hub20.apps.blockchain.typing import Address, EthereumAccount_T
 from hub20.apps.ethereum_money import get_ethereum_account_model
 
 from .abi import EIP20_ABI
@@ -27,7 +28,6 @@ from .signals import (
     outgoing_transfer_broadcast,
     outgoing_transfer_mined,
 )
-from .typing import EthereumAccount_T
 
 logger = logging.getLogger(__name__)
 EthereumAccount = get_ethereum_account_model()
@@ -115,7 +115,7 @@ def make_token(w3: Web3, address) -> EthereumToken:
 def sync_token_transfers(w3: Web3, token: EthereumToken, starting_block: int, end_block: int):
     wait_for_connection(w3)
     chain_id = int(w3.net.version)
-    accounts_by_address = {a.address: a for a in EthereumAccount.objects.all()}
+    accounts_by_address = {a.address: a for a in BaseEthereumAccount.objects.all()}
 
     contract = w3.eth.contract(abi=EIP20_ABI, address=token.address)
     tx_filter = contract.events.Transfer.createFilter(fromBlock=starting_block, toBlock=end_block)
@@ -146,29 +146,39 @@ def sync_token_transfers(w3: Web3, token: EthereumToken, starting_block: int, en
             logger.exception(exc)
 
 
-def sync_account_transactions(
+def index_account_transactions(
     w3: Web3, account: EthereumAccount_T, starting_block: int, end_block: int
 ):
     chain_id = int(w3.net.version)
 
-    txs = {}
-    blocks = {}
+    logger.info(f"Checking blocks {starting_block}-{end_block} from txs with {account}")
     for block_number in range(starting_block, end_block):
         block_data = w3.eth.getBlock(block_number, full_transactions=True)
-        blocks[block_data.hash] = block_data
+        block = None
         for tx in block_data.transactions:
             if account.address in (tx.to, tx["from"]):
-                txs.append({tx.hash.hex(): tx})
+                if block is None:
+                    block = Block.make(block_data, chain_id=chain_id)
+                transaction = get_transaction_by_hash(
+                    w3=w3, transaction_hash=tx.hash.hex(), block=block
+                )
+                if transaction:
+                    index.transactions.add(transaction)
 
-    recorded_txs = Transaction.objects.filter(hash__in=txs.keys())
-    recorded_hashes = recorded_txs.values_list("hash", flat=True)
 
-    for tx_hash in set(txs.keys()) - set(recorded_hashes):
-        tx_data = txs[tx_hash]
-        block = Block.make(tx_data.blockHash, chain_id=chain_id)
-        tx_receipt = w3.eth.getTransactionReceipt(tx_hash)
+def index_account_erc20_deposits(
+    w3: Web3, account: EthereumAccount_T, token: EthereumToken, starting_block: int, end_block: int
+):
+    token_contract = w3.eth.contract(abi=EIP20_ABI, address=token.address)
+    transfer_filter = token_contract.events.Transfer.createFilter(
+        fromBlock=starting_block, toBlock=end_block, argument_filters={"_to": account.address}
+    )
+    entries = transfer_filter.get_all_entries()
 
-        Transaction.make(tx_data, tx_receipt, block)
+    for entry in entries:
+        transaction = get_transaction_by_hash(w3=w3, transaction_hash=entry.transactionHash)
+        if transaction:
+            account.transactions.add(transaction)
 
 
 def process_pending_transfers(w3: Web3, chain: Chain, tx_filter):
@@ -231,7 +241,7 @@ def process_latest_transfers(w3: Web3, chain: Chain, block_filter):
     wait_for_connection(w3)
     chain.refresh_from_db()
 
-    accounts_by_address = {a.address: a for a in EthereumAccount.objects.all()}
+    accounts_by_address = {a.address: a for a in BaseEthereumAccount.objects.all()}
     tokens = EthereumToken.ERC20tokens.filter(chain=chain).select_related("chain")
     tokens_by_address = {token.address: token for token in tokens}
     ETH = EthereumToken.ETH(chain=chain)
@@ -359,7 +369,7 @@ class EthereumClient:
         return get_max_fee(w3=w3)
 
 
-async def listen_latest_transfers(w3: Web3):
+async def listen_latest_transfers(w3: Web3, **kw):
     await sync_to_async(wait_for_connection)(w3)
     block_filter = w3.eth.filter("latest")
     chain_id = int(w3.net.version)
@@ -370,7 +380,7 @@ async def listen_latest_transfers(w3: Web3):
         await sync_to_async(process_latest_transfers)(w3, chain, block_filter)
 
 
-async def listen_pending_transfers(w3: Web3):
+async def listen_pending_transfers(w3: Web3, **kw):
     await sync_to_async(wait_for_connection)(w3)
     tx_filter = w3.eth.filter("pending")
     chain_id = int(w3.net.version)
@@ -381,43 +391,31 @@ async def listen_pending_transfers(w3: Web3):
         await sync_to_async(process_pending_transfers)(w3, chain, tx_filter)
 
 
-async def download_all_token_transfers(w3: Web3):
+async def run_erc20_deposit_indexer(w3: Web3, **kw):
     await sync_to_async(wait_for_connection)(w3)
     chain_id = int(w3.net.version)
     chain = await sync_to_async(Chain.make)(chain_id=chain_id)
 
-    tokens = await sync_to_async(list)(
-        EthereumToken.tracked.filter(chain=chain).exclude(address=EthereumToken.NULL_ADDRESS)
-    )
+    last_seen = 0
 
-    for token in tokens:
-        current_block = await sync_to_async(Transaction.objects.last_block_with)(
-            chain=chain, address=token.address
-        )
-        while current_block < chain.highest_block:
-            start, end = current_block, current_block + BLOCK_SCAN_RANGE
-            logger.info(f"Checking {token.code} transfers between {start} and {end}")
-            await sync_to_async(sync_token_transfers)(
-                w3=w3, token=token, starting_block=start, end_block=end
+    while True:
+        accounts = await sync_to_async(list)(BaseEthereumAccount.objects.all())
+        tokens = await sync_to_async(list)(EthereumToken.tracked.all())
+
+        for account in accounts:
+            account_last_block = await sync_to_async(Transaction.objects.last_block_with)(
+                chain=chain, address=account.address
             )
-            current_block += BLOCK_SCAN_RANGE
+            current_block = max(account_last_block or 0, last_seen)
+            while current_block < chain.highest_block:
+                end = min(current_block + BLOCK_SCAN_RANGE, chain.highest_block)
+                logger.info(f"Checking {account.address} txs between {current_block} and {end}")
+                for token in tokens:
+                    await sync_to_async(index_account_erc20_deposits)(
+                        w3=w3, account=account, starting_block=current_block, end_block=end
+                    )
+                current_block += BLOCK_SCAN_RANGE
 
-
-async def download_all_account_transactions(w3: Web3):
-    await sync_to_async(wait_for_connection)(w3)
-    chain_id = int(w3.net.version)
-    chain = await sync_to_async(Chain.make)(chain_id=chain_id)
-
-    accounts = await sync_to_async(list)(EthereumAccount.objects.all())
-
-    for account in accounts:
-        current_block = await sync_to_async(Transaction.objects.last_block_with)(
-            chain=chain, address=account.address
-        )
-        while current_block < chain.highest_block:
-            start, end = current_block, current_block + BLOCK_SCAN_RANGE
-            logger.info(f"Checking {account.address} txs between {start} and {end}")
-            await sync_to_async(sync_account_transactions)(
-                w3=w3, account=account, starting_block=start, end_block=end
-            )
-            current_block += BLOCK_SCAN_RANGE
+        # We caught up with historical data, now we only listen to current blocks
+        last_seen = chain.highest_block
+        await asyncio.sleep(BLOCK_CREATION_INTERVAL)

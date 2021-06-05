@@ -18,6 +18,7 @@ from hub20.apps.ethereum_money.models import (
     EthereumTokenAmount,
     EthereumTokenValueModel,
 )
+from hub20.apps.ethereum_money.models import EthereumTokenAmountField
 from hub20.apps.raiden.models import Raiden
 
 logger = logging.getLogger(__name__)
@@ -83,7 +84,7 @@ class DoubleEntryAccountModel(models.Model):
         return token and EthereumTokenAmount(amount=token.balance, currency=token)
 
     def get_balances(self) -> QuerySet:
-        total_sum = Coalesce(Sum("amount"), 0)
+        total_sum = Coalesce(Sum("amount"), 0, output_field=EthereumTokenAmountField())
         credit_qs = self.credits.values(token=F("book__token")).annotate(total_credit=total_sum)
         debit_qs = self.debits.values(token=F("book__token")).annotate(total_debit=total_sum)
 
@@ -91,14 +92,22 @@ class DoubleEntryAccountModel(models.Model):
         debit_sqs = debit_qs.filter(token=OuterRef("pk"))
 
         annotated_qs = EthereumToken.objects.annotate(
-            total_credit=Coalesce(Subquery(credit_sqs.values("total_credit")), 0),
-            total_debit=Coalesce(Subquery(debit_sqs.values("total_debit")), 0),
+            total_credit=Coalesce(
+                Subquery(credit_sqs.values("total_credit")),
+                0,
+                output_field=EthereumTokenAmountField(),
+            ),
+            total_debit=Coalesce(
+                Subquery(debit_sqs.values("total_debit")),
+                0,
+                output_field=EthereumTokenAmountField(),
+            ),
         )
         return annotated_qs.annotate(balance=F("total_credit") - F("total_debit"))
 
     @classmethod
     def balance_sheet(cls):
-        total_sum = Coalesce(Sum("amount"), 0)
+        total_sum = Coalesce(Sum("amount"), 0, output_field=EthereumTokenAmountField())
         filter_q = {f"{cls.book_relation_attr}__isnull": False}
         credit_qs = (
             Credit.objects.filter(**filter_q)
@@ -115,8 +124,16 @@ class DoubleEntryAccountModel(models.Model):
         debit_sqs = debit_qs.filter(token=OuterRef("pk"))
 
         annotated_qs = EthereumToken.objects.annotate(
-            total_credit=Coalesce(Subquery(credit_sqs.values("total_credit")), 0),
-            total_debit=Coalesce(Subquery(debit_sqs.values("total_debit")), 0),
+            total_credit=Coalesce(
+                Subquery(credit_sqs.values("total_credit")),
+                0,
+                output_field=EthereumTokenAmountField(),
+            ),
+            total_debit=Coalesce(
+                Subquery(debit_sqs.values("total_debit")),
+                0,
+                output_field=EthereumTokenAmountField(),
+            ),
         )
         return annotated_qs.annotate(balance=F("total_credit") - F("total_debit"))
 

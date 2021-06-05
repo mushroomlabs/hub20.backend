@@ -1,10 +1,8 @@
 from decimal import Decimal
-from typing import Optional
 from unittest.mock import MagicMock
 
 from hub20.apps.blockchain.factories import TransactionFactory
 from hub20.apps.blockchain.models import Transaction
-from hub20.apps.blockchain.typing import Address
 from hub20.apps.core.choices import PAYMENT_NETWORKS
 from hub20.apps.core.models import (
     BlockchainTransferExecutor,

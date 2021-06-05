@@ -11,12 +11,12 @@ from django.db.models import Max, Q, Sum
 from eth_utils import to_checksum_address
 from eth_wallet import Wallet
 from ethereum.abi import ContractTranslator
-from model_utils.managers import InheritanceManager, QueryManager
+from model_utils.managers import QueryManager
 from web3 import Web3
 from web3.contract import Contract
 
 from hub20.apps.blockchain.fields import EthereumAddressField, HexField
-from hub20.apps.blockchain.models import Chain, Transaction
+from hub20.apps.blockchain.models import BaseEthereumAccount, Chain, Transaction
 
 from .abi import EIP20_ABI
 from .app_settings import HD_WALLET_MNEMONIC, HD_WALLET_ROOT_KEY
@@ -163,20 +163,7 @@ class EthereumTokenValueModel(models.Model):
         abstract = True
 
 
-class BaseEthereumAccount(models.Model):
-    address = EthereumAddressField(unique=True, db_index=True)
-    objects = InheritanceManager()
-
-
 class ColdWallet(BaseEthereumAccount):
-    @property
-    def private_key(self):
-        return None
-
-    @property
-    def private_key_bytes(self):
-        return None
-
     @classmethod
     def generate(cls):
         raise TypeError("Cold wallets do not store private keys and can not be generated")
@@ -184,10 +171,6 @@ class ColdWallet(BaseEthereumAccount):
 
 class KeystoreAccount(BaseEthereumAccount):
     private_key = HexField(max_length=64, unique=True)
-
-    @property
-    def private_key_bytes(self) -> bytes:
-        return bytearray.fromhex(self.private_key[2:])
 
     @classmethod
     def generate(cls):
@@ -319,7 +302,6 @@ __all__ = [
     "EthereumToken",
     "EthereumTokenAmount",
     "EthereumTokenValueModel",
-    "BaseEthereumAccount",
     "ColdWallet",
     "KeystoreAccount",
     "HierarchicalDeterministicWallet",

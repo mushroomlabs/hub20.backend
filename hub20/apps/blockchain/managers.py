@@ -5,7 +5,9 @@ from django.db.models import Max, Q
 class TransactionManager(models.Manager):
     def involving_address(self, chain, address):
         return self.filter(block__chain=chain).filter(
-            Q(from_address=address) | Q(to_address=address)
+            Q(from_address=address)
+            | Q(to_address=address)
+            | Q(baseethereumaccount__address=address)
         )
 
     def last_block_with(self, chain, address):

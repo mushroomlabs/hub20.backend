@@ -9,6 +9,7 @@ from django.db import models
 from django.db.models import Avg, Max
 from django.utils import timezone
 from hexbytes import HexBytes
+from model_utils.managers import InheritanceManager
 from web3 import Web3
 from web3.types import TxParams, Wei
 
@@ -188,4 +189,18 @@ class TransactionLog(models.Model):
         unique_together = ("transaction", "index")
 
 
-__all__ = ["Block", "Chain", "Transaction", "TransactionLog"]
+class BaseEthereumAccount(models.Model):
+    address = EthereumAddressField(unique=True, db_index=True)
+    objects = InheritanceManager()
+    transactions = models.ManyToManyField(Transaction)
+
+    @property
+    def private_key(self):
+        return None
+
+    @property
+    def private_key_bytes(self) -> bytes:
+        return self.private_key and bytearray.fromhex(self.private_key[2:])
+
+
+__all__ = ["Block", "Chain", "Transaction", "TransactionLog", "BaseEthereumAccount"]

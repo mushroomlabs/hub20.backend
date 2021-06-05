@@ -2,6 +2,7 @@ import factory
 from factory import fuzzy
 
 from hub20.apps.blockchain.factories import (
+    BaseWalletFactory,
     EthereumProvider,
     SyncedChainFactory,
     TransactionFactory,
@@ -9,7 +10,6 @@ from hub20.apps.blockchain.factories import (
 )
 from hub20.apps.blockchain.models import Transaction
 from hub20.apps.ethereum_money.models import (
-    BaseEthereumAccount,
     EthereumToken,
     EthereumTokenAmount,
     HierarchicalDeterministicWallet,
@@ -17,14 +17,6 @@ from hub20.apps.ethereum_money.models import (
 )
 
 factory.Faker.add_provider(EthereumProvider)
-
-
-class BaseWalletFactory(factory.django.DjangoModelFactory):
-    address = factory.Faker("ethereum_address")
-
-    class Meta:
-        model = BaseEthereumAccount
-        django_get_or_create = ("address",)
 
 
 class KeystoreAccountFactory(BaseWalletFactory):

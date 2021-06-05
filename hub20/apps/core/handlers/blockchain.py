@@ -35,7 +35,13 @@ def on_block_sealed_send_notification(sender, **kw):
     for session_key in _get_open_session_keys():
         logger.info(f"Publishing block {block_number} update for session {session_key}")
         tasks.send_session_event.delay(
-            session_key, event=Events.BLOCKCHAIN_BLOCK_CREATED.value, **block_data
+            session_key,
+            event=Events.BLOCKCHAIN_BLOCK_CREATED.value,
+            **{
+                k: v
+                for k, v in block_data.items()
+                if k in ["gasUsed", "hash", "nonce", "number", "parentsHash", "size", "timestamp"]
+            },
         )
 
 

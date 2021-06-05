@@ -17,3 +17,7 @@ class RaidenPaymentError(Exception):
 
     def __str__(self):
         return f"Payment Error: {self.message} ({self.error_code})"
+
+
+class InsufficientBalanceError(Exception):
+    pass

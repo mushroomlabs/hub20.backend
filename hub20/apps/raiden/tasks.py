@@ -1,81 +1,16 @@
 import logging
-from concurrent.futures import TimeoutError
-from typing import Optional
 
 from celery import shared_task
-from web3 import Web3
 
-from hub20.apps.blockchain.client import get_transaction_by_hash, get_web3
-from hub20.apps.blockchain.models import Block
+from hub20.apps.blockchain.client import get_web3
 from hub20.apps.ethereum_money.client import get_account_balance
 from hub20.apps.ethereum_money.models import EthereumTokenAmount
 from hub20.apps.raiden import models
 from hub20.apps.raiden.client.blockchain import get_service_token, make_service_deposit
 from hub20.apps.raiden.client.node import RaidenClient
+from hub20.apps.raiden.exceptions import InsufficientBalanceError
 
 logger = logging.getLogger(__name__)
-
-
-def _get_channel_from_event(token_network, event) -> Optional[models.TokenNetworkChannel]:
-    event_name = event.event
-    if event_name == "ChannelOpened":
-        participants = (event.args.participant1, event.args.participant2)
-        channel_identifier = event.args.channel_identifier
-        channel, _ = token_network.channels.get_or_create(
-            identifier=channel_identifier, participant_addresses=participants
-        )
-        return channel
-
-    if event_name == "ChannelClosed":
-        channel_identifier = event.args.channel_identifier
-        return token_network.channels.filter(identifier=channel_identifier).first()
-
-    return None
-
-
-def process_events(w3: Web3, token_network: models.TokenNetwork, event_filter):
-    try:
-        for event in event_filter.get_all_entries():
-            logger.info(f"Processing event {event.event} at {event.transactionHash.hex()}")
-
-            tx = get_transaction_by_hash(w3, event.transactionHash)
-            if not tx:
-                logger.warning(f"Transaction {event.transactionHash} could not be synced")
-
-            channel = _get_channel_from_event(token_network, event)
-            if channel:
-                token_network.events.get_or_create(
-                    channel=channel, transaction=tx, name=event.event
-                )
-            else:
-                logger.warning(f"Failed to find channel related to event {event}")
-    except TimeoutError:
-        logger.error(f"Timed-out while getting events for {token_network}")
-    except Exception as exc:
-        logger.error(f"Failed to get events for {token_network}: {exc}")
-
-
-@shared_task
-def sync_token_network_events():
-    w3 = get_web3()
-    for token_network in models.TokenNetwork.tracked.all():
-        token_network_contract = token_network.get_contract(w3=w3)
-        event_blocks = Block.objects.filter(
-            transactions__tokennetworkchannelevent__channel__token_network=token_network
-        )
-        from_block = Block.get_latest_block_number(event_blocks) + 1
-
-        logger.info(f"Fetching {token_network.token} events since block {from_block}")
-
-        channel_open_filter = token_network_contract.events.ChannelOpened.createFilter(
-            fromBlock=from_block
-        )
-        channel_closed_filter = token_network_contract.events.ChannelClosed.createFilter(
-            fromBlock=from_block
-        )
-
-        process_events(w3=w3, token_network=token_network, event_filter=channel_open_filter)
-        process_events(w3=w3, token_network=token_network, event_filter=channel_closed_filter)
 
 
 @shared_task
@@ -90,7 +25,10 @@ def make_udc_deposit(order_id: int):
     service_token = get_service_token(w3=w3)
     service_token_amount = EthereumTokenAmount(currency=service_token, amount=order.amount)
 
-    make_service_deposit(w3=w3, raiden=order.raiden, amount=service_token_amount)
+    try:
+        make_service_deposit(w3=w3, account=order.raiden, amount=service_token_amount)
+    except InsufficientBalanceError as exc:
+        return models.RaidenManagementOrderError.objects.create(order=order, message=str(exc))
 
 
 @shared_task

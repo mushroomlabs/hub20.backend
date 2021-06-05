@@ -7,7 +7,7 @@ from django.dispatch import receiver
 from django.utils import timezone
 from psycopg2.extras import NumericRange
 
-from hub20.apps.blockchain.models import Block, Chain, Transaction
+from hub20.apps.blockchain.models import BaseEthereumAccount, Block, Chain, Transaction
 from hub20.apps.blockchain.signals import block_sealed
 from hub20.apps.core import tasks
 from hub20.apps.core.choices import PAYMENT_NETWORKS
@@ -180,13 +180,14 @@ def on_order_created_set_blockchain_route(sender, **kw):
     if chain.synced:
         payment_window = BlockchainPaymentRoute.calculate_payment_window(chain)
 
-        available_accounts = EthereumAccount.objects.exclude(
+        available_accounts = BaseEthereumAccount.objects.exclude(
             blockchain_routes__payment_window__overlap=NumericRange(*payment_window)
         )
 
         account = available_accounts.order_by("?").first() or EthereumAccount.generate()
-        account.blockchain_routes.create(
-            deposit=deposit, chain=chain, payment_window=payment_window
+
+        BlockchainPaymentRoute.objects.create(
+            account=account, deposit=deposit, chain=chain, payment_window=payment_window
         )
     else:
         logger.warning("Failed to create blockchain route. Chain data not synced")
