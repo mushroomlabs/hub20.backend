@@ -146,26 +146,6 @@ def sync_token_transfers(w3: Web3, token: EthereumToken, starting_block: int, en
             logger.exception(exc)
 
 
-def index_account_transactions(
-    w3: Web3, account: EthereumAccount_T, starting_block: int, end_block: int
-):
-    chain_id = int(w3.net.version)
-
-    logger.info(f"Checking blocks {starting_block}-{end_block} from txs with {account}")
-    for block_number in range(starting_block, end_block):
-        block_data = w3.eth.getBlock(block_number, full_transactions=True)
-        block = None
-        for tx in block_data.transactions:
-            if account.address in (tx.to, tx["from"]):
-                if block is None:
-                    block = Block.make(block_data, chain_id=chain_id)
-                transaction = get_transaction_by_hash(
-                    w3=w3, transaction_hash=tx.hash.hex(), block=block
-                )
-                if transaction:
-                    index.transactions.add(transaction)
-
-
 def index_account_erc20_deposits(
     w3: Web3, account: EthereumAccount_T, token: EthereumToken, starting_block: int, end_block: int
 ):
@@ -396,26 +376,26 @@ async def run_erc20_deposit_indexer(w3: Web3, **kw):
     chain_id = int(w3.net.version)
     chain = await sync_to_async(Chain.make)(chain_id=chain_id)
 
-    last_seen = 0
+    accounts = await sync_to_async(list)(BaseEthereumAccount.objects.all())
+    tokens = await sync_to_async(list)(EthereumToken.tracked.all())
 
-    while True:
-        accounts = await sync_to_async(list)(BaseEthereumAccount.objects.all())
-        tokens = await sync_to_async(list)(EthereumToken.tracked.all())
-
+    for token in tokens:
         for account in accounts:
-            account_last_block = await sync_to_async(Transaction.objects.last_block_with)(
-                chain=chain, address=account.address
+            last_token_transfer = await sync_to_async(account.last_contract_interaction)(
+                chain=chain, contract_address=token.address
             )
-            current_block = max(account_last_block or 0, last_seen)
+            current_block = last_token_transfer and last_token_transfer.block.number or 0
             while current_block < chain.highest_block:
                 end = min(current_block + BLOCK_SCAN_RANGE, chain.highest_block)
                 logger.info(f"Checking {account.address} txs between {current_block} and {end}")
-                for token in tokens:
-                    await sync_to_async(index_account_erc20_deposits)(
-                        w3=w3, account=account, starting_block=current_block, end_block=end
-                    )
+
+                await sync_to_async(index_account_erc20_deposits)(
+                    w3=w3,
+                    account=account,
+                    token=token,
+                    starting_block=current_block,
+                    end_block=end,
+                )
                 current_block += BLOCK_SCAN_RANGE
 
-        # We caught up with historical data, now we only listen to current blocks
-        last_seen = chain.highest_block
-        await asyncio.sleep(BLOCK_CREATION_INTERVAL)
+                await asyncio.sleep(BLOCK_CREATION_INTERVAL)

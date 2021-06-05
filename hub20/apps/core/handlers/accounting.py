@@ -23,6 +23,7 @@ from hub20.apps.core.models.transfers import (
     TransferFailure,
 )
 from hub20.apps.ethereum_money import get_ethereum_account_model
+from hub20.apps.ethereum_money.models import EthereumToken
 from hub20.apps.ethereum_money.signals import account_deposit_received
 from hub20.apps.raiden.models import Payment as RaidenPayment, Raiden
 from hub20.apps.raiden.signals import service_deposit_sent
@@ -147,28 +148,42 @@ def on_raiden_transfer_executed_move_funds_from_raiden_to_external_address(sende
 
 @atomic()
 @receiver(post_save, sender=BlockchainTransferExecution)
-def on_blockchain_transfer_executed_record_fee_entries(sender, **kw):
+def on_blockchain_transfer_executed_move_fee_from_sender_to_treasury(sender, **kw):
     if kw["created"]:
         execution = kw["instance"]
         transaction = execution.transaction
 
         fee = execution.fee
         ETH = execution.fee.currency
-        wallet = BaseEthereumAccount.objects.get(address=transaction.from_address)
-        fee_account = ExternalAddressAccount.get_transaction_fee_account()
 
-        wallet_book = wallet.onchain_account.get_book(token=ETH)
-        fee_book = fee_account.get_book(token=ETH)
         treasury_book = transaction.block.chain.treasury.get_book(token=ETH)
         sender_book = execution.transfer.sender.account.get_book(token=ETH)
 
         params = dict(reference=transaction, currency=ETH, amount=fee.amount)
 
-        # Entry: sender -> treasury
         sender_book.debits.create(**params)
         treasury_book.credits.create(**params)
 
-        # Entry: wallet -> fee account
+
+@atomic()
+@receiver(post_save, sender=Transaction)
+def on_transaction_submitted_move_fee_from_wallet_to_fee_account(sender, **kw):
+    if kw["created"]:
+        transaction = kw["instance"]
+
+        wallet = BaseEthereumAccount.objects.filter(address=transaction.from_address).first()
+        if not wallet:
+            return
+
+        ETH = EthereumToken.ETH(chain=transaction.block.chain)
+        fee = ETH.from_wei(transaction.gas_fee)
+        fee_account = ExternalAddressAccount.get_transaction_fee_account()
+
+        wallet_book = wallet.onchain_account.get_book(token=ETH)
+        fee_book = fee_account.get_book(token=ETH)
+
+        params = dict(reference=transaction, currency=ETH, amount=fee.amount)
+
         wallet_book.debits.create(**params)
         fee_book.credits.create(**params)
 
@@ -196,7 +211,7 @@ def on_internal_transfer_executed_move_funds_from_treasury_to_receiver(sender, *
         transfer = execution.transfer
 
         if not transfer.receiver:
-            logging.warning("Expected Internal Transfer, but no receiver user defined")
+            logger.warning("Expected Internal Transfer, but no receiver user defined")
             return
 
         params = dict(reference=transfer, currency=transfer.currency, amount=transfer.amount)
@@ -284,7 +299,8 @@ __all__ = [
     "on_raiden_payment_received_move_funds_from_external_address_to_raiden",
     "on_blockchain_transfer_executed_move_funds_from_wallet_to_external_address",
     "on_raiden_transfer_executed_move_funds_from_raiden_to_external_address",
-    "on_blockchain_transfer_executed_record_fee_entries",
+    "on_blockchain_transfer_executed_move_fee_from_sender_to_treasury",
+    "on_transaction_submitted_move_fee_from_wallet_to_fee_account",
     "on_transfer_created_move_funds_from_sender_to_treasury",
     "on_internal_transfer_executed_move_funds_from_treasury_to_receiver",
     "on_payment_confirmed_move_funds_from_treasury_to_payee",
