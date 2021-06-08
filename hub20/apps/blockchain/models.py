@@ -150,7 +150,6 @@ class Transaction(models.Model):
             assert tx_data["from"] == tx_receipt["from"], "Sender address mismatch"
             assert tx_data["to"] == tx_receipt["to"], "Recipient address mismatch"
             assert tx_data.transactionIndex == tx_receipt.transactionIndex, "Tx index mismatch"
-            assert tx_receipt.status != 0, "Receipt indicates tx was reverted"
         except AssertionError as exc:
             logger.warning(f"Transaction will not be recorded: {exc}")
             return None
