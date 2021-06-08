@@ -205,7 +205,7 @@ def process_latest_deposits(w3: Web3, block_filter, user_deposit_contract, servi
 
     for block_hash in block_filter.get_new_entries():
 
-        block_data = w3.eth.getBlock(block_hash.hex(), full_transactions=True)
+        block_data = w3.eth.get_block(block_hash.hex(), full_transactions=True)
         deposit_txs = [
             t for t in block_data.transactions if t["to"] == user_deposit_contract.address
         ]

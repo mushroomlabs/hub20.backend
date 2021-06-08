@@ -33,7 +33,7 @@ class Command(BaseCommand):
             try:
                 tx_data = w3.eth.getTransaction(tx_hash)
                 tx_receipt = w3.eth.getTransactionReceipt(tx_hash)
-                block_data = w3.eth.getBlock(tx_data.blockHash)
+                block_data = w3.eth.get_block(tx_data.blockHash)
                 block = Block.make(block_data, chain_id)
                 Transaction.make(tx_data, tx_receipt, block)
             except binascii.Error:

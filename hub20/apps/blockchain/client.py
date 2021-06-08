@@ -130,7 +130,7 @@ def get_web3(provider_url: Optional[str] = None, force_new: bool = False) -> Web
 def get_block_by_hash(w3: Web3, block_hash: HexBytes) -> Optional[Block]:
     try:
         chain = Chain.objects.get(id=int(w3.net.version))
-        block_data = w3.eth.getBlock(block_hash)
+        block_data = w3.eth.get_block(block_hash)
         return Block.make(block_data, chain.id)
     except (AttributeError, Chain.DoesNotExist):
         return None
@@ -159,7 +159,7 @@ def get_transaction_by_hash(
 def get_block_by_number(w3: Web3, block_number: int) -> Optional[Block]:
     chain_id = int(w3.net.version)
     try:
-        block_data = w3.eth.getBlock(block_number, full_transactions=True)
+        block_data = w3.eth.get_block(block_number, full_transactions=True)
     except AttributeError:
         return None
 
@@ -187,7 +187,7 @@ def fetch_new_block_entries(w3: Web3, block_filter):
         logger.info(f"New block: {block_hash}")
         # We are converting a AttributeDict from Web3 into a standard python dict
         # so that it can be serialized for celery
-        block_data = json.loads(Web3.toJSON(w3.eth.getBlock(block_hash, full_transactions=True)))
+        block_data = json.loads(Web3.toJSON(w3.eth.get_block(block_hash, full_transactions=True)))
 
         signals.block_sealed.send(sender=Block, block_data=block_data)
 
@@ -211,7 +211,7 @@ def index_account_transactions(
 
     logger.info(f"Checking blocks {starting_block}-{end_block} from txs with {account}")
     for block_number in range(starting_block, end_block):
-        block_data = w3.eth.getBlock(block_number, full_transactions=True)
+        block_data = w3.eth.get_block(block_number, full_transactions=True)
         block = None
         for tx in block_data.transactions:
             if account.address in (tx.to, tx["from"]):

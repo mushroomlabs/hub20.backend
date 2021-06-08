@@ -227,7 +227,7 @@ def process_latest_transfers(w3: Web3, chain: Chain, block_filter):
     ETH = EthereumToken.ETH(chain=chain)
 
     for block_hash in block_filter.get_new_entries():
-        block_data = w3.eth.getBlock(block_hash.hex(), full_transactions=True)
+        block_data = w3.eth.get_block(block_hash.hex(), full_transactions=True)
 
         logger.info(f"Checking block {block_hash.hex()} for relevant transfers")
         for tx_data in block_data.transactions:
