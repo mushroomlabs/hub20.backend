@@ -24,7 +24,7 @@ from hub20.apps.core.models.transfers import (
 )
 from hub20.apps.ethereum_money import get_ethereum_account_model
 from hub20.apps.ethereum_money.models import EthereumToken
-from hub20.apps.ethereum_money.signals import account_deposit_received
+from hub20.apps.ethereum_money.signals import incoming_transfer_mined, outgoing_transfer_mined
 from hub20.apps.raiden.models import Payment as RaidenPayment, Raiden
 from hub20.apps.raiden.signals import service_deposit_sent
 
@@ -63,8 +63,8 @@ def on_wallet_created_create_account(sender, **kw):
 
 # In-Flows
 @atomic()
-@receiver(account_deposit_received, sender=Transaction)
-def on_blockchain_deposit_received_move_funds_from_external_address_to_wallet(sender, **kw):
+@receiver(incoming_transfer_mined, sender=Transaction)
+def on_incoming_transfer_mined_move_funds_from_external_address_to_wallet(sender, **kw):
     wallet = kw["account"]
     amount = kw["amount"]
     transaction = kw["transaction"]
@@ -106,23 +106,21 @@ def on_raiden_payment_received_move_funds_from_external_address_to_raiden(sender
 
 # Out-flows
 @atomic()
-@receiver(post_save, sender=BlockchainTransferExecution)
-def on_blockchain_transfer_executed_move_funds_from_wallet_to_external_address(sender, **kw):
-    if kw["created"]:
-        execution = kw["instance"]
-        transfer = execution.transfer
+@receiver(outgoing_transfer_mined, sender=Transaction)
+def on_outgoing_transfer_mined_move_funds_from_wallet_to_external_address(sender, **kw):
+    transaction = kw["transaction"]
+    amount = kw["amount"]
+    wallet = kw["account"]
+    address = kw["address"]
 
-        params = dict(reference=transfer, currency=transfer.currency, amount=transfer.amount)
-        wallet = BaseEthereumAccount.objects.get(address=execution.transaction.from_address)
-        external_account, _ = ExternalAddressAccount.objects.get_or_create(
-            address=transfer.address
-        )
+    params = dict(reference=transaction, currency=amount.currency, amount=amount.amount)
+    external_account, _ = ExternalAddressAccount.objects.get_or_create(address=address)
 
-        wallet_book = wallet.onchain_account.get_book(token=transfer.currency)
-        external_account_book = external_account.get_book(token=transfer.currency)
+    wallet_book = wallet.onchain_account.get_book(token=amount.currency)
+    external_account_book = external_account.get_book(token=amount.currency)
 
-        wallet_book.debits.create(**params)
-        external_account_book.credits.create(**params)
+    wallet_book.debits.create(**params)
+    external_account_book.credits.create(**params)
 
 
 @atomic()
@@ -295,9 +293,9 @@ __all__ = [
     "on_chain_created_create_treasury",
     "on_raiden_created_create_account",
     "on_wallet_created_create_account",
-    "on_blockchain_deposit_received_move_funds_from_external_address_to_wallet",
+    "on_incoming_transfer_mined_move_funds_from_external_address_to_wallet",
     "on_raiden_payment_received_move_funds_from_external_address_to_raiden",
-    "on_blockchain_transfer_executed_move_funds_from_wallet_to_external_address",
+    "on_outgoing_transfer_mined_move_funds_from_wallet_to_external_address",
     "on_raiden_transfer_executed_move_funds_from_raiden_to_external_address",
     "on_blockchain_transfer_executed_move_fee_from_sender_to_treasury",
     "on_transaction_submitted_move_fee_from_wallet_to_fee_account",

@@ -30,12 +30,8 @@ from hub20.apps.core.tests.unit.mocks import (
 from hub20.apps.ethereum_money import get_ethereum_account_model
 from hub20.apps.ethereum_money.factories import EthereumAccountFactory
 from hub20.apps.ethereum_money.tests.base import add_eth_to_account, add_token_to_account
+from hub20.apps.raiden.factories import ChannelFactory, PaymentEventFactory, TokenNetworkFactory
 from hub20.apps.raiden.models import Raiden
-from hub20.apps.raiden.factories import (
-    ChannelFactory,
-    PaymentEventFactory,
-    TokenNetworkFactory,
-)
 
 EthereumAccount = get_ethereum_account_model()
 
@@ -241,15 +237,16 @@ class TransferAccountingTestcase(TransferTestCase):
             transfer.EXECUTORS = (MockBlockchainTransferExecutor,)
             transfer.execute()
 
-        transfer_type = ContentType.objects.get_for_model(transfer)
+        transaction = transfer.execution.blockchaintransferexecution.transaction
+        transaction_type = ContentType.objects.get_for_model(transaction)
 
         wallet_account = self.wallet.onchain_account
         external_account = ExternalAddressAccount.objects.filter(address=transfer.address).first()
 
         self.assertIsNotNone(external_account)
 
-        external_credit = external_account.credits.filter(reference_type=transfer_type).last()
-        wallet_debit = wallet_account.debits.filter(reference_type=transfer_type).last()
+        external_credit = external_account.credits.filter(reference_type=transaction_type).last()
+        wallet_debit = wallet_account.debits.filter(reference_type=transaction_type).last()
 
         self.assertIsNotNone(wallet_debit)
         self.assertIsNotNone(external_credit)
