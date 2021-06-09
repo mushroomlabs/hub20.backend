@@ -32,8 +32,9 @@ def on_block_sealed_send_notification(sender, **kw):
     block_data: Dict = kw["block_data"]
 
     block_number = block_data["number"]
-    for session_key in _get_open_session_keys():
-        logger.info(f"Publishing block {block_number} update for session {session_key}")
+    session_keys = _get_open_session_keys()
+    logger.info(f"Notifying {len(session_keys)} clients about block #{block_number}")
+    for session_key in session_keys:
         tasks.send_session_event.delay(
             session_key,
             event=Events.BLOCKCHAIN_BLOCK_CREATED.value,
