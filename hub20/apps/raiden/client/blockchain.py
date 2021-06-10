@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from concurrent.futures import TimeoutError
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from asgiref.sync import sync_to_async
 from eth_utils import to_checksum_address
@@ -25,7 +25,7 @@ from hub20.apps.blockchain.client import (
     send_transaction,
 )
 from hub20.apps.blockchain.models import Block, Transaction
-from hub20.apps.blockchain.typing import EthereumAccount_T
+from hub20.apps.blockchain.typing import Address, EthereumAccount_T
 from hub20.apps.ethereum_money.abi import EIP20_ABI
 from hub20.apps.ethereum_money.client import get_account_balance, make_token
 from hub20.apps.ethereum_money.models import EthereumToken, EthereumTokenAmount
@@ -39,6 +39,9 @@ GAS_REQUIRED_FOR_MINT: int = 100_000
 
 
 logger = logging.getLogger(__name__)
+
+
+TOKEN_NETWORK_EVENT_FILTERS: Dict[Address, Any] = {}
 
 
 def _get_contract_data(chain_id: int, contract_name: str):
@@ -89,6 +92,29 @@ def _get_channel_from_event(token_network: TokenNetwork, event) -> Optional[Toke
         return token_network.channels.filter(identifier=channel_identifier).first()
 
     return None
+
+
+def _get_token_network_channel_event_filters(w3: Web3, token_network: TokenNetwork):
+    global TOKEN_NETWORK_EVENT_FILTERS
+
+    if token_network.address in TOKEN_NETWORK_EVENT_FILTERS:
+        return TOKEN_NETWORK_EVENT_FILTERS[token_network.address]
+
+    token_network_contract = _get_token_network_contract(w3=w3, token_network=token_network)
+    starting_block = token_network.most_recent_channel_event
+    logger.info(f"Fetching {token_network.token.code} events since block {starting_block}")
+
+    opened_channels_filter = token_network_contract.events.ChannelOpened.createFilter(
+        fromBlock=starting_block
+    )
+    closed_channels_filter = token_network_contract.events.ChannelClosed.createFilter(
+        fromBlock=starting_block
+    )
+    TOKEN_NETWORK_EVENT_FILTERS[token_network.address] = (
+        opened_channels_filter,
+        closed_channels_filter,
+    )
+    return TOKEN_NETWORK_EVENT_FILTERS[token_network.address]
 
 
 def get_contract_address(chain_id, contract_name):
@@ -237,12 +263,16 @@ def process_latest_deposits(w3: Web3, block_filter, user_deposit_contract, servi
 
 def record_channel_events(w3: Web3, token_network: TokenNetwork, event_filter):
     try:
-        for event in event_filter.get_all_entries():
+        events = event_filter.get_new_entries()
+        logger.debug(f"Processing {len(events)} event(s) from filter: {event_filter.filter_id}")
+        logger.debug(f"Filter params: {event_filter.filter_params}")
+        for event in events:
             logger.info(f"Processing event {event.event} at {event.transactionHash.hex()}")
 
             tx = get_transaction_by_hash(w3, event.transactionHash)
             if not tx:
                 logger.warning(f"Transaction {event.transactionHash} could not be synced")
+                continue
 
             channel = _get_channel_from_event(token_network, event)
             if channel:
@@ -255,26 +285,6 @@ def record_channel_events(w3: Web3, token_network: TokenNetwork, event_filter):
         logger.error(f"Timed-out while getting events for {token_network}")
     except Exception as exc:
         logger.error(f"Failed to get events for {token_network}: {exc}")
-
-
-def record_token_network_events(w3: Web3, token_network: TokenNetwork):
-    token_network_contract = _get_token_network_contract(w3=w3, token_network=token_network)
-    event_blocks = Block.objects.filter(
-        transactions__tokennetworkchannelevent__channel__token_network=token_network
-    )
-    from_block = Block.get_latest_block_number(event_blocks) + 1
-
-    logger.info(f"Fetching {token_network.token} events since block {from_block}")
-
-    channel_open_filter = token_network_contract.events.ChannelOpened.createFilter(
-        fromBlock=from_block
-    )
-    channel_closed_filter = token_network_contract.events.ChannelClosed.createFilter(
-        fromBlock=from_block
-    )
-
-    record_channel_events(w3=w3, token_network=token_network, event_filter=channel_open_filter)
-    record_channel_events(w3=w3, token_network=token_network, event_filter=channel_closed_filter)
 
 
 def get_all_service_deposits(w3: Web3, raiden: Raiden, **kw):
@@ -331,5 +341,13 @@ async def listen_token_network_events(w3: Web3, **kw):
     while True:
         token_networks = await sync_to_async(list)(TokenNetwork.objects.all())
         for token_network in token_networks:
-            await sync_to_async(record_token_network_events)(w3=w3, token_network=token_network)
-            await asyncio.sleep(BLOCK_CREATION_INTERVAL)
+            opened_channels, closed_channels = await sync_to_async(
+                _get_token_network_channel_event_filters
+            )(w3=w3, token_network=token_network)
+            await sync_to_async(record_channel_events)(
+                w3=w3, token_network=token_network, event_filter=opened_channels
+            )
+            await sync_to_async(record_channel_events)(
+                w3=w3, token_network=token_network, event_filter=closed_channels
+            )
+        await asyncio.sleep(BLOCK_CREATION_INTERVAL)

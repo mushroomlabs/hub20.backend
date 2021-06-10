@@ -24,7 +24,10 @@ class AppSettings:
         event_listeners = [
             "hub20.apps.blockchain.client.listen_new_blocks",
             "hub20.apps.blockchain.client.run_heartbeat",
-            "hub20.apps.ethereum_money.client.listen_latest_transfers",
+            "hub20.apps.blockchain.client.sync_chain",
+            "hub20.apps.ethereum_money.client.listen_eth_transfers",
+            "hub20.apps.ethereum_money.client.listen_erc20_transfers",
+            "hub20.apps.ethereum_money.client.listen_erc20_approvals",
             "hub20.apps.ethereum_money.client.listen_pending_transfers",
             "hub20.apps.raiden.client.blockchain.listen_service_deposits",
             "hub20.apps.raiden.client.blockchain.listen_token_network_events",

@@ -56,20 +56,24 @@ def encode_transfer_data(recipient_address, amount: EthereumTokenAmount):
     return f"0x{encoded_data.hex()}"
 
 
-def make_incoming_transfer_filter(
-    w3: Web3, chain: Chain, token: EthereumToken, account: EthereumAccount_T
-):
-    starting_block = chain.highest_block
+def make_token_approval_filter(w3: Web3, token: EthereumToken, account: EthereumAccount_T):
+    starting_block = token.chain.highest_block
+    contract = w3.eth.contract(abi=EIP20_ABI, address=token.address)
+    return contract.events.Approval.createFilter(
+        fromBlock=starting_block, argument_filters={"_owner": account.address}
+    )
+
+
+def make_incoming_transfer_filter(w3: Web3, token: EthereumToken, account: EthereumAccount_T):
+    starting_block = token.chain.highest_block
     contract = w3.eth.contract(abi=EIP20_ABI, address=token.address)
     return contract.events.Transfer.createFilter(
         fromBlock=starting_block, argument_filters={"_to": account.address}
     )
 
 
-def make_outgoing_transfer_filter(
-    w3: Web3, chain: Chain, token: EthereumToken, account: EthereumAccount_T
-):
-    starting_block = chain.highest_block
+def make_outgoing_transfer_filter(w3: Web3, token: EthereumToken, account: EthereumAccount_T):
+    starting_block = token.chain.highest_block
     contract = w3.eth.contract(abi=EIP20_ABI, address=token.address)
     return contract.events.Transfer.createFilter(
         fromBlock=starting_block, argument_filters={"_from": account.address}
@@ -135,11 +139,38 @@ def make_token(w3: Web3, address) -> EthereumToken:
 def index_account_erc20_deposits(
     w3: Web3, account: EthereumAccount_T, token: EthereumToken, starting_block: int, end_block: int
 ):
+    logger.debug(
+        "Checking blocks {}-{} for {} transfers from {}".format(
+            starting_block, end_block, token.code, account.address
+        )
+    )
+
     token_contract = w3.eth.contract(abi=EIP20_ABI, address=token.address)
     transfer_filter = token_contract.events.Transfer.createFilter(
         fromBlock=starting_block, toBlock=end_block, argument_filters={"_to": account.address}
     )
     entries = transfer_filter.get_all_entries()
+
+    for entry in entries:
+        transaction = get_transaction_by_hash(w3=w3, transaction_hash=entry.transactionHash)
+        if transaction:
+            account.transactions.add(transaction)
+
+
+def index_account_erc20_approvals(
+    w3: Web3, account: EthereumAccount_T, token: EthereumToken, starting_block: int, end_block: int
+):
+    logger.debug(
+        "Checking blocks {}-{} for {} approvals from {}".format(
+            starting_block, end_block, token.code, account.address
+        )
+    )
+
+    token_contract = w3.eth.contract(abi=EIP20_ABI, address=token.address)
+    approval_filter = token_contract.events.Approval.createFilter(
+        fromBlock=starting_block, toBlock=end_block, argument_filters={"_owner": account.address}
+    )
+    entries = approval_filter.get_all_entries()
 
     for entry in entries:
         transaction = get_transaction_by_hash(w3=w3, transaction_hash=entry.transactionHash)
@@ -265,6 +296,14 @@ def process_latest_transfers(w3: Web3, chain: Chain, block_filter):
                 )
 
 
+def process_erc20_approval_event(
+    w3: Web3, token: EthereumToken, account: EthereumAccount_T, event
+):
+    transaction = get_transaction_by_hash(w3=w3, transaction_hash=event.transactionHash)
+    if transaction:
+        account.transactions.add(transaction)
+
+
 def process_incoming_erc20_transfer_event(
     w3: Web3, token: EthereumToken, account: EthereumAccount_T, event
 ):
@@ -367,7 +406,7 @@ class EthereumClient:
         return get_max_fee(w3=w3)
 
 
-async def listen_latest_transfers(w3: Web3, **kw):
+async def listen_eth_transfers(w3: Web3, **kw):
     await sync_to_async(wait_for_connection)(w3)
     block_filter = w3.eth.filter("latest")
     chain_id = int(w3.net.version)
@@ -427,6 +466,86 @@ async def listen_latest_transfers(w3: Web3, **kw):
         await asyncio.sleep(BLOCK_CREATION_INTERVAL)
 
 
+async def listen_erc20_transfers(w3: Web3, **kw):
+    await sync_to_async(wait_for_connection)(w3)
+
+    # A mapping to hold event filters, per account, per token
+    event_filters = {}
+    chain_id = int(w3.net.version)
+    chain = await sync_to_async(Chain.make)(chain_id=chain_id)
+
+    while True:
+        await sync_to_async(chain.refresh_from_db)()
+        accounts = await sync_to_async(list)(BaseEthereumAccount.objects.all())
+        tokens = await sync_to_async(list)(EthereumToken.ERC20tokens.all())
+
+        for token in tokens:
+            account_filters = event_filters.setdefault(token.address, {})
+            for account in accounts:
+                try:
+                    incoming_filter, outgoing_filter = account_filters[account.address]
+                except KeyError:
+                    incoming_filter = await sync_to_async(make_incoming_transfer_filter)(
+                        w3=w3, token=token, account=account
+                    )
+                    outgoing_filter = await sync_to_async(make_outgoing_transfer_filter)(
+                        w3=w3, token=token, account=account
+                    )
+                    account_filters[account.address] = (incoming_filter, outgoing_filter)
+
+                incoming_txs = incoming_filter.get_new_entries()
+                logger.debug(f"Got {len(incoming_txs)} {token.code} txs to {account.address}")
+                for event in incoming_txs:
+                    await sync_to_async(process_incoming_erc20_transfer_event)(
+                        w3=w3, account=account, token=token, event=event
+                    )
+
+                outgoing_txs = outgoing_filter.get_new_entries()
+                logger.debug(f"Got {len(outgoing_txs)} {token.code} txs from {account.address}")
+                for event in outgoing_txs:
+                    await sync_to_async(process_outgoing_erc20_transfer_event)(
+                        w3=w3, account=account, token=token, event=event
+                    )
+
+        await asyncio.sleep(BLOCK_CREATION_INTERVAL)
+
+
+async def listen_erc20_approvals(w3: Web3, **kw):
+    await sync_to_async(wait_for_connection)(w3)
+
+    # A mapping to hold event filters, per account, per token
+    event_filters = {}
+    chain_id = int(w3.net.version)
+    chain = await sync_to_async(Chain.make)(chain_id=chain_id)
+
+    while True:
+        await sync_to_async(chain.refresh_from_db)()
+        accounts = await sync_to_async(list)(BaseEthereumAccount.objects.all())
+        tokens = await sync_to_async(list)(EthereumToken.ERC20tokens.all())
+
+        for token in tokens:
+            token_filters = event_filters.setdefault(token.address, {})
+            for account in accounts:
+                try:
+                    account_approval_filter = token_filters[account.address]
+                except KeyError:
+                    account_approval_filter = await sync_to_async(make_token_approval_filter)(
+                        w3=w3, token=token, account=account
+                    )
+                    token_filters[account.address] = account_approval_filter
+
+                approval_txs = account_approval_filter.get_new_entries()
+                logger.debug(
+                    f"Got {len(approval_txs)} {token.code} approval from {account.address}"
+                )
+                for event in approval_txs:
+                    await sync_to_async(process_erc20_approval_event)(
+                        w3=w3, account=account, token=token, event=event
+                    )
+
+        await asyncio.sleep(BLOCK_CREATION_INTERVAL)
+
+
 async def listen_pending_transfers(w3: Web3, **kw):
     await sync_to_async(wait_for_connection)(w3)
     tx_filter = w3.eth.filter("pending")
@@ -438,78 +557,47 @@ async def listen_pending_transfers(w3: Web3, **kw):
         await sync_to_async(process_pending_transfers)(w3, chain, tx_filter)
 
 
-async def listen_latest_erc20_transfers(w3: Web3, **kw):
-    await sync_to_async(wait_for_connection)(w3)
-
-    # A mappting to hold event filters, per account, per token
-    event_filters = {}
-    chain_id = int(w3.net.version)
-
-    while True:
-        chain = await sync_to_async(Chain.make)(chain_id=chain_id)
-        accounts = await sync_to_async(list)(BaseEthereumAccount.objects.all())
-        tokens = await sync_to_async(list)(EthereumToken.tracked.all())
-
-        for token in tokens:
-            account_filters = event_filters.setdefault(token.address, {})
-            for account in accounts:
-                try:
-                    incoming_filter, outgoing_filter = account_filters[account.address]
-                except KeyError:
-                    incoming_filter = make_incoming_transfer_filter(
-                        w3=w3, chain=chain, token=token, account=account
-                    )
-                    outgoing_filter = make_outgoing_transfer_filter(
-                        w3=w3, chain=chain, token=token, account=account
-                    )
-                    account_filters[account.address] = (incoming_filter, outgoing_filter)
-
-                for event in incoming_filter.get_new_entries():
-                    await sync_to_async(process_incoming_erc20_transfer_event)(
-                        w3=w3, account=account, token=token, event=event
-                    )
-
-                for event in outgoing_filter.get_new_entries():
-                    await sync_to_async(process_outgoing_erc20_transfer_event)(
-                        w3=w3, account=account, token=token, event=event
-                    )
-
-        await asyncio.sleep(BLOCK_CREATION_INTERVAL)
-
-
 async def run_erc20_deposit_indexer(w3: Web3, **kw):
     await sync_to_async(wait_for_connection)(w3)
     chain_id = int(w3.net.version)
     chain = await sync_to_async(Chain.make)(chain_id=chain_id)
 
-    highest_block_scanned = 0
+    accounts = await sync_to_async(list)(BaseEthereumAccount.objects.all())
+    tokens = await sync_to_async(list)(EthereumToken.ERC20tokens.all())
 
-    while True:
-        accounts = await sync_to_async(list)(BaseEthereumAccount.objects.all())
-        tokens = await sync_to_async(list)(EthereumToken.tracked.all())
-
+    starting_block = 0
+    while starting_block < chain.highest_block:
         for token in tokens:
             for account in accounts:
-                last_transfer = await sync_to_async(account.last_contract_interaction)(
-                    chain=chain, contract_address=token.address
+                end = min(starting_block + BLOCK_SCAN_RANGE, chain.highest_block)
+                await sync_to_async(index_account_erc20_deposits)(
+                    w3=w3,
+                    account=account,
+                    token=token,
+                    starting_block=starting_block,
+                    end_block=end,
                 )
-                starting_block = max(
-                    last_transfer and last_transfer.block.number, highest_block_scanned
+        starting_block += BLOCK_SCAN_RANGE
+
+
+async def run_erc20_approval_indexer(w3: Web3, **kw):
+    await sync_to_async(wait_for_connection)(w3)
+    chain_id = int(w3.net.version)
+    chain = await sync_to_async(Chain.make)(chain_id=chain_id)
+
+    accounts = await sync_to_async(list)(BaseEthereumAccount.objects.all())
+    tokens = await sync_to_async(list)(EthereumToken.ERC20tokens.all())
+
+    starting_block = 0
+    while starting_block < chain.highest_block:
+        for token in tokens:
+            for account in accounts:
+                end = min(starting_block + BLOCK_SCAN_RANGE, chain.highest_block)
+                await sync_to_async(index_account_erc20_approvals)(
+                    w3=w3,
+                    account=account,
+                    token=token,
+                    starting_block=starting_block,
+                    end_block=end,
                 )
-                while starting_block < chain.highest_block:
-                    end = min(starting_block + BLOCK_SCAN_RANGE, chain.highest_block)
-                    logger.info(
-                        f"Checking {account.address} txs between {starting_block} and {end}"
-                    )
-
-                    await sync_to_async(index_account_erc20_deposits)(
-                        w3=w3,
-                        account=account,
-                        token=token,
-                        starting_block=starting_block,
-                        end_block=end,
-                    )
-                    starting_block += BLOCK_SCAN_RANGE
-
-        await asyncio.sleep(BLOCK_CREATION_INTERVAL)
-        highest_block_scanned = chain.highest_block
+        starting_block += BLOCK_SCAN_RANGE

@@ -7,7 +7,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.postgres.fields import ArrayField
 from django.db import models
-from django.db.models import F
+from django.db.models import F, Max
 from ethereum.utils import checksum_encode, privtoaddr
 from hexbytes import HexBytes
 from model_utils.choices import Choices
@@ -50,6 +50,11 @@ class TokenNetwork(models.Model):
     @property
     def events(self):
         return TokenNetworkChannelEvent.objects.filter(channel__token_network=self)
+
+    @property
+    def most_recent_channel_event(self) -> Optional[int]:
+        max_block_aggregate = Max("tokennetworkchannelevent__transaction__block__number")
+        return self.channels.aggregate(max_block=max_block_aggregate).get("max_block")
 
     def __str__(self):
         return f"{self.address} - ({self.token.code} @ {self.token.chain_id})"

@@ -212,6 +212,15 @@ class BaseEthereumAccount(models.Model):
         q_contract_transaction = Q(from_address=contract_address) | Q(to_address=contract_address)
         return self.transactions.filter(q_contract_transaction).order_by("-block__number").first()
 
+    def most_recent_contract_interaction(self, chain: Chain, contract_address: Address) -> int:
+        transaction = self.last_contract_interaction(
+            chain=chain, contract_address=contract_address
+        )
+        return transaction and transaction.block.number or 0
+
+    def __str__(self):
+        return f"<{self.__class__.name}: {self.address}>"
+
     @property
     def private_key(self):
         return None
