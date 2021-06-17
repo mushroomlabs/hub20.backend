@@ -20,8 +20,7 @@ from web3.types import TxParams, TxReceipt, Wei
 from . import signals
 from .app_settings import BLOCK_SCAN_RANGE
 from .exceptions import Web3TransactionError
-from .models import BaseEthereumAccount, Block, Chain, Transaction
-from .typing import EthereumAccount_T
+from .models import Block, Chain, Transaction
 
 BLOCK_CREATION_INTERVAL = 10  # In seconds
 WEB3_CLIENTS: Dict[str, Web3] = {}
@@ -130,7 +129,7 @@ def get_web3(provider_url: Optional[str] = None, force_new: bool = False) -> Web
 def get_block_by_hash(w3: Web3, block_hash: HexBytes) -> Optional[Block]:
     try:
         chain = Chain.objects.get(id=int(w3.net.version))
-        block_data = w3.eth.getBlock(block_hash)
+        block_data = w3.eth.get_block(block_hash)
         return Block.make(block_data, chain.id)
     except (AttributeError, Chain.DoesNotExist):
         return None
@@ -159,7 +158,7 @@ def get_transaction_by_hash(
 def get_block_by_number(w3: Web3, block_number: int) -> Optional[Block]:
     chain_id = int(w3.net.version)
     try:
-        block_data = w3.eth.getBlock(block_number, full_transactions=True)
+        block_data = w3.eth.get_block(block_number, full_transactions=True)
     except AttributeError:
         return None
 
@@ -187,7 +186,7 @@ def fetch_new_block_entries(w3: Web3, block_filter):
         logger.info(f"New block: {block_hash}")
         # We are converting a AttributeDict from Web3 into a standard python dict
         # so that it can be serialized for celery
-        block_data = json.loads(Web3.toJSON(w3.eth.getBlock(block_hash, full_transactions=True)))
+        block_data = json.loads(Web3.toJSON(w3.eth.get_block(block_hash, full_transactions=True)))
 
         signals.block_sealed.send(sender=Block, block_data=block_data)
 
@@ -202,26 +201,6 @@ def run_backfill(w3: Web3, start: int, end: int):
 
     for block_number in missing_blocks:
         get_block_by_number(w3=w3, block_number=block_number)
-
-
-def index_account_transactions(
-    w3: Web3, account: EthereumAccount_T, starting_block: int, end_block: int
-):
-    chain_id = int(w3.net.version)
-
-    logger.info(f"Checking blocks {starting_block}-{end_block} from txs with {account}")
-    for block_number in range(starting_block, end_block):
-        block_data = w3.eth.getBlock(block_number, full_transactions=True)
-        block = None
-        for tx in block_data.transactions:
-            if account.address in (tx.to, tx["from"]):
-                if block is None:
-                    block = Block.make(block_data, chain_id=chain_id)
-                transaction = get_transaction_by_hash(
-                    w3=w3, transaction_hash=tx.hash.hex(), block=block
-                )
-                if transaction:
-                    account.transactions.add(transaction)
 
 
 def is_connected_to_blockchain(w3: Web3):
@@ -313,24 +292,3 @@ async def run_heartbeat(w3: Web3, **kw):
         await sync_to_async(run_ethereum_node_connection_check)(w3=w3)
         await sync_to_async(run_ethereum_node_sync_check)(w3=w3)
         await asyncio.sleep(BLOCK_CREATION_INTERVAL)
-
-
-async def run_transaction_indexer(w3: Web3, **kw):
-    await sync_to_async(wait_for_connection)(w3)
-    chain_id = int(w3.net.version)
-    chain = await sync_to_async(Chain.make)(chain_id=chain_id)
-
-    accounts = await sync_to_async(list)(BaseEthereumAccount.objects.all())
-
-    for account in accounts:
-        current_block = await sync_to_async(Transaction.objects.last_block_with)(
-            chain=chain, address=account.address
-        )
-        while current_block < chain.highest_block:
-            end = min(current_block + BLOCK_SCAN_RANGE, chain.highest_block)
-            logger.info(f"Checking {account.address} txs between {current_block} and {end}")
-            await sync_to_async(index_account_transactions)(
-                w3=w3, account=account, starting_block=current_block, end_block=end
-            )
-            current_block += BLOCK_SCAN_RANGE
-            await asyncio.sleep(BLOCK_CREATION_INTERVAL * 2)

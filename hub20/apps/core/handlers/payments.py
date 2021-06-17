@@ -28,7 +28,7 @@ from hub20.apps.core.settings import app_settings
 from hub20.apps.core.signals import payment_received
 from hub20.apps.ethereum_money import get_ethereum_account_model
 from hub20.apps.ethereum_money.models import EthereumToken
-from hub20.apps.ethereum_money.signals import account_deposit_received, incoming_transfer_broadcast
+from hub20.apps.ethereum_money.signals import incoming_transfer_broadcast, incoming_transfer_mined
 from hub20.apps.raiden.models import Payment as RaidenNodePayment, Raiden
 from hub20.apps.raiden.signals import raiden_payment_received
 
@@ -75,8 +75,8 @@ def on_chain_updated_check_payment_confirmations(sender, **kw):
     _check_for_blockchain_payment_confirmations(chain.highest_block)
 
 
-@receiver(account_deposit_received, sender=Transaction)
-def on_account_deposit_check_blockchain_payments(sender, **kw):
+@receiver(incoming_transfer_mined, sender=Transaction)
+def on_incoming_transfer_mined_check_blockchain_payments(sender, **kw):
     account = kw["account"]
     amount = kw["amount"]
     transaction = kw["transaction"]
@@ -313,7 +313,7 @@ def on_payment_confirmed_publish_checkout(sender, **kw):
 
 __all__ = [
     "on_chain_updated_check_payment_confirmations",
-    "on_account_deposit_check_blockchain_payments",
+    "on_incoming_transfer_mined_check_blockchain_payments",
     "on_incoming_transfer_broadcast_send_notification_to_active_sessions",
     "on_incoming_transfer_broadcast_send_notification_to_open_checkouts",
     "on_raiden_payment_received_check_raiden_payments",

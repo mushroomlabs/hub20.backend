@@ -2,33 +2,25 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Optional, Tuple
+from typing import Any, Optional
 
 import ethereum
 from django.conf import settings
 from django.db import models
 from django.db.models import Max, Q, Sum
-from eth_utils import to_checksum_address
 from eth_wallet import Wallet
-from ethereum.abi import ContractTranslator
 from model_utils.managers import QueryManager
 from web3 import Web3
 from web3.contract import Contract
 
 from hub20.apps.blockchain.fields import EthereumAddressField, HexField
-from hub20.apps.blockchain.models import BaseEthereumAccount, Chain, Transaction
+from hub20.apps.blockchain.models import BaseEthereumAccount, Chain
 
 from .abi import EIP20_ABI
 from .app_settings import HD_WALLET_MNEMONIC, HD_WALLET_ROOT_KEY
 from .typing import TokenAmount, TokenAmount_T, Wei
 
 logger = logging.getLogger(__name__)
-
-
-def encode_transfer_data(recipient_address, amount: EthereumTokenAmount):
-    translator = ContractTranslator(EIP20_ABI)
-    encoded_data = translator.encode_function_call("transfer", (recipient_address, amount.as_wei))
-    return f"0x{encoded_data.hex()}"
 
 
 class EthereumToken(models.Model):
@@ -64,54 +56,6 @@ class EthereumToken(models.Model):
             raise ValueError("Not an ERC20 token")
 
         return w3.eth.contract(abi=EIP20_ABI, address=self.address)
-
-    def _decode_transaction_data(self, tx_data, contract: Optional[Contract] = None) -> Tuple:
-        if not self.is_ERC20:
-            return tx_data.to, self.from_wei(tx_data.value)
-
-        try:
-            assert tx_data["to"] == self.address, f"Not a {self.code} transaction"
-            assert contract is not None, f"{self.code} contract interface required to decode tx"
-
-            fn, args = contract.decode_function_input(tx_data.input)
-
-            # TODO: is this really the best way to identify the transaction as a value transfer?
-            transfer_idenfifier = contract.functions.transfer.function_identifier
-            assert transfer_idenfifier == fn.function_identifier, "No transfer transaction"
-
-            return args["_to"], self.from_wei(args["_value"])
-        except AssertionError as exc:
-            logger.warning(exc)
-            return None, None
-        except Exception as exc:
-            logger.warning(exc)
-            return None, None
-
-    def _decode_transaction(self, transaction: Transaction) -> Tuple:
-        # A transfer transaction input is 'function,address,uint256'
-        # i.e, 16 bytes + 20 bytes + 32 bytes = hex string of length 136
-        try:
-            # transaction input strings are '0x', so we they should be 138 chars long
-            assert len(transaction.data) == 138, "Not a ERC20 transfer transaction"
-            assert transaction.logs.count() == 1, "Transaction does not contain log changes"
-
-            recipient_address = to_checksum_address(transaction.data[-104:-64])
-
-            wei_transferred = Wei(transaction.data[-64:], 16)
-            tx_log = transaction.logs.first()
-
-            assert int(tx_log.data, 16) == wei_transferred, "Log data and tx amount do not match"
-
-            return recipient_address, self.from_wei(wei_transferred)
-        except AssertionError as exc:
-            logger.info(f"Failed to get transfer data from transaction: {exc}")
-            return None, None
-        except ValueError:
-            logger.info(f"Failed to extract transfer amounts from {transaction.hash.hex()}")
-            return None, None
-        except Exception as exc:
-            logger.exception(exc)
-            return None, None
 
     def from_wei(self, wei_amount: Wei) -> EthereumTokenAmount:
         value = TokenAmount(wei_amount) / (10 ** self.decimals)
@@ -305,5 +249,4 @@ __all__ = [
     "ColdWallet",
     "KeystoreAccount",
     "HierarchicalDeterministicWallet",
-    "encode_transfer_data",
 ]

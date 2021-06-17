@@ -10,8 +10,9 @@ from hub20.apps.core.models import (
     Transfer,
     TransferReceipt,
 )
+from hub20.apps.ethereum_money.client import encode_transfer_data
 from hub20.apps.ethereum_money.factories import ETHAmountFactory
-from hub20.apps.ethereum_money.models import EthereumTokenAmount, encode_transfer_data
+from hub20.apps.ethereum_money.models import EthereumTokenAmount
 from hub20.apps.ethereum_money.signals import outgoing_transfer_mined
 from hub20.apps.raiden.factories import ChannelFactory, PaymentEventFactory
 

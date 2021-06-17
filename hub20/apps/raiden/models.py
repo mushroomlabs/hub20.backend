@@ -7,7 +7,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.postgres.fields import ArrayField
 from django.db import models
-from django.db.models import F
+from django.db.models import F, Max
 from ethereum.utils import checksum_encode, privtoaddr
 from hexbytes import HexBytes
 from model_utils.choices import Choices
@@ -51,6 +51,11 @@ class TokenNetwork(models.Model):
     def events(self):
         return TokenNetworkChannelEvent.objects.filter(channel__token_network=self)
 
+    @property
+    def most_recent_channel_event(self) -> Optional[int]:
+        max_block_aggregate = Max("tokennetworkchannelevent__transaction__block__number")
+        return self.channels.aggregate(max_block=max_block_aggregate).get("max_block")
+
     def __str__(self):
         return f"{self.address} - ({self.token.code} @ {self.token.chain_id})"
 
@@ -86,7 +91,8 @@ class TokenNetworkChannelStatus(StatusModel):
                 "ChannelClosed": CHANNEL_STATUSES.closed,
             }.get(event_name)
         )
-        cls.objects.update_or_create(channel=channel, defaults={"status": status})
+        if status:
+            cls.objects.update_or_create(channel=channel, defaults={"status": status})
 
 
 class TokenNetworkChannelEvent(models.Model):
@@ -292,6 +298,16 @@ class Payment(models.Model):
 
     class Meta:
         unique_together = ("channel", "identifier", "sender_address", "receiver_address")
+
+
+class ChannelDeposit(EthereumTokenValueModel):
+    channel = models.ForeignKey(Channel, related_name="deposits", on_delete=models.CASCADE)
+    transaction = models.ForeignKey(Transaction, on_delete=models.CASCADE)
+
+
+class ChannelWithdraw(EthereumTokenValueModel):
+    channel = models.ForeignKey(Channel, related_name="withdrawals", on_delete=models.CASCADE)
+    transaction = models.ForeignKey(Transaction, on_delete=models.CASCADE)
 
 
 class RaidenManagementOrder(TimeStampedModel):

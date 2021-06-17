@@ -150,7 +150,6 @@ class Transaction(models.Model):
             assert tx_data["from"] == tx_receipt["from"], "Sender address mismatch"
             assert tx_data["to"] == tx_receipt["to"], "Recipient address mismatch"
             assert tx_data.transactionIndex == tx_receipt.transactionIndex, "Tx index mismatch"
-            assert tx_receipt.status != 0, "Receipt indicates tx was reverted"
         except AssertionError as exc:
             logger.warning(f"Transaction will not be recorded: {exc}")
             return None
@@ -212,6 +211,15 @@ class BaseEthereumAccount(models.Model):
     ) -> Optional[Transaction]:
         q_contract_transaction = Q(from_address=contract_address) | Q(to_address=contract_address)
         return self.transactions.filter(q_contract_transaction).order_by("-block__number").first()
+
+    def most_recent_contract_interaction(self, chain: Chain, contract_address: Address) -> int:
+        transaction = self.last_contract_interaction(
+            chain=chain, contract_address=contract_address
+        )
+        return transaction and transaction.block.number or 0
+
+    def __str__(self):
+        return f"<{self.__class__.name}: {self.address}>"
 
     @property
     def private_key(self):

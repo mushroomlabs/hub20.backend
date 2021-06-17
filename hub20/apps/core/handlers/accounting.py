@@ -1,6 +1,7 @@
 import logging
 
 from django.contrib.auth import get_user_model
+from django.contrib.contenttypes.models import ContentType
 from django.db.models.signals import post_save
 from django.db.transaction import atomic
 from django.dispatch import receiver
@@ -24,8 +25,8 @@ from hub20.apps.core.models.transfers import (
 )
 from hub20.apps.ethereum_money import get_ethereum_account_model
 from hub20.apps.ethereum_money.models import EthereumToken
-from hub20.apps.ethereum_money.signals import account_deposit_received
-from hub20.apps.raiden.models import Payment as RaidenPayment, Raiden
+from hub20.apps.ethereum_money.signals import incoming_transfer_mined, outgoing_transfer_mined
+from hub20.apps.raiden.models import ChannelDeposit, Payment as RaidenPayment, Raiden
 from hub20.apps.raiden.signals import service_deposit_sent
 
 logger = logging.getLogger(__name__)
@@ -63,13 +64,20 @@ def on_wallet_created_create_account(sender, **kw):
 
 # In-Flows
 @atomic()
-@receiver(account_deposit_received, sender=Transaction)
-def on_blockchain_deposit_received_move_funds_from_external_address_to_wallet(sender, **kw):
+@receiver(incoming_transfer_mined, sender=Transaction)
+def on_incoming_transfer_mined_move_funds_from_external_address_to_wallet(sender, **kw):
     wallet = kw["account"]
     amount = kw["amount"]
     transaction = kw["transaction"]
 
-    params = dict(reference=transaction, currency=amount.currency, amount=amount.amount)
+    transaction_type = ContentType.objects.get_for_model(transaction)
+
+    params = dict(
+        reference_type=transaction_type,
+        reference_id=transaction.id,
+        currency=amount.currency,
+        amount=amount.amount,
+    )
     external_address_account, _ = ExternalAddressAccount.objects.get_or_create(
         address=transaction.from_address
     )
@@ -77,8 +85,8 @@ def on_blockchain_deposit_received_move_funds_from_external_address_to_wallet(se
     external_address_book = external_address_account.get_book(token=amount.currency)
     wallet_book = wallet.onchain_account.get_book(token=amount.currency)
 
-    external_address_book.debits.create(**params)
-    wallet_book.credits.create(**params)
+    external_address_book.debits.get_or_create(**params)
+    wallet_book.credits.get_or_create(**params)
 
 
 @atomic()
@@ -91,7 +99,13 @@ def on_raiden_payment_received_move_funds_from_external_address_to_raiden(sender
         is_received = payment.receiver_address == raiden.address
 
         if is_received:
-            params = dict(reference=payment, currency=payment.token, amount=payment.amount)
+            payment_type = ContentType.objects.get_for_model(payment)
+            params = dict(
+                reference_type=payment_type,
+                reference_id=payment.id,
+                currency=payment.token,
+                amount=payment.amount,
+            )
 
             external_address_account, _ = ExternalAddressAccount.objects.get_or_create(
                 address=payment.sender_address
@@ -100,29 +114,34 @@ def on_raiden_payment_received_move_funds_from_external_address_to_raiden(sender
             external_account_book = external_address_account.get_book(token=payment.token)
             raiden_book = raiden.raiden_account.get_book(token=payment.token)
 
-            external_account_book.debits.create(**params)
-            raiden_book.credits.create(**params)
+            external_account_book.debits.get_or_create(**params)
+            raiden_book.credits.get_or_create(**params)
 
 
 # Out-flows
 @atomic()
-@receiver(post_save, sender=BlockchainTransferExecution)
-def on_blockchain_transfer_executed_move_funds_from_wallet_to_external_address(sender, **kw):
-    if kw["created"]:
-        execution = kw["instance"]
-        transfer = execution.transfer
+@receiver(outgoing_transfer_mined, sender=Transaction)
+def on_outgoing_transfer_mined_move_funds_from_wallet_to_external_address(sender, **kw):
+    transaction = kw["transaction"]
+    amount = kw["amount"]
+    wallet = kw["account"]
+    address = kw["address"]
 
-        params = dict(reference=transfer, currency=transfer.currency, amount=transfer.amount)
-        wallet = BaseEthereumAccount.objects.get(address=execution.transaction.from_address)
-        external_account, _ = ExternalAddressAccount.objects.get_or_create(
-            address=transfer.address
-        )
+    transaction_type = ContentType.objects.get_for_model(transaction)
 
-        wallet_book = wallet.onchain_account.get_book(token=transfer.currency)
-        external_account_book = external_account.get_book(token=transfer.currency)
+    params = dict(
+        reference_type=transaction_type,
+        reference_id=transaction.id,
+        currency=amount.currency,
+        amount=amount.amount,
+    )
+    external_account, _ = ExternalAddressAccount.objects.get_or_create(address=address)
 
-        wallet_book.debits.create(**params)
-        external_account_book.credits.create(**params)
+    wallet_book = wallet.onchain_account.get_book(token=amount.currency)
+    external_account_book = external_account.get_book(token=amount.currency)
+
+    wallet_book.debits.get_or_create(**params)
+    external_account_book.credits.get_or_create(**params)
 
 
 @atomic()
@@ -133,7 +152,13 @@ def on_raiden_transfer_executed_move_funds_from_raiden_to_external_address(sende
         transfer = execution.transfer
 
         payment = execution.raidentransferexecution.payment
-        params = dict(reference=transfer, currency=transfer.currency, amount=transfer.amount)
+        transfer_type = ContentType.objects.get_for_model(transfer)
+        params = dict(
+            reference_type=transfer_type,
+            reference_id=transfer.id,
+            currency=transfer.currency,
+            amount=transfer.amount,
+        )
 
         external_account, _ = ExternalAddressAccount.objects.get_or_create(
             address=transfer.address
@@ -142,8 +167,8 @@ def on_raiden_transfer_executed_move_funds_from_raiden_to_external_address(sende
         external_account_book = external_account.get_book(token=transfer.currency)
         raiden_book = payment.channel.raiden.raiden_account.get_book(token=transfer.currency)
 
-        raiden_book.debits.create(**params)
-        external_account_book.credits.create(**params)
+        raiden_book.debits.get_or_create(**params)
+        external_account_book.credits.get_or_create(**params)
 
 
 @atomic()
@@ -159,10 +184,16 @@ def on_blockchain_transfer_executed_move_fee_from_sender_to_treasury(sender, **k
         treasury_book = transaction.block.chain.treasury.get_book(token=ETH)
         sender_book = execution.transfer.sender.account.get_book(token=ETH)
 
-        params = dict(reference=transaction, currency=ETH, amount=fee.amount)
+        transaction_type = ContentType.objects.get_for_model(transaction)
+        params = dict(
+            reference_type=transaction_type,
+            reference_id=transaction.id,
+            currency=ETH,
+            amount=fee.amount,
+        )
 
-        sender_book.debits.create(**params)
-        treasury_book.credits.create(**params)
+        sender_book.debits.get_or_create(**params)
+        treasury_book.credits.get_or_create(**params)
 
 
 @atomic()
@@ -182,10 +213,16 @@ def on_transaction_submitted_move_fee_from_wallet_to_fee_account(sender, **kw):
         wallet_book = wallet.onchain_account.get_book(token=ETH)
         fee_book = fee_account.get_book(token=ETH)
 
-        params = dict(reference=transaction, currency=ETH, amount=fee.amount)
+        transaction_type = ContentType.objects.get_for_model(transaction)
+        params = dict(
+            reference_type=transaction_type,
+            reference_id=transaction.id,
+            currency=ETH,
+            amount=fee.amount,
+        )
 
-        wallet_book.debits.create(**params)
-        fee_book.credits.create(**params)
+        wallet_book.debits.get_or_create(**params)
+        fee_book.credits.get_or_create(**params)
 
 
 # Internal movements
@@ -278,7 +315,14 @@ def on_service_deposit_transaction_move_funds_from_raiden_wallet_to_external_acc
 
     token = deposit.currency
 
-    params = dict(reference=transaction, currency=token, amount=deposit.amount)
+    transaction_type = ContentType.objects.get_for_model(transaction)
+
+    params = dict(
+        reference_type=transaction_type,
+        reference_id=transaction.id,
+        currency=token,
+        amount=deposit.amount,
+    )
 
     external_account, _ = ExternalAddressAccount.objects.get_or_create(address=udc_address)
     raiden_wallet_account, _ = WalletAccount.objects.get_or_create(account=raiden)
@@ -286,8 +330,38 @@ def on_service_deposit_transaction_move_funds_from_raiden_wallet_to_external_acc
     external_account_book = external_account.get_book(token=token)
     raiden_book = raiden_wallet_account.get_book(token=token)
 
-    raiden_book.debits.create(**params)
-    external_account_book.credits.create(**params)
+    raiden_book.debits.get_or_create(**params)
+    external_account_book.credits.get_or_create(**params)
+
+
+@receiver(post_save, sender=ChannelDeposit)
+def on_channel_deposit_move_funds_from_token_network_to_raiden_client(sender, **kw):
+    if kw["created"]:
+        deposit = kw["instance"]
+        raiden = deposit.channel.raiden
+
+        token = deposit.currency
+        token_network_address = token.tokennetwork.address
+
+        deposit_type = ContentType.objects.get_for_model(ChannelDeposit)
+
+        params = dict(
+            reference_type=deposit_type,
+            reference_id=deposit.id,
+            currency=token,
+            amount=deposit.amount,
+        )
+
+        token_network_account, _ = ExternalAddressAccount.objects.get_or_create(
+            address=token_network_address
+        )
+        raiden_client_account, _ = RaidenClientAccount.objects.get_or_create(raiden=raiden)
+
+        external_account_book = token_network_account.get_book(token=token)
+        raiden_client_book = raiden_client_account.get_book(token=token)
+
+        external_account_book.debits.get_or_create(**params)
+        raiden_client_book.credits.get_or_create(**params)
 
 
 __all__ = [
@@ -295,9 +369,9 @@ __all__ = [
     "on_chain_created_create_treasury",
     "on_raiden_created_create_account",
     "on_wallet_created_create_account",
-    "on_blockchain_deposit_received_move_funds_from_external_address_to_wallet",
+    "on_incoming_transfer_mined_move_funds_from_external_address_to_wallet",
     "on_raiden_payment_received_move_funds_from_external_address_to_raiden",
-    "on_blockchain_transfer_executed_move_funds_from_wallet_to_external_address",
+    "on_outgoing_transfer_mined_move_funds_from_wallet_to_external_address",
     "on_raiden_transfer_executed_move_funds_from_raiden_to_external_address",
     "on_blockchain_transfer_executed_move_fee_from_sender_to_treasury",
     "on_transaction_submitted_move_fee_from_wallet_to_fee_account",
@@ -306,4 +380,5 @@ __all__ = [
     "on_payment_confirmed_move_funds_from_treasury_to_payee",
     "on_reverted_transaction_move_funds_from_treasury_to_sender",
     "on_service_deposit_transaction_move_funds_from_raiden_wallet_to_external_account",
+    "on_channel_deposit_move_funds_from_token_network_to_raiden_client",
 ]
