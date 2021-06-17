@@ -20,8 +20,7 @@ from web3.types import TxParams, TxReceipt, Wei
 from . import signals
 from .app_settings import BLOCK_SCAN_RANGE
 from .exceptions import Web3TransactionError
-from .models import BaseEthereumAccount, Block, Chain, Transaction
-from .typing import EthereumAccount_T
+from .models import Block, Chain, Transaction
 
 BLOCK_CREATION_INTERVAL = 10  # In seconds
 WEB3_CLIENTS: Dict[str, Web3] = {}

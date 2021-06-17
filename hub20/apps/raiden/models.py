@@ -91,7 +91,8 @@ class TokenNetworkChannelStatus(StatusModel):
                 "ChannelClosed": CHANNEL_STATUSES.closed,
             }.get(event_name)
         )
-        cls.objects.update_or_create(channel=channel, defaults={"status": status})
+        if status:
+            cls.objects.update_or_create(channel=channel, defaults={"status": status})
 
 
 class TokenNetworkChannelEvent(models.Model):
@@ -297,6 +298,16 @@ class Payment(models.Model):
 
     class Meta:
         unique_together = ("channel", "identifier", "sender_address", "receiver_address")
+
+
+class ChannelDeposit(EthereumTokenValueModel):
+    channel = models.ForeignKey(Channel, related_name="deposits", on_delete=models.CASCADE)
+    transaction = models.ForeignKey(Transaction, on_delete=models.CASCADE)
+
+
+class ChannelWithdraw(EthereumTokenValueModel):
+    channel = models.ForeignKey(Channel, related_name="withdrawals", on_delete=models.CASCADE)
+    transaction = models.ForeignKey(Transaction, on_delete=models.CASCADE)
 
 
 class RaidenManagementOrder(TimeStampedModel):
