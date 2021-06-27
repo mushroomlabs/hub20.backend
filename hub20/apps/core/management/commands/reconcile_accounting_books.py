@@ -24,10 +24,9 @@ from hub20.apps.ethereum_money.models import EthereumToken
 from hub20.apps.raiden.client.blockchain import (
     get_all_channel_deposits,
     get_all_service_deposits,
-    get_token_network_contract,
-    record_channel_events,
+    index_all_token_network_events,
 )
-from hub20.apps.raiden.models import Payment as RaidenPayment, Raiden, TokenNetwork
+from hub20.apps.raiden.models import Payment as RaidenPayment, Raiden
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -65,29 +64,6 @@ def index_token_events(w3: Web3, chain: Chain, accounts: QuerySet, tokens: Query
         starting_block += BLOCK_SCAN_RANGE
 
 
-def index_token_network_events(w3: Web3):
-    token_networks = TokenNetwork.objects.all()
-
-    for token_network in token_networks:
-        starting_block = token_network.most_recent_channel_event
-        token_network_contract = get_token_network_contract(w3=w3, token_network=token_network)
-        starting_block = token_network.most_recent_channel_event
-
-        opened_channels_filter = token_network_contract.events.ChannelOpened.createFilter(
-            fromBlock=starting_block
-        )
-        closed_channels_filter = token_network_contract.events.ChannelClosed.createFilter(
-            fromBlock=starting_block
-        )
-
-        record_channel_events(
-            w3=w3, token_network=token_network, event_filter=opened_channels_filter
-        )
-        record_channel_events(
-            w3=w3, token_network=token_network, event_filter=closed_channels_filter
-        )
-
-
 class Command(BaseCommand):
     help = "Sets up accounting books and reconciles transactions and raiden payments"
 
@@ -113,7 +89,7 @@ class Command(BaseCommand):
         w3 = get_web3()
 
         index_token_events(w3=w3, chain=chain, accounts=accounts, tokens=tokens)
-        index_token_network_events(w3=w3)
+        index_all_token_network_events(w3=w3)
         get_all_service_deposits(w3=w3, raiden=raiden)
         get_all_channel_deposits(w3=w3, raiden=raiden)
 

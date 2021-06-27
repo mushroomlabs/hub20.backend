@@ -30,6 +30,7 @@ class AppSettings:
             "hub20.apps.ethereum_money.client.listen_erc20_approvals",
             "hub20.apps.ethereum_money.client.listen_erc223_mint",
             "hub20.apps.ethereum_money.client.listen_pending_transfers",
+            "hub20.apps.raiden.client.blockchain.get_token_network_events",
             "hub20.apps.raiden.client.blockchain.listen_service_deposits",
             "hub20.apps.raiden.client.blockchain.listen_channel_deposits",
             "hub20.apps.raiden.client.blockchain.listen_token_network_events",
