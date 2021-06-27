@@ -6,7 +6,7 @@ from typing import Optional, Union
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import models
-from model_utils.managers import QueryManager
+from model_utils.managers import InheritanceManager, QueryManager
 from model_utils.models import TimeStampedModel
 
 from hub20.apps.blockchain.fields import EthereumAddressField
@@ -183,6 +183,7 @@ class TransferReceipt(TimeStampedModel):
 
 class TransferExecution(TimeStampedModel):
     transfer = models.OneToOneField(Transfer, on_delete=models.CASCADE, related_name="execution")
+    objects = InheritanceManager()
 
 
 class BlockchainTransferExecution(TransferExecution):
