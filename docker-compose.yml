@@ -45,6 +45,7 @@ services:
       - "--http.addr=0.0.0.0"
       - "--http.api=eth,net,web3"
       - "--http.vhosts=*"
+      - "--http.corsdomain=*"
       - "--ws"
       - "--ws.origins=*"
       - "--ws.addr=0.0.0.0"
@@ -61,6 +62,8 @@ services:
     image: "hub20_raiden:${TAG-latest}"
     build:
       context: ./docker/build/raiden
+    ports:
+      - "5001:5001"
     restart: unless-stopped
 
   # Redis for cache, session engine, celery and channels transport
