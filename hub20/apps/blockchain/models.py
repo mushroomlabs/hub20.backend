@@ -203,8 +203,8 @@ class TransactionLog(models.Model):
 
 class BaseEthereumAccount(models.Model):
     address = EthereumAddressField(unique=True, db_index=True)
-    objects = InheritanceManager()
     transactions = models.ManyToManyField(Transaction)
+    objects = InheritanceManager()
 
     def last_contract_interaction(
         self, chain: Chain, contract_address: Address
@@ -219,15 +219,12 @@ class BaseEthereumAccount(models.Model):
         return transaction and transaction.block.number or 0
 
     def __str__(self):
-        return f"<{self.__class__.name}: {self.address}>"
+        return self.address
 
     @property
-    def private_key(self):
-        return None
-
-    @property
-    def private_key_bytes(self) -> bytes:
-        return self.private_key and bytearray.fromhex(self.private_key[2:])
+    def private_key_bytes(self) -> Optional[bytes]:
+        private_key = getattr(self, "private_key", None)
+        return private_key and bytearray.fromhex(private_key[2:])
 
 
 __all__ = ["Block", "Chain", "Transaction", "TransactionLog", "BaseEthereumAccount"]
