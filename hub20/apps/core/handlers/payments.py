@@ -81,15 +81,18 @@ def on_incoming_transfer_mined_check_blockchain_payments(sender, **kw):
     amount = kw["amount"]
     transaction = kw["transaction"]
 
-    deposits = Deposit.objects.with_blockchain_route(transaction.block.number)
-    deposit = deposits.filter(routes__blockchainpaymentroute__account=account).first()
-
-    if not deposit:
+    if BlockchainPayment.objects.filter(transaction=transaction).exists():
+        logger.info(f"Transaction {transaction} is already recorded for payment")
         return
 
     route = BlockchainPaymentRoute.objects.filter(
-        deposit=deposit, payment_window__contains=transaction.block.number
+        deposit__currency=amount.currency,
+        account=account,
+        payment_window__contains=transaction.block.number,
     ).first()
+
+    if not route:
+        return
 
     payment = BlockchainPayment.objects.create(
         route=route,
@@ -150,6 +153,10 @@ def on_incoming_transfer_broadcast_send_notification_to_open_checkouts(sender, *
 @receiver(raiden_payment_received, sender=RaidenNodePayment)
 def on_raiden_payment_received_check_raiden_payments(sender, **kw):
     raiden_payment = kw["payment"]
+
+    if RaidenPayment.objects.filter(payment=raiden_payment).exists():
+        logger.info(f"Payment {raiden_payment} is already recorded")
+        return
 
     payment_route = RaidenPaymentRoute.objects.filter(
         identifier=raiden_payment.identifier,

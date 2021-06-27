@@ -3,6 +3,7 @@ from unittest.mock import patch
 import pytest
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ValidationError
+from django.db import IntegrityError
 from django.test import TestCase
 
 from hub20.apps.blockchain.models import Block
@@ -19,7 +20,11 @@ from hub20.apps.core.factories import (
     UserAccountFactory,
 )
 from hub20.apps.core.models.accounting import ExternalAddressAccount
-from hub20.apps.core.models.payments import BlockchainPaymentRoute, RaidenPaymentRoute
+from hub20.apps.core.models.payments import (
+    BlockchainPayment,
+    BlockchainPaymentRoute,
+    RaidenPaymentRoute,
+)
 from hub20.apps.core.models.transfers import TransferCancellation
 from hub20.apps.core.settings import app_settings
 from hub20.apps.core.tests.unit.mocks import (
@@ -55,6 +60,18 @@ class BlockchainPaymentTestCase(BaseTestCase):
     def test_transaction_creates_blockchain_payment(self):
         add_token_to_account(self.blockchain_route.account, self.order.as_token_amount, self.chain)
         self.assertEqual(self.order.payments.count(), 1)
+
+    def test_can_not_add_same_transaction_twice(self):
+        add_token_to_account(self.blockchain_route.account, self.order.as_token_amount, self.chain)
+        self.assertEqual(self.order.payments.count(), 1)
+        payment = self.order.payments.select_subclasses().first()
+        with self.assertRaises(IntegrityError):
+            BlockchainPayment.objects.create(
+                transaction=payment.transaction,
+                route=payment.route,
+                amount=payment.amount,
+                currency=payment.currency,
+            )
 
     def test_user_balance_is_updated_on_completed_payment(self):
         tx = add_token_to_account(

@@ -248,7 +248,7 @@ class InternalPayment(Payment):
 
 
 class BlockchainPayment(Payment):
-    transaction = models.OneToOneField(Transaction, on_delete=models.CASCADE)
+    transaction = models.OneToOneField(Transaction, unique=True, on_delete=models.CASCADE)
 
     @property
     def identifier(self):
@@ -256,7 +256,7 @@ class BlockchainPayment(Payment):
 
 
 class RaidenPayment(Payment):
-    payment = models.OneToOneField(RaidenPaymentEvent, on_delete=models.CASCADE)
+    payment = models.OneToOneField(RaidenPaymentEvent, unique=True, on_delete=models.CASCADE)
 
     @property
     def identifier(self):
