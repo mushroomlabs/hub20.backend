@@ -23,6 +23,7 @@ from hub20.apps.blockchain.client import (
     BLOCK_CREATION_INTERVAL,
     get_transaction_by_hash,
     send_transaction,
+    wait_for_connection,
 )
 from hub20.apps.blockchain.models import Block, Transaction
 from hub20.apps.blockchain.typing import Address, EthereumAccount_T
@@ -399,6 +400,7 @@ async def listen_service_deposits(w3: Web3, **kw):
 
 async def listen_token_network_events(w3: Web3, raiden: RaidenClient, **kw):
     while True:
+        await sync_to_async(wait_for_connection)(w3)
         token_networks = await sync_to_async(list)(TokenNetwork.objects.all())
         for token_network in token_networks:
             event_filter = await sync_to_async(TokenNetworkEventFilterRegistry.get)(
@@ -415,8 +417,9 @@ async def listen_token_network_events(w3: Web3, raiden: RaidenClient, **kw):
 
 
 async def listen_channel_deposits(w3: Web3, raiden: RaidenClient, **kw):
-    token_networks = await sync_to_async(list)(TokenNetwork.objects.all())
     while True:
+        await sync_to_async(wait_for_connection)(w3)
+        token_networks = await sync_to_async(list)(TokenNetwork.objects.all())
         for token_network in token_networks:
             logger.info("Checking for deposits done on {}".format(token_network.address))
             contract_manager = await sync_to_async(TokenNetworkEventFilterRegistry.get)(

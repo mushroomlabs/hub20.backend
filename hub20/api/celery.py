@@ -10,10 +10,6 @@ class Hub20CeleryConfig:
     broker_url = "memory" if "HUB20_TEST" in os.environ else os.getenv("HUB20_BROKER_URL")
     broker_use_ssl = "HUB20_BROKER_USE_SSL" in os.environ
     beat_schedule = {
-        "sync-token-network-events": {
-            "task": "hub20.apps.raiden.tasks.sync_token_network_events",
-            "schedule": crontab(minute="*/10"),
-        },
         "clear-expired-sessions": {
             "task": "hub20.apps.core.tasks.clear_expired_sessions",
             "schedule": crontab(minute="*/30"),

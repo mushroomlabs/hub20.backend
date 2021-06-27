@@ -44,7 +44,7 @@ class TokenNetwork(models.Model):
 
         # However, our main purpose is only to find out if a given address is
         # being used by raiden and that we can _try_ to use for a transfer.
-        open_channels = self.channels.filter(status=CHANNEL_STATUSES.opened)
+        open_channels = self.channels.filter(status__status=CHANNEL_STATUSES.opened)
         return open_channels.filter(participant_addresses__contains=[address]).exists()
 
     @property
