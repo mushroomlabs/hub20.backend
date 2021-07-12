@@ -20,14 +20,12 @@ class BaseTestCase(TestCase):
 
 class PaymentTransferTestCase(BaseTestCase):
     def setUp(self):
-        self.checkout = CheckoutFactory()
-        self.token = self.checkout.currency
         self.w3 = Web3Mock
 
     @patch("hub20.apps.ethereum_money.client.get_transaction_by_hash")
     def test_can_detect_erc20_transfers(self, get_transaction_mock):
 
-        route = self.checkout.routes.select_subclasses().first()
+        route = checkout.routes.select_subclasses().first()
 
         self.assertIsNotNone(route)
 
@@ -49,7 +47,7 @@ class PaymentTransferTestCase(BaseTestCase):
             w3=self.w3, token=self.token, account=route.account, event=tx_filter_entry
         )
 
-        self.assertEqual(self.checkout.status, self.checkout.STATUS.paid)
+        self.assertEqual(checkout.status, checkout.STATUS.paid)
 
 
 __all__ = ["PaymentTransferTestCase"]

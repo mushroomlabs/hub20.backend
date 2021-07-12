@@ -11,9 +11,9 @@ from hub20.apps.core.models import (
     TransferReceipt,
 )
 from hub20.apps.ethereum_money.client import encode_transfer_data
-from hub20.apps.ethereum_money.factories import ETHAmountFactory
 from hub20.apps.ethereum_money.models import EthereumTokenAmount
 from hub20.apps.ethereum_money.signals import outgoing_transfer_mined
+from hub20.apps.ethereum_money.factories import EtherAmountFactory
 from hub20.apps.raiden.factories import ChannelFactory, PaymentEventFactory
 
 
@@ -75,4 +75,4 @@ class MockRaidenTransferExecutor(RaidenTransferExecutor):
 
 
 def mock_fee_estimation() -> EthereumTokenAmount:
-    return ETHAmountFactory(amount=Decimal("0.001"))
+    return EtherAmountFactory(amount=Decimal("0.001"))

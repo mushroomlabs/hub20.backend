@@ -73,7 +73,7 @@ class Erc20TokenAmountFactory(factory.Factory):
         model = EthereumTokenAmount
 
 
-class ETHAmountFactory(factory.Factory):
+class EtherAmountFactory(factory.Factory):
     amount = fuzzy.FuzzyDecimal(0, 10, precision=6)
     currency = factory.SubFactory(ETHFactory)
 
@@ -98,6 +98,6 @@ __all__ = [
     "EthereumTokenValueModelFactory",
     "Erc20TokenValueModelFactory",
     "Erc20TokenAmountFactory",
-    "ETHAmountFactory",
+    "EtherAmountFactory",
     "Erc20TransferFactory",
 ]
