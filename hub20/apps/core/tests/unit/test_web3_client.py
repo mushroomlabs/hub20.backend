@@ -25,6 +25,7 @@ class PaymentTransferTestCase(BaseTestCase):
     @patch("hub20.apps.ethereum_money.client.get_transaction_by_hash")
     def test_can_detect_erc20_transfers(self, get_transaction_mock):
 
+        checkout = CheckoutFactory()
         route = checkout.routes.select_subclasses().first()
 
         self.assertIsNotNone(route)
@@ -32,19 +33,19 @@ class PaymentTransferTestCase(BaseTestCase):
         recipient = route.account.address
 
         tx_filter_entry = Erc20LogFilterMock(
-            blockNumber=self.token.chain.highest_block,
+            blockNumber=checkout.currency.chain.highest_block,
             recipient=recipient,
-            amount=self.checkout.as_token_amount,
+            amount=checkout.as_token_amount,
         )
 
         get_transaction_mock.return_value = TransactionFactory(
             from_address=tx_filter_entry["args"]["_from"],
-            to_address=self.checkout.currency.address,
-            data=encode_transfer_data(recipient, self.checkout.as_token_amount),
+            to_address=checkout.currency.address,
+            data=encode_transfer_data(recipient, checkout.as_token_amount),
         )
 
         process_incoming_erc20_transfer_event(
-            w3=self.w3, token=self.token, account=route.account, event=tx_filter_entry
+            w3=self.w3, token=checkout.currency, account=route.account, event=tx_filter_entry
         )
 
         self.assertEqual(checkout.status, checkout.STATUS.paid)
