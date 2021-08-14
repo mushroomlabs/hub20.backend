@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Union
 import requests
 from asgiref.sync import sync_to_async
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.utils.timezone import make_aware
 from web3.datastructures import AttributeDict
 
@@ -15,6 +16,8 @@ from hub20.apps.blockchain.typing import Address
 from hub20.apps.ethereum_money.models import EthereumTokenAmount
 from hub20.apps.raiden.exceptions import RaidenConnectionError, RaidenPaymentError
 from hub20.apps.raiden.models import Channel, Payment, Raiden, TokenNetwork
+
+User = get_user_model()
 
 logger = logging.getLogger(__name__)
 
@@ -37,11 +40,11 @@ def _make_request(url: str, method: str = "GET", **payload: Any) -> Union[List, 
 
 
 class RaidenClient:
-    def __init__(self, *args, **kw) -> None:
+    def __init__(self, account: Raiden) -> None:
         if not settings.HUB20_RAIDEN_ENABLED:
             raise ValueError("Raiden is not properly configured")
 
-        self.raiden = Raiden.generate()
+        self.raiden = account
 
     def _parse_payment(self, payment_data: Dict, channel: Channel) -> Optional[AttributeDict]:
         event_name = payment_data.pop("event")
@@ -148,8 +151,16 @@ class RaidenClient:
             raise RaidenPaymentError(error_code=error_code, message=message) from error
 
     @classmethod
-    def select_for_transfer(cls, amount: EthereumTokenAmount, target: Address):
+    def select_for_transfer(
+        cls,
+        amount: EthereumTokenAmount,
+        receiver: Optional[User] = None,
+        address: Optional[Address] = None,
+    ) -> Optional[RaidenClient]:
         if not settings.HUB20_RAIDEN_ENABLED:
+            return None
+
+        if address is None:
             return None
 
         # Token is not part of a token network.
@@ -163,10 +174,10 @@ class RaidenClient:
         if not token_channels.exists():
             return None
 
-        if not amount.currency.tokennetwork.can_reach(target):
+        if not amount.currency.tokennetwork.can_reach(address):
             return None
 
-        return cls(Raiden.get())
+        return cls(account=Raiden.get())
 
 
 async def sync_channels(raiden: RaidenClient, **kw):

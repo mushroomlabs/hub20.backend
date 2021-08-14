@@ -70,8 +70,13 @@ class InternalTransferExecutor:
         TransferExecution.objects.create(transfer=transfer)
 
     @classmethod
-    def select_for_transfer(cls, amount: EthereumTokenAmount, target: Optional[User]):
-        if target:
+    def select_for_transfer(
+        cls,
+        amount: EthereumTokenAmount,
+        receiver: Optional[User] = None,
+        address: Optional[Address] = None,
+    ):
+        if receiver:
             return cls()
 
 
@@ -144,7 +149,7 @@ class Transfer(TimeStampedModel, EthereumTokenValueModel):
     def get_executor(self):
         for executor_class in self.EXECUTORS:
             executor = executor_class.select_for_transfer(
-                amount=self.as_token_amount, target=self.target
+                amount=self.as_token_amount, receiver=self.receiver, address=self.address
             )
             if executor:
                 return executor

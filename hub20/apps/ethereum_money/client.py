@@ -3,6 +3,7 @@ import logging
 from typing import Any, Dict, Optional, Tuple
 
 from asgiref.sync import sync_to_async
+from django.contrib.auth import get_user_model
 from django.db.models import QuerySet
 from eth_utils import to_checksum_address
 from ethereum.abi import ContractTranslator
@@ -29,9 +30,11 @@ from .signals import (
     outgoing_transfer_broadcast,
     outgoing_transfer_mined,
 )
+from .typing import EthereumClient_T
 
 logger = logging.getLogger(__name__)
 EthereumAccount = get_ethereum_account_model()
+User = get_user_model()
 
 
 class TokenEventFilterRegistry:
@@ -406,8 +409,13 @@ class EthereumClient:
         return get_account_balance(w3=self.w3, token=token, address=self.account.address)
 
     @classmethod
-    def select_for_transfer(cls, amount: EthereumTokenAmount, **kw) -> Optional[EthereumAccount_T]:
-        w3 = kw.pop("w3", get_web3())
+    def select_for_transfer(
+        cls,
+        amount: EthereumTokenAmount,
+        receiver: Optional[User] = None,
+        address: Optional[Address] = None,
+    ) -> Optional[EthereumClient_T]:
+        w3 = get_web3()
 
         transfer_fee: EthereumTokenAmount = cls.estimate_transfer_fees(w3=w3)
         assert transfer_fee.is_ETH
@@ -426,7 +434,7 @@ class EthereumClient:
             token_balance = eth_balance if amount.is_ETH else get_balance(amount.currency)
 
             if eth_balance >= transfer_fee and token_balance >= amount:
-                return cls(account)
+                return cls(account=account, w3=w3)
         return None
 
     @classmethod

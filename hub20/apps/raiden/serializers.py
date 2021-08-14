@@ -117,7 +117,7 @@ class RaidenSerializer(serializers.ModelSerializer):
     status = serializers.SerializerMethodField()
 
     def get_status(self, obj):
-        client = RaidenClient(obj)
+        client = RaidenClient(account=obj)
         return client.get_status()
 
     class Meta:
