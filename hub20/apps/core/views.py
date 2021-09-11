@@ -51,7 +51,7 @@ class ReadWriteSerializerMixin(generics.GenericAPIView):
     write_serializer_class: Optional[Serializer] = None
 
     def get_serializer_class(self) -> Serializer:
-        if self.request.method in ["POST", "PUT", "PATCH"]:
+        if self.request and self.request.method in ["POST", "PUT", "PATCH"]:
             return self.get_write_serializer_class()
         return self.get_read_serializer_class()
 
@@ -196,6 +196,7 @@ class PaymentViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
             return serializers.PaymentSerializer
 
         payment = self.get_object()
+
         return {
             models.InternalPayment: serializers.InternalPaymentSerializer,
             models.BlockchainPayment: serializers.BlockchainPaymentSerializer,
@@ -205,8 +206,8 @@ class PaymentViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
     def get_object(self):
         try:
             return models.Payment.objects.get_subclass(id=self.kwargs["pk"])
-        except models.Payment.DoesNotExist:
-            raise Http404
+        except (models.Payment.DoesNotExist, KeyError):
+            return None
 
 
 class StoreViewSet(ModelViewSet):
@@ -218,7 +219,7 @@ class StoreViewSet(ModelViewSet):
         return (perm() for perm in perms)
 
     def get_queryset(self) -> QuerySet:
-        return models.Store.objects.all()
+        return self.request.user.store_set.all()
 
     def get_object(self, *args, **kw):
         return get_object_or_404(models.Store, id=self.kwargs["pk"])
