@@ -30,3 +30,4 @@ pytest-asyncio
 pytest-django
 pytest-env
 factory_boy
+uritemplate

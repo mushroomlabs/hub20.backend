@@ -1,7 +1,9 @@
 import os
 
+PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = os.path.dirname(PROJECT_DIR)
 SECRET_KEY = os.getenv("HUB20_SECRET_KEY")
 
 DEBUG = "HUB20_DEBUG" in os.environ
@@ -63,7 +65,7 @@ ASGI_APPLICATION = "hub20.api.asgi.application"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": ["templates"],
+        "DIRS": [os.path.join(PROJECT_DIR, "templates")],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
