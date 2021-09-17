@@ -3,6 +3,7 @@ channels
 channels_redis
 django
 django-allauth
+django-celery-beat
 django-cors-headers
 django-filter
 django-ipware

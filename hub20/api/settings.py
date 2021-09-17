@@ -30,6 +30,7 @@ THIRD_PARTY_APPS = [
     "allauth.socialaccount",
     "channels",
     "corsheaders",
+    "django_celery_beat",
     "django_filters",
     "djmoney",
     "rest_framework",

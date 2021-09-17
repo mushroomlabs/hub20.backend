@@ -42,7 +42,9 @@ bump2version==1.0.1
 cached-property==1.5.2
     # via py-ecc
 celery==5.1.0
-    # via -r requirements.in
+    # via
+    #   -r requirements.in
+    #   django-celery-beat
 certifi==2020.12.5
     # via requests
 cffi==1.14.5
@@ -93,6 +95,8 @@ defusedxml==0.7.1
     # via python3-openid
 django-allauth==0.44.0
     # via -r requirements.in
+django-celery-beat==2.2.1
+    # via -r requirements.in
 django-cors-headers==3.7.0
     # via -r requirements.in
 django-filter==2.4.0
@@ -109,17 +113,21 @@ django-rest-auth==0.9.5
     # via -r requirements.in
 django-smtp-ssl==1.0
     # via -r requirements.in
+django-timezone-field==4.2.1
+    # via django-celery-beat
 django==3.2.3
     # via
     #   -r requirements.in
     #   channels
     #   django-allauth
+    #   django-celery-beat
     #   django-cors-headers
     #   django-filter
     #   django-model-utils
     #   django-money
     #   django-redis
     #   django-rest-auth
+    #   django-timezone-field
     #   djangorestframework
 djangorestframework==3.12.4
     # via
@@ -287,8 +295,12 @@ pytest==6.2.4
     #   pytest-asyncio
     #   pytest-django
     #   pytest-env
+python-crontab==2.5.1
+    # via django-celery-beat
 python-dateutil==2.8.1
-    # via faker
+    # via
+    #   faker
+    #   python-crontab
 python3-openid==3.2.0
     # via django-allauth
 pytz==2021.1
@@ -296,6 +308,7 @@ pytz==2021.1
     #   babel
     #   celery
     #   django
+    #   django-timezone-field
 pyyaml==5.4.1
     # via ethereum
 raiden-contracts==0.37.6
