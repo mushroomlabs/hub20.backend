@@ -94,9 +94,7 @@ services:
   raiden:
     <<: *development_service
     <<: *raiden_service
-    image: "hub20_raiden:${TAG-latest}"
-    build:
-      context: ./docker/build/raiden
+    image: "mushroomlabs/raiden:${RAIDEN_VERSION:-2.0.0}"
     restart: unless-stopped
     ports:
       - "5001:5001"
@@ -117,6 +115,16 @@ services:
 
   swagger:
     <<: *development_service
+    image: "hub20:${TAG-latest}"
+    build:
+      context: .
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+
     stdin_open: true
     tty: true
     environment:
