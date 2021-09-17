@@ -3,6 +3,7 @@ from typing import Callable
 from django.conf import settings
 from django.conf.urls.static import static
 from django.urls import include, path
+from django.views.generic import TemplateView
 from rest_auth.views import (
     LoginView,
     LogoutView,
@@ -11,6 +12,7 @@ from rest_auth.views import (
     PasswordResetView,
     UserDetailsView,
 )
+from rest_framework.schemas import get_schema_view
 
 from hub20.apps.core.api import urlpatterns as core_urlpatterns
 
@@ -40,4 +42,25 @@ urlpatterns = [
 ]
 
 urlpatterns.extend(core_urlpatterns)
+
+if settings.SERVE_OPENAPI_URLS:
+    urlpatterns.extend(
+        [
+            path(
+                "docs",
+                TemplateView.as_view(
+                    template_name="swagger-ui.html", extra_context={"schema_url": "openapi-schema"}
+                ),
+                name="swagger-ui",
+            ),
+            path(
+                "openapi",
+                get_schema_view(
+                    title="Hub20", description="REST API - Description", version="1.0.0"
+                ),
+                name="openapi-schema",
+            ),
+        ]
+    )
+
 urlpatterns.extend(static(settings.STATIC_URL, document_root=settings.STATIC_ROOT))
