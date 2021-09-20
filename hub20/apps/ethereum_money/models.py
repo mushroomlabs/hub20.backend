@@ -8,7 +8,8 @@ import ethereum
 from django.conf import settings
 from django.db import models
 from django.db.models import Max, Q, Sum
-from eth_wallet import Wallet
+from hdwallet import HDWallet
+from hdwallet.symbols import ETH
 from model_utils.managers import QueryManager
 from web3 import Web3
 from web3.contract import Contract
@@ -139,13 +140,13 @@ class HierarchicalDeterministicWallet(BaseEthereumAccount):
         return bytearray.fromhex(self.private_key)
 
     @classmethod
-    def get_wallet(cls, index: int) -> Wallet:
-        wallet = Wallet()
+    def get_wallet(cls, index: int) -> HDWallet:
+        wallet = HDWallet(symbol=ETH)
 
         if HD_WALLET_MNEMONIC:
             wallet.from_mnemonic(mnemonic=HD_WALLET_MNEMONIC)
         elif HD_WALLET_ROOT_KEY:
-            wallet.from_root_private_key(root_private_key=HD_WALLET_ROOT_KEY)
+            wallet.from_root_xprivate_key(xprivate_key=HD_WALLET_ROOT_KEY)
         else:
             raise ValueError("Can not generate new addresses for HD Wallets. No seed available")
 
@@ -157,7 +158,7 @@ class HierarchicalDeterministicWallet(BaseEthereumAccount):
         latest_generation = cls.get_latest_generation()
         index = 0 if latest_generation is None else latest_generation + 1
         wallet = HierarchicalDeterministicWallet.get_wallet(index)
-        return cls.objects.create(index=index, address=wallet.address())
+        return cls.objects.create(index=index, address=wallet.p2pkh_address())
 
     @classmethod
     def get_latest_generation(cls) -> Optional[int]:

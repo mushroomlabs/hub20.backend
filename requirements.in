@@ -15,13 +15,14 @@ django_smtp_ssl
 django-money
 ethereum
 eth-abi
-eth-wallet
+hdwallet
 mypy_extensions
 psycopg2-binary
 pycoingecko
 pycryptodome
 pyjwt
 raiden_contracts
+uritemplate
 uvicorn
 web3
 
@@ -31,4 +32,3 @@ pytest-asyncio
 pytest-django
 pytest-env
 factory_boy
-uritemplate
