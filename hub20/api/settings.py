@@ -131,6 +131,8 @@ CACHES = {
 # This needs to be set up if you don't have a front-end proxy server
 CORS_ORIGIN_ALLOW_ALL = "HUB20_CORS_HEADERS_ENABLED" in os.environ
 
+# This ensures that requests are seen as secure when the proxy sets the header
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 # Password validation
 # https://docs.djangoproject.com/en/1.9/ref/settings/#auth-password-validators
