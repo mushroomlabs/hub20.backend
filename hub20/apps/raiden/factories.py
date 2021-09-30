@@ -7,10 +7,7 @@ from django.utils import timezone
 from factory import fuzzy
 
 from hub20.apps.blockchain.factories import EthereumProvider
-from hub20.apps.ethereum_money.factories import (
-    Erc20TokenFactory,
-    BaseWalletFactory,
-)
+from hub20.apps.ethereum_money.factories import BaseWalletFactory, Erc20TokenFactory
 
 from . import models
 
@@ -44,6 +41,7 @@ class TokenNetworkFactory(factory.django.DjangoModelFactory):
 
 class RaidenFactory(BaseWalletFactory):
     address = "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+    url = factory.Sequence(lambda n: "http://raiden:{0}".format(5000 + n))
 
     class Meta:
         model = models.Raiden

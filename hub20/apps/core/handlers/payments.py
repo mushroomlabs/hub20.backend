@@ -209,7 +209,7 @@ def on_order_created_set_raiden_route(sender, **kw):
         return
 
     deposit = kw["instance"]
-    raiden = Raiden.get()
+    raiden = Raiden.objects.first()
 
     if raiden and raiden.open_channels.filter(token_network__token=deposit.currency).exists():
         raiden.payment_routes.create(deposit=deposit)

@@ -41,7 +41,7 @@ def make_channel_deposit(order_id: int):
 
     w3 = get_web3()
 
-    client = RaidenClient(account=order.raiden)
+    client = RaidenClient(raiden_account=order.raiden)
     token_amount = EthereumTokenAmount(currency=order.channel.token, amount=order.amount)
 
     chain_balance = get_account_balance(
@@ -63,7 +63,7 @@ def make_channel_withdraw(order_id: int):
         logger.warning(f"Channel Withdraw Order {order_id} not found")
         return
 
-    client = RaidenClient(account=order.raiden)
+    client = RaidenClient(raiden_account=order.raiden)
     token_amount = EthereumTokenAmount(currency=order.channel.token, amount=order.amount)
     channel_balance = order.channel.balance_amount
 
@@ -81,7 +81,7 @@ def join_token_network(order_id: int):
     if not order:
         logger.warning(f"Join Token Network Order {order_id} not found")
 
-    client = RaidenClient(account=order.raiden)
+    client = RaidenClient(raiden_account=order.raiden)
     token_amount = EthereumTokenAmount(currency=order.token_network.token, amount=order.amount)
 
     w3 = get_web3()
@@ -107,5 +107,5 @@ def leave_token_network(order_id: int):
         logger.warning(f"Leave Token Network Order {order_id} not found")
         return
 
-    client = RaidenClient(account=order.raiden)
+    client = RaidenClient(raiden_account=order.raiden)
     client.leave_token_network(token_network=order.token_network)

@@ -131,10 +131,14 @@ django==3.2.3
     #   django-rest-auth
     #   django-timezone-field
     #   djangorestframework
+    #   drf-nested-routers
 djangorestframework==3.12.4
     # via
     #   -r requirements.in
     #   django-rest-auth
+    #   drf-nested-routers
+drf-nested-routers==0.93.3
+    # via -r requirements.in
 ecdsa==0.17.0
     # via hdwallet
 eth-abi==2.1.1

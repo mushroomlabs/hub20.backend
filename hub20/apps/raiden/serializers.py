@@ -1,4 +1,6 @@
 from rest_framework import serializers
+from rest_framework_nested.relations import NestedHyperlinkedIdentityField
+from rest_framework_nested.serializers import NestedHyperlinkedModelSerializer
 
 from hub20.apps.blockchain.client import get_web3
 from hub20.apps.blockchain.serializers import HexadecimalField
@@ -41,7 +43,8 @@ class ServiceDepositSerializer(serializers.ModelSerializer):
     error = serializers.CharField(source="error.message", read_only=True)
 
     def create(self, validated_data):
-        raiden = models.Raiden.get()
+        raiden = models.Raiden.objects.first()
+
         request = self.context.get("request")
         w3 = get_web3()
         token = get_service_token(w3=w3)
@@ -56,8 +59,13 @@ class ServiceDepositSerializer(serializers.ModelSerializer):
         read_only_fields = ("url", "created", "token", "transaction", "error")
 
 
-class ChannelSerializer(serializers.ModelSerializer):
-    url = serializers.HyperlinkedIdentityField(view_name="channel-detail")
+class ChannelSerializer(NestedHyperlinkedModelSerializer):
+    url = NestedHyperlinkedIdentityField(
+        view_name="raiden-channels-detail",
+        parent_lookup_kwargs={
+            "raiden_pk": "raiden_id",
+        },
+    )
     token = HyperlinkedEthereumTokenSerializer(source="token_network.token", read_only=True)
 
     class Meta:
@@ -113,17 +121,18 @@ class ChannelWithdrawSerializer(ChannelManagementSerializer):
 
 
 class RaidenSerializer(serializers.ModelSerializer):
+    url = serializers.HyperlinkedIdentityField(view_name="raiden-detail")
     channels = ChannelSerializer(many=True)
     status = serializers.SerializerMethodField()
 
     def get_status(self, obj):
-        client = RaidenClient(account=obj)
+        client = RaidenClient(raiden_account=obj)
         return client.get_status()
 
     class Meta:
         model = models.Raiden
-        fields = ("address", "channels", "status")
-        read_only_fields = ("address", "channels", "status")
+        fields = ("url", "address", "channels", "status")
+        read_only_fields = ("url", "address", "channels", "status")
 
 
 class JoinTokenNetworkOrderSerializer(serializers.ModelSerializer):
@@ -138,22 +147,22 @@ class JoinTokenNetworkOrderSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         request = self.context["request"]
         token_network = self.get_token_network()
-        raiden = models.Raiden.get()
 
         return self.Meta.model.objects.create(
-            raiden=raiden, token_network=token_network, user=request.user, **validated_data
+            raiden=self.raiden, token_network=token_network, user=request.user, **validated_data
         )
 
-    def validate(self, data):
-        raiden = models.Raiden.get()
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
         token_network = self.get_token_network()
 
-        if token_network in raiden.token_networks:
+        assert isinstance(self.raiden, models.Raiden)
+        if token_network in self.raiden.token_networks:
             raise serializers.ValidationError(
                 f"Already joined token network {token_network.address}"
             )
 
-        return data
+        return attrs
 
     class Meta:
         model = models.JoinTokenNetworkOrder
