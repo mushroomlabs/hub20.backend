@@ -13,6 +13,7 @@ djangorestframework
 django-rest-auth
 django_smtp_ssl
 django-money
+drf-nested-routers
 ethereum
 eth-abi
 hdwallet

@@ -3,13 +3,14 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime
+from types import FunctionType
 from typing import Any, Dict, List, Optional, Union
 
 import requests
 from asgiref.sync import sync_to_async
-from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.utils.timezone import make_aware
+from ethereum.utils import checksum_encode
 from web3.datastructures import AttributeDict
 
 from hub20.apps.blockchain.typing import Address
@@ -23,15 +24,19 @@ logger = logging.getLogger(__name__)
 
 
 def _make_request(url: str, method: str = "GET", **payload: Any) -> Union[List, Dict]:
-    action = {
-        "GET": requests.get,
-        "PATCH": requests.patch,
-        "PUT": requests.put,
-        "POST": requests.post,
-        "DELETE": requests.delete,
-    }[method.upper()]
+    try:
+        action = {
+            "GET": requests.get,
+            "PATCH": requests.patch,
+            "PUT": requests.put,
+            "POST": requests.post,
+            "DELETE": requests.delete,
+        }[method.strip().upper()]
+    except KeyError:
+        raise ValueError(f"{method} is not valid")
 
     try:
+        assert isinstance(action, FunctionType)
         response = action(url, json=payload)
         response.raise_for_status()
         return response.json()
@@ -40,11 +45,10 @@ def _make_request(url: str, method: str = "GET", **payload: Any) -> Union[List, 
 
 
 class RaidenClient:
-    def __init__(self, account: Raiden) -> None:
-        if not settings.HUB20_RAIDEN_ENABLED:
-            raise ValueError("Raiden is not properly configured")
+    URL_BASE_PATH = "/api/v1"
 
-        self.raiden = account
+    def __init__(self, raiden_account: Raiden) -> None:
+        self.raiden = raiden_account
 
     def _parse_payment(self, payment_data: Dict, channel: Channel) -> Optional[AttributeDict]:
         event_name = payment_data.pop("event")
@@ -66,15 +70,40 @@ class RaidenClient:
         return AttributeDict(payment_data)
 
     def _refresh_channel(self, channel: Channel) -> Channel:
-        channel_data = _make_request(channel.url)
+        channel_data = _make_request(self.channel_endpoint(channel=channel))
+        assert isinstance(channel_data, dict)
         Channel.make(channel.raiden, **channel_data)
         channel.refresh_from_db()
         return channel
 
+    @property
+    def raiden_root_endpoint(self) -> str:
+        return f"{self.raiden.url}{self.URL_BASE_PATH}"
+
+    @property
+    def raiden_channel_list_endpoint(self) -> str:
+        return f"{self.raiden_root_endpoint}/channels"
+
+    @property
+    def raiden_token_list_endpoint(self) -> str:
+        return f"{self.raiden_root_endpoint}/tokens"
+
+    def channel_endpoint(self, channel: Channel) -> str:
+        raiden_endpoint = self.raiden_root_endpoint
+        return f"{raiden_endpoint}/channels/{channel.token.address}/{channel.partner_address}"
+
+    def channel_payment_list_endpoint(self, channel: Channel) -> str:
+        raiden_endpoint = self.raiden_root_endpoint
+        return f"{raiden_endpoint}/payments/{channel.token.address}/{channel.partner_address}"
+
+    def token_network_endpoint(self, token_network: TokenNetwork) -> str:
+        raiden_endpoint = self.raiden_root_endpoint
+        return f"{raiden_endpoint}/connections/{token_network.token.address}"
+
     def get_channels(self):
         return [
             Channel.make(self.raiden, **channel_data)
-            for channel_data in _make_request(f"{self.raiden.api_root_url}/channels")
+            for channel_data in _make_request(self.raiden_channel_list_endpoint)
         ]
 
     def get_new_payments(self):
@@ -89,32 +118,39 @@ class RaidenClient:
                 Payment.make(channel, **payment_data)
 
     def get_token_addresses(self):
-        return _make_request(f"{self.raiden.api_root_url}/tokens")
+        return _make_request(self.raiden_token_list_endpoint)
 
     def get_status(self):
         try:
-            response = _make_request(f"{self.raiden.api_root_url}/status")
+            response = _make_request(f"{self.raiden_root_endpoint}/status")
             return response.get("status")
         except RaidenConnectionError:
             return "offline"
 
     def join_token_network(self, token_network: TokenNetwork, amount: EthereumTokenAmount):
-        url = f"{self.raiden.api_root_url}/connections/{token_network.token.address}"
+        url = self.token_network_endpoint(token_network=token_network)
         return _make_request(url, method="PUT", funds=amount.as_wei)
 
     def leave_token_network(self, token_network: TokenNetwork):
-        url = f"{self.raiden.api_root_url}/connections/{token_network.token.address}"
+        url = self.token_network_endpoint(token_network=token_network)
         return _make_request(url, method="DELETE")
 
     def make_channel_deposit(self, channel: Channel, amount: EthereumTokenAmount):
         channel = self._refresh_channel(channel)
         new_deposit = channel.deposit_amount + amount
-        return _make_request(channel.url, method="PATCH", total_deposit=new_deposit.as_wei)
+
+        return _make_request(
+            self.channel_endpoint(channel), method="PATCH", total_deposit=new_deposit.as_wei
+        )
 
     def make_channel_withdraw(self, channel: Channel, amount: EthereumTokenAmount):
         channel = self._refresh_channel(channel)
         new_withdraw = channel.withdraw_amount + amount
-        return _make_request(channel.url, method="PATCH", total_withdraw=new_withdraw.as_wei)
+        return _make_request(
+            self.channel_endpoint(channel=channel),
+            method="PATCH",
+            total_withdraw=new_withdraw.as_wei,
+        )
 
     def _ensure_valid_identifier(self, identifier: Optional[str] = None) -> Optional[int]:
         if not identifier:
@@ -130,9 +166,6 @@ class RaidenClient:
     def transfer(
         self, amount: EthereumTokenAmount, address: Address, identifier: Optional[int] = None, **kw
     ) -> Optional[str]:
-        if not settings.HUB20_RAIDEN_ENABLED:
-            return
-
         url = f"{self.raiden.api_root_url}/payments/{amount.currency.address}/{address}"
 
         payload = dict(amount=amount.as_wei)
@@ -142,6 +175,7 @@ class RaidenClient:
 
         try:
             payment_data = _make_request(url, method="POST", **payload)
+            assert isinstance(payment_data, dict)
             return payment_data.get("identifier")
         except requests.exceptions.HTTPError as error:
             logger.exception(error)
@@ -151,15 +185,24 @@ class RaidenClient:
             raise RaidenPaymentError(error_code=error_code, message=message) from error
 
     @classmethod
+    def get_node_account_address(cls, url) -> Address:
+        response = _make_request(f"{url}{cls.URL_BASE_PATH}/address")
+        assert isinstance(response, dict)
+        return checksum_encode(response.get("our_address"))
+
+    @classmethod
+    def make(cls, url) -> RaidenClient:
+        account_address: Address = cls.get_node_account_address(url)
+        raiden_account, _ = Raiden.objects.get_or_create(address=account_address, url=url)
+        return cls(raiden_account=raiden_account)
+
+    @classmethod
     def select_for_transfer(
         cls,
         amount: EthereumTokenAmount,
         receiver: Optional[User] = None,
         address: Optional[Address] = None,
     ) -> Optional[RaidenClient]:
-        if not settings.HUB20_RAIDEN_ENABLED:
-            return None
-
         if address is None:
             return None
 
@@ -177,22 +220,24 @@ class RaidenClient:
         if not amount.currency.tokennetwork.can_reach(address):
             return None
 
-        return cls(account=Raiden.get())
+        raiden_account = Raiden.objects.first()
+
+        return raiden_account and cls(raiden_account=raiden_account)
 
 
-async def sync_channels(raiden: RaidenClient, **kw):
+async def sync_channels(raiden_client: RaidenClient, **kw):
     while True:
         await asyncio.sleep(30)
         try:
-            await sync_to_async(raiden.get_channels)()
+            await sync_to_async(raiden_client.get_channels)()
         except RaidenConnectionError as exc:
             logger.error(f"Failed to connect to raiden node: {exc}")
 
 
-async def sync_payments(raiden: RaidenClient, **kw):
+async def sync_payments(raiden_client: RaidenClient, **kw):
     while True:
         await asyncio.sleep(5)
         try:
-            await sync_to_async(raiden.get_new_payments)()
+            await sync_to_async(raiden_client.get_new_payments)()
         except RaidenConnectionError as exc:
             logger.error(f"Failed to connect to raiden node: {exc}")

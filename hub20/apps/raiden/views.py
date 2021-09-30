@@ -14,22 +14,30 @@ class BaseRaidenViewMixin:
     permission_classes = (IsAdminUser,)
 
 
+class RaidenViewSet(
+    BaseRaidenViewMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet
+):
+    serializer_class = serializers.RaidenSerializer
+
+    def get_queryset(self, *args, **kw):
+        return models.Raiden.objects.all()
+
+
 class ChannelViewMixin(BaseRaidenViewMixin):
     serializer_class = serializers.ChannelSerializer
 
     def get_queryset(self, *args, **kw):
-        raiden = models.Raiden.get()
-        return raiden and raiden.open_channels or models.Channel.objects.none()
+        return models.Channel.objects.filter(raiden_id=self.kwargs["raiden_pk"])
 
     def get_object(self):
-        return models.Channel.objects.filter(pk=self.kwargs["pk"]).first()
+        return self.get_queryset().filter(pk=self.kwargs["pk"]).first()
 
 
 class ServiceDepositMixin(BaseRaidenViewMixin):
     serializer_class = serializers.ServiceDepositSerializer
 
     def get_queryset(self, *args, **kw):
-        raiden = models.Raiden.get()
+        raiden = models.Raiden.objects.first()
         return raiden and models.UserDepositContractOrder.objects.filter(raiden=raiden)
 
 
@@ -37,7 +45,7 @@ class RaidenView(BaseRaidenViewMixin, generics.RetrieveAPIView):
     serializer_class = serializers.RaidenSerializer
 
     def get_object(self) -> models.Raiden:
-        raiden = models.Raiden.get()
+        raiden = models.Raiden.objects.first()
         if not raiden:
             raise Http404("No raiden node available")
 
@@ -48,7 +56,9 @@ class ChannelViewSet(
     ChannelViewMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet
 ):
     @action(
-        detail=True, methods=["POST"], serializer_class=serializers.ChannelDepositSerializer,
+        detail=True,
+        methods=["POST"],
+        serializer_class=serializers.ChannelDepositSerializer,
     )
     def deposit(self, request, *args, **kw):
         serializer = self.get_serializer(data=request.data)
@@ -59,7 +69,9 @@ class ChannelViewSet(
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @action(
-        detail=True, methods=["POST"], serializer_class=serializers.ChannelWithdrawSerializer,
+        detail=True,
+        methods=["POST"],
+        serializer_class=serializers.ChannelWithdrawSerializer,
     )
     def withdraw(self, request, *args, **kw):
         serializer = self.get_serializer(data=request.data)
@@ -94,9 +106,12 @@ class TokenNetworkViewSet(
     viewsets.GenericViewSet,
 ):
     def destroy(self, request, *args, **kw):
-        models.LeaveTokenNetworkOrder.objects.create(
-            raiden=models.Raiden.get(), user=request.user, token_network=self.get_object()
-        )
+        raiden = models.Raiden.objects.first()
+
+        if raiden:
+            models.LeaveTokenNetworkOrder.objects.create(
+                raiden=raiden, user=request.user, token_network=self.get_object()
+            )
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(

@@ -75,8 +75,10 @@ class Command(BaseCommand):
         for wallet in accounts:
             WalletAccount.objects.get_or_create(account=wallet)
 
-        raiden = Raiden.get()
-        RaidenClientAccount.objects.get_or_create(raiden=raiden)
+        raiden = Raiden.objects.first()
+
+        if raiden is not None:
+            RaidenClientAccount.objects.get_or_create(raiden=raiden)
 
         chain = Chain.make()
         Treasury.objects.get_or_create(chain=chain)
@@ -90,8 +92,10 @@ class Command(BaseCommand):
 
         index_token_events(w3=w3, chain=chain, accounts=accounts, tokens=tokens)
         index_all_token_network_events(w3=w3)
-        get_all_service_deposits(w3=w3, raiden=raiden)
-        get_all_channel_deposits(w3=w3, raiden=raiden)
+
+        if raiden is not None:
+            get_all_service_deposits(w3=w3, raiden=raiden)
+            get_all_channel_deposits(w3=w3, raiden=raiden)
 
         # Ethereum Value Transfers
         for account in accounts:
@@ -133,28 +137,29 @@ class Command(BaseCommand):
                 wallet_book.debits.get_or_create(**params)
 
         # Raiden payments
-        payment_type = ContentType.objects.get_for_model(RaidenPayment)
-        for channel in raiden.channels.all():
-            logger.info(f"Recording entries for {channel}")
-            for payment in channel.payments.all():
-                logger.info(f"Recording entries for {payment}")
-                params = dict(
-                    reference_type=payment_type,
-                    reference_id=payment.id,
-                    amount=payment.amount,
-                    currency=payment.token,
-                )
+        if raiden is not None:
+            payment_type = ContentType.objects.get_for_model(RaidenPayment)
+            for channel in raiden.channels.all():
+                logger.info(f"Recording entries for {channel}")
+                for payment in channel.payments.all():
+                    logger.info(f"Recording entries for {payment}")
+                    params = dict(
+                        reference_type=payment_type,
+                        reference_id=payment.id,
+                        amount=payment.amount,
+                        currency=payment.token,
+                    )
 
-                external_address_account, _ = ExternalAddressAccount.objects.get_or_create(
-                    address=payment.partner_address
-                )
+                    external_address_account, _ = ExternalAddressAccount.objects.get_or_create(
+                        address=payment.partner_address
+                    )
 
-                external_account_book = external_address_account.get_book(token=payment.token)
-                raiden_book = raiden.raiden_account.get_book(token=payment.token)
+                    external_account_book = external_address_account.get_book(token=payment.token)
+                    raiden_book = raiden.raiden_account.get_book(token=payment.token)
 
-                if payment.is_outgoing:
-                    raiden_book.debits.get_or_create(**params)
-                    external_account_book.credits.get_or_create(**params)
-                else:
-                    external_account_book.debits.get_or_create(**params)
-                    raiden_book.credits.get_or_create(**params)
+                    if payment.is_outgoing:
+                        raiden_book.debits.get_or_create(**params)
+                        external_account_book.credits.get_or_create(**params)
+                    else:
+                        external_account_book.debits.get_or_create(**params)
+                        raiden_book.credits.get_or_create(**params)

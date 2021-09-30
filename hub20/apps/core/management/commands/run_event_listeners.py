@@ -8,7 +8,6 @@ from django.utils.module_loading import import_string
 from hub20.apps.blockchain.client import make_web3
 from hub20.apps.core.settings import app_settings
 from hub20.apps.raiden.client.node import RaidenClient
-from hub20.apps.raiden.models import Raiden
 
 from .utils import add_shutdown_handlers
 
@@ -20,10 +19,18 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument(
-            "--handler",
+            "--web3",
             action="extend",
             type=str,
-            dest="handlers",
+            dest="web3_handlers",
+            nargs="*",
+        )
+
+        parser.add_argument(
+            "--raiden",
+            action="extend",
+            type=str,
+            dest="raiden_handlers",
             nargs="*",
         )
 
@@ -32,22 +39,34 @@ class Command(BaseCommand):
 
         add_shutdown_handlers(loop)
 
-        listener_modules = options["handlers"] or app_settings.Hub.event_listeners
+        web3_listener_modules = options["web3_handlers"] or app_settings.Web3.event_listeners
+        raiden_listener_modules = options["raiden_handlers"] or app_settings.Raiden.event_listeners
 
         try:
             tasks = []
 
-            raiden_account = Raiden.get()
+            for listener_dotted_name in set(web3_listener_modules):
+                try:
+                    listener = import_string(listener_dotted_name)
+                    w3 = make_web3(settings.WEB3_PROVIDER_URI)
+                    tasks.append(listener(w3=w3))
+                except ImportError as exc:
+                    logger.exception(f"Failed to import {listener_dotted_name}: {exc}")
 
-            for listener_dotted_name in set(listener_modules):
-                listener = import_string(listener_dotted_name)
-                w3 = make_web3(settings.WEB3_PROVIDER_URI)
-                raiden = RaidenClient(account=raiden_account)
-                tasks.append(listener(w3=w3, raiden=raiden))
+            for listener_dotted_name in set(raiden_listener_modules):
+                try:
+                    listener = import_string(listener_dotted_name)
+
+                    for raiden_url in settings.HUB20_RAIDEN_SERVERS:
+                        raiden_client = RaidenClient.make(url=raiden_url)
+                        w3 = make_web3(settings.WEB3_PROVIDER_URI)
+                        tasks.append(listener(w3=w3, raiden_client=raiden_client))
+                except ImportError as exc:
+                    logger.exception(f"Failed to import {listener_dotted_name}: {exc}")
+                except Exception as exc:
+                    logger.warning(f"Failed to get raiden client at {raiden_url}: {exc}")
 
             asyncio.gather(*tasks)
             loop.run_forever()
-        except ImportError as exc:
-            logger.exception(f"Failed to import {listener_modules}: {exc}")
         finally:
             loop.close()

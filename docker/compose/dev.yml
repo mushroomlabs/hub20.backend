@@ -19,9 +19,7 @@ x-development: &development_service
     HUB20_EMAIL_MAILER_ADDRESS: noreply@hub20.example.com
     HUB20_EMAIL_BACKEND: django.core.mail.backends.console.EmailBackend
     HUB20_SECRET_KEY: base-hub20-secret-key
-    HUB20_RAIDEN_ENABLED: 1
-    HUB20_RAIDEN_API_ADDRESS: http://raiden:5001
-    HUB20_RAIDEN_ACCOUNT_PRIVATE_KEY: "${HUB20_RAIDEN_ACCOUNT_PRIVATE_KEY}"
+    HUB20_RAIDEN_SERVERS: http://raiden:5001
     HUB20_DEBUG: 1
     HUB20_SERVE_OPENAPI_URLS: 1
     HUB20_BLOCKCHAIN_NETWORK_ID: 5

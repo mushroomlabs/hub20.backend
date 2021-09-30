@@ -3,19 +3,18 @@ from __future__ import annotations
 import datetime
 from typing import Optional
 
-from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.postgres.fields import ArrayField
 from django.db import models
 from django.db.models import F, Max
-from ethereum.utils import checksum_encode, privtoaddr
-from hexbytes import HexBytes
+from ethereum.utils import checksum_encode
 from model_utils.choices import Choices
 from model_utils.managers import InheritanceManager, QueryManager
 from model_utils.models import StatusModel, TimeStampedModel
 
 from hub20.apps.blockchain.fields import EthereumAddressField, Uint256Field
 from hub20.apps.blockchain.models import BaseEthereumAccount, Chain, Transaction
+from hub20.apps.blockchain.typing import Address
 from hub20.apps.ethereum_money.app_settings import TRACKED_TOKENS
 from hub20.apps.ethereum_money.models import (
     EthereumToken,
@@ -33,10 +32,6 @@ class TokenNetwork(models.Model):
     token = models.OneToOneField(EthereumToken, on_delete=models.CASCADE)
     objects = models.Manager()
     tracked = QueryManager(token__address__in=TRACKED_TOKENS)
-
-    @property
-    def url(self):
-        return f"{self.raiden.api_root_url}/tokens/{self.address}"
 
     def can_reach(self, address) -> bool:
         # This is a very naive assumption. One should not assume that we can
@@ -105,16 +100,11 @@ class TokenNetworkChannelEvent(models.Model):
 
 
 class Raiden(BaseEthereumAccount):
+    url = models.URLField(unique=True)
+
     @property
     def private_key(self):
-        if not settings.HUB20_RAIDEN_ENABLED:
-            return None
-
-        return settings.HUB20_RAIDEN_ACCOUNT_PRIVATE_KEY
-
-    @property
-    def api_root_url(self):
-        return f"{settings.HUB20_RAIDEN_URL}/api/v1"
+        return None
 
     @property
     def token_networks(self):
@@ -138,23 +128,13 @@ class Raiden(BaseEthereumAccount):
     def payments_sent(self):
         return Payment.sent.filter(channel__raiden=self)
 
-    @staticmethod
-    def get() -> Optional[Raiden]:
-        if not settings.HUB20_RAIDEN_ENABLED:
-            return None
-
-        return Raiden.objects.first() or Raiden.generate()
-
     @classmethod
-    def generate(cls):
-        private_key = HexBytes(settings.HUB20_RAIDEN_ACCOUNT_PRIVATE_KEY)
-        raiden, _ = cls.objects.get_or_create(
-            address=checksum_encode(privtoaddr(private_key).hex()),
-        )
+    def generate(cls, address: Address, url: str):
+        raiden, _ = cls.objects.get_or_create(address=checksum_encode(address).hex(), url=url)
         return raiden
 
     def __str__(self):
-        return f"Raiden @ {self.address}"
+        return f"Raiden @ {self.url} ({self.address})"
 
 
 class Channel(StatusModel):
