@@ -1,5 +1,4 @@
 from django.db.models.query import QuerySet
-from django.http import Http404
 from rest_framework import generics, mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAdminUser
@@ -39,17 +38,6 @@ class ServiceDepositMixin(BaseRaidenViewMixin):
     def get_queryset(self, *args, **kw):
         raiden = models.Raiden.objects.first()
         return raiden and models.UserDepositContractOrder.objects.filter(raiden=raiden)
-
-
-class RaidenView(BaseRaidenViewMixin, generics.RetrieveAPIView):
-    serializer_class = serializers.RaidenSerializer
-
-    def get_object(self) -> models.Raiden:
-        raiden = models.Raiden.objects.first()
-        if not raiden:
-            raise Http404("No raiden node available")
-
-        return raiden
 
 
 class ChannelViewSet(
