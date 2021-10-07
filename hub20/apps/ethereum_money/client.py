@@ -314,6 +314,44 @@ def process_erc20_approval_event(
         account.transactions.add(transaction)
 
 
+def process_incoming_eth_transfer(w3: Web3, account: EthereumAccount_T, tx_data):
+    chain_id = int(w3.net.version)
+    chain = Chain.make(chain_id=chain_id)
+    ETH = EthereumToken.ETH(chain=chain)
+    amount = ETH.from_wei(tx_data.value)
+
+    transaction = get_transaction_by_hash(w3=w3, transaction_hash=tx_data.hash)
+    if transaction:
+        account.transactions.add(transaction)
+        incoming_transfer_mined.send(
+            sender=Transaction,
+            account=account,
+            token=ETH,
+            amount=amount,
+            transaction=transaction,
+            address=tx_data["from"],
+        )
+
+
+def process_outgoing_eth_transfer(w3: Web3, account: EthereumAccount_T, tx_data):
+    chain_id = int(w3.net.version)
+    chain = Chain.make(chain_id=chain_id)
+    ETH = EthereumToken.ETH(chain=chain)
+    amount = ETH.from_wei(tx_data.value)
+
+    transaction = get_transaction_by_hash(w3=w3, transaction_hash=tx_data.hash)
+    if transaction:
+        account.transactions.add(transaction)
+        outgoing_transfer_mined.send(
+            sender=Transaction,
+            account=account,
+            token=ETH,
+            amount=amount,
+            transaction=transaction,
+            address=tx_data.to,
+        )
+
+
 def process_incoming_erc20_transfer_event(
     w3: Web3, token: EthereumToken, account: EthereumAccount_T, event
 ):
@@ -446,13 +484,9 @@ class EthereumClient:
 async def listen_eth_transfers(w3: Web3, **kw):
     await sync_to_async(wait_for_connection)(w3)
     block_filter = w3.eth.filter("latest")
-    chain_id = int(w3.net.version)
 
     while True:
-        chain = await sync_to_async(Chain.make)(chain_id=chain_id)
         accounts = await sync_to_async(list)(BaseEthereumAccount.objects.all())
-        ETH = await sync_to_async(EthereumToken.ETH)(chain=chain)
-
         accounts_by_address = {account.address: account for account in accounts}
 
         for block_hash in block_filter.get_new_entries():
@@ -465,40 +499,21 @@ async def listen_eth_transfers(w3: Web3, **kw):
                 recipient_address = tx_data.to
 
                 is_ETH_transfer = tx_data.value != 0
-                tx_hash = tx_data.hash
 
                 if not is_ETH_transfer:
                     continue
 
-                amount = ETH.from_wei(tx_data.value)
-
                 if sender_address in accounts_by_address.keys():
                     account = accounts_by_address.get(sender_address)
-                    transaction = get_transaction_by_hash(w3=w3, transaction_hash=tx_hash)
-                    if transaction:
-                        account.transactions.add(transaction)
-                        outgoing_transfer_mined.send(
-                            sender=Transaction,
-                            account=account,
-                            token=ETH,
-                            amount=amount,
-                            transaction=transaction,
-                            address=recipient_address,
-                        )
+                    await sync_to_async(process_outgoing_eth_transfer)(
+                        w3=w3, account=account, tx_data=tx_data
+                    )
 
                 elif recipient_address in accounts_by_address.keys():
                     account = accounts_by_address.get(recipient_address)
-                    transaction = get_transaction_by_hash(w3=w3, transaction_hash=tx_hash)
-                    if transaction:
-                        account.transactions.add(transaction)
-                        incoming_transfer_mined.send(
-                            sender=Transaction,
-                            account=account,
-                            token=ETH,
-                            amount=amount,
-                            transaction=transaction,
-                            address=sender_address,
-                        )
+                    await sync_to_async(process_incoming_eth_transfer)(
+                        w3=w3, account=account, tx_data=tx_data
+                    )
 
         await asyncio.sleep(BLOCK_CREATION_INTERVAL)
 
