@@ -152,14 +152,6 @@ class Channel(StatusModel):
     available = QueryManager(status=STATUS.opened)
 
     @property
-    def url(self):
-        return f"{self.raiden.api_root_url}/channels/{self.token.address}/{self.partner_address}"
-
-    @property
-    def payments_url(self):
-        return f"{self.raiden.api_root_url}/payments/{self.token.address}/{self.partner_address}"
-
-    @property
     def token(self):
         return self.token_network.token
 
@@ -236,10 +228,6 @@ class Payment(models.Model):
     objects = models.Manager()
     sent = QueryManager(sender_address=F("channel__raiden__address"))
     received = QueryManager(receiver_address=F("channel__raiden__address"))
-
-    @property
-    def url(self):
-        return f"{self.raiden.api_root_url}/{self.token.address}/{self.partner_address}"
 
     @property
     def token(self):
