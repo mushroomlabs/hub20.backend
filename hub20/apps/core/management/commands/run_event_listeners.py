@@ -39,8 +39,14 @@ class Command(BaseCommand):
 
         add_shutdown_handlers(loop)
 
-        web3_listener_modules = options["web3_handlers"] or app_settings.Web3.event_listeners
-        raiden_listener_modules = options["raiden_handlers"] or app_settings.Raiden.event_listeners
+        custom_handlers = any((bool(options["web3_handlers"]), bool(options["raiden_handlers"])))
+
+        if custom_handlers:
+            web3_listener_modules = options["web3_handlers"] or []
+            raiden_listener_modules = options["raiden_handlers"] or []
+        else:
+            web3_listener_modules = app_settings.Web3.event_listeners
+            raiden_listener_modules = app_settings.Raiden.event_listeners
 
         try:
             tasks = []
