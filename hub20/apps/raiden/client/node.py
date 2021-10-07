@@ -109,7 +109,9 @@ class RaidenClient:
     def get_new_payments(self):
         for channel in self.raiden.channels.all():
             offset = channel.payments.count()
-            events = _make_request(channel.payments_url, offset=offset)
+            events = _make_request(
+                self.channel_payment_list_endpoint(channel=channel), offset=offset
+            )
             assert type(events) is list
 
             payments = [self._parse_payment(ev, channel) for ev in events]
@@ -123,6 +125,7 @@ class RaidenClient:
     def get_status(self):
         try:
             response = _make_request(f"{self.raiden_root_endpoint}/status")
+            assert type(response) is dict
             return response.get("status")
         except RaidenConnectionError:
             return "offline"
@@ -166,7 +169,7 @@ class RaidenClient:
     def transfer(
         self, amount: EthereumTokenAmount, address: Address, identifier: Optional[int] = None, **kw
     ) -> Optional[str]:
-        url = f"{self.raiden.api_root_url}/payments/{amount.currency.address}/{address}"
+        url = f"{self.raiden_root_endpoint}/payments/{amount.currency.address}/{address}"
 
         payload = dict(amount=amount.as_wei)
 
