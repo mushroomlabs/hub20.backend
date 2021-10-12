@@ -1,4 +1,5 @@
 import logging
+from typing import Optional
 
 from django.conf import settings
 from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
@@ -16,9 +17,9 @@ from hub20.apps.ethereum_money.models import (
     BaseEthereumAccount,
     EthereumToken,
     EthereumTokenAmount,
+    EthereumTokenAmountField,
     EthereumTokenValueModel,
 )
-from hub20.apps.ethereum_money.models import EthereumTokenAmountField
 from hub20.apps.raiden.models import Raiden
 
 logger = logging.getLogger(__name__)
@@ -79,9 +80,12 @@ class DoubleEntryAccountModel(models.Model):
         book, _ = self.books.get_or_create(token=token)
         return book
 
-    def get_balance(self, token: EthereumToken):
-        token = self.get_balances().filter(id=token.id).first()
-        return token and EthereumTokenAmount(amount=token.balance, currency=token)
+    def get_balance_token_amount(self, token: EthereumToken) -> Optional[EthereumTokenAmount]:
+        balance = self.get_balance(token=token)
+        return balance and EthereumTokenAmount(currency=token, amount=balance.balance)
+
+    def get_balance(self, token: EthereumToken) -> Optional[EthereumToken]:
+        return self.get_balances().filter(id=token.id).first()
 
     def get_balances(self) -> QuerySet:
         total_sum = Coalesce(Sum("amount"), 0, output_field=EthereumTokenAmountField())
