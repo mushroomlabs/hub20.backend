@@ -86,8 +86,8 @@ class BlockchainPaymentTestCase(BaseTestCase):
         block_data = BlockMock(number=block_number)
         block_sealed.send(sender=Block, block_data=block_data)
 
-        balance = self.order.user.account.get_balance(self.order.currency)
-        self.assertEqual(balance, self.order.as_token_amount)
+        balance_amount = self.order.user.account.get_balance_token_amount(self.order.currency)
+        self.assertEqual(balance_amount, self.order.as_token_amount)
 
 
 class CheckoutTestCase(BaseTestCase):
@@ -185,8 +185,8 @@ class InternalTransferTestCase(TransferTestCase):
         transfer.execute()
         self.assertTrue(transfer.is_finalized)
 
-        sender_balance = self.sender_account.get_balance(self.credit.currency)
-        receiver_balance = self.receiver_account.get_balance(self.credit.currency)
+        sender_balance = self.sender_account.get_balance_token_amount(self.credit.currency)
+        receiver_balance = self.receiver_account.get_balance_token_amount(self.credit.currency)
 
         self.assertEqual(sender_balance.amount, 0)
         self.assertEqual(receiver_balance, self.credit)
@@ -243,7 +243,10 @@ class TransferAccountingTestcase(TransferTestCase):
             transfer=transfer, canceled_by=self.sender
         )
 
-        self.assertEqual(self.sender.account.get_balance(token=self.credit.currency), self.credit)
+        sender_balance_amount = self.sender.account.get_balance_token_amount(
+            token=self.credit.currency
+        )
+        self.assertEqual(sender_balance_amount, self.credit)
         last_treasury_debit = treasury.debits.last()
 
         self.assertEqual(last_treasury_debit.reference, cancellation)

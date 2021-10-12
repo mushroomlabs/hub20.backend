@@ -145,9 +145,7 @@ class TransferView(generics.RetrieveAPIView):
 
     def get_object(self):
         try:
-            return models.Transfer.objects.get_subclass(
-                pk=self.kwargs.get("pk"), sender=self.request.user
-            )
+            return models.Transfer.objects.get(pk=self.kwargs.get("pk"), sender=self.request.user)
         except models.Transfer.DoesNotExist:
             raise Http404
 

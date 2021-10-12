@@ -124,6 +124,7 @@ class Block(models.Model):
 
 
 class Transaction(models.Model):
+    chain = models.ForeignKey(Chain, on_delete=models.CASCADE, related_name="transactions")
     block = models.ForeignKey(Block, on_delete=models.CASCADE, related_name="transactions")
     hash = HexField(max_length=64, db_index=True)
     from_address = EthereumAddressField(db_index=True)
@@ -141,6 +142,13 @@ class Transaction(models.Model):
     def hash_hex(self):
         return self.hash if type(self.hash) is str else self.hash.hex()
 
+    @property
+    def gas_fee(self) -> Uint256Field:
+        return self.gas_used * self.gas_price
+
+    def __str__(self) -> str:
+        return f"Tx {self.hash_hex}"
+
     @classmethod
     def make(cls, tx_data, tx_receipt, block: Block):
         try:
@@ -157,6 +165,7 @@ class Transaction(models.Model):
         tx, _ = cls.objects.get_or_create(
             hash=tx_receipt.transactionHash,
             block=block,
+            chain=block.chain,
             defaults={
                 "from_address": tx_receipt["from"],
                 "to_address": tx_receipt.to,
@@ -174,12 +183,8 @@ class Transaction(models.Model):
 
         return tx
 
-    @property
-    def gas_fee(self) -> Uint256Field:
-        return self.gas_used * self.gas_price
-
-    def __str__(self) -> str:
-        return f"Tx {self.hash_hex}"
+    class Meta:
+        unique_together = ("hash", "chain")
 
 
 class TransactionLog(models.Model):

@@ -164,7 +164,7 @@ class Transfer(TimeStampedModel, EthereumTokenValueModel):
             # creation. This check here just enforces that the transfer is not
             # doing double spend of reserved funds.
             sender_account_balance = self.sender.account.get_balance(token=self.currency)
-            if sender_account_balance.amount < 0:
+            if sender_account_balance.balance < 0:
                 raise TransferError("Insufficient balance")
 
             executor = self.get_executor()
