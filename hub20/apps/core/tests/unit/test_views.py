@@ -54,6 +54,26 @@ class UserViewTestCase(TestCase):
         self.assertEqual(len(email_query_response.data), 2)
 
 
+class TokenBalanceViewTestCase(TestCase):
+    def setUp(self):
+        self.token = Erc20TokenFactory()
+        self.user = factories.UserFactory()
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+    def test_balance_list_includes_token(self):
+        response = self.client.get(reverse("balance-list"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+
+    def test_balance_view(self):
+        response = self.client.get(
+            reverse("balance-detail", kwargs={"address": self.token.address})
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["address"], self.token.address)
+
+
 class CheckoutViewTestCase(TestCase):
     def setUp(self):
         self.token = Erc20TokenFactory()
