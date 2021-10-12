@@ -74,6 +74,7 @@ class BlockFactory(factory.django.DjangoModelFactory):
 
 
 class TransactionFactory(factory.django.DjangoModelFactory):
+    chain = factory.LazyAttribute(lambda obj: obj.block.chain)
     block = factory.SubFactory(BlockFactory)
     hash = factory.Faker("hex64")
     from_address = factory.Faker("ethereum_address")
