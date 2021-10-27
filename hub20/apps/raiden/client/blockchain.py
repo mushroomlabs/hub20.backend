@@ -490,13 +490,13 @@ async def listen_service_deposits(w3: Web3, **kw):
         )
 
 
-async def listen_token_network_events(w3: Web3, raiden: RaidenClient, **kw):
+async def listen_token_network_events(w3: Web3, raiden_client: RaidenClient, **kw):
     while True:
         await sync_to_async(wait_for_connection)(w3)
         token_networks = await sync_to_async(list)(TokenNetwork.objects.all())
         for token_network in token_networks:
             event_filter = await sync_to_async(TokenNetworkEventFilterRegistry.get)(
-                token_network=token_network, w3=w3, raiden=raiden.raiden
+                token_network=token_network, w3=w3, raiden=raiden_client.raiden
             )
 
             for event in event_filter.opened_channel_filter.get_new_entries():
@@ -512,17 +512,17 @@ async def listen_token_network_events(w3: Web3, raiden: RaidenClient, **kw):
         await asyncio.sleep(BLOCK_CREATION_INTERVAL)
 
 
-async def listen_channel_deposits(w3: Web3, raiden: RaidenClient, **kw):
+async def listen_channel_deposits(w3: Web3, raiden_client: RaidenClient, **kw):
     while True:
         await sync_to_async(wait_for_connection)(w3)
         token_networks = await sync_to_async(list)(TokenNetwork.objects.all())
         for token_network in token_networks:
             logger.info("Checking for deposits done on {}".format(token_network.address))
             contract_manager = await sync_to_async(TokenNetworkEventFilterRegistry.get)(
-                token_network=token_network, w3=w3, raiden=raiden.raiden
+                token_network=token_network, w3=w3, raiden=raiden_client.raiden
             )
             for event in contract_manager.channel_deposit_filter.get_new_entries():
                 await sync_to_async(process_channel_deposit_event)(
-                    w3=w3, raiden=raiden, token_network=token_network, event=event
+                    w3=w3, raiden=raiden_client.raiden, token_network=token_network, event=event
                 )
         await asyncio.sleep(BLOCK_CREATION_INTERVAL)
