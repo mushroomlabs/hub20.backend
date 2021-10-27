@@ -284,7 +284,7 @@ def process_pending_erc20_transfer(w3: Web3, token: EthereumToken, account: Ethe
             sender=EthereumToken,
             account=account,
             amount=token.from_wei(event.args._value),
-            transaction_hash=event.transactionHash,
+            transaction_hash=event.transactionHash.hex(),
         )
 
     for event in event_filter.pending_outgoing_transfers.get_new_entries():
@@ -297,7 +297,7 @@ def process_pending_erc20_transfer(w3: Web3, token: EthereumToken, account: Ethe
             sender=EthereumToken,
             account=account,
             amount=token.from_wei(event.args._value),
-            transaction_hash=event.transactionHash,
+            transaction_hash=event.transactionHash.hex(),
         )
 
 
