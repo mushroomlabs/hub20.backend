@@ -371,6 +371,13 @@ class StoreSerializer(serializers.ModelSerializer):
         lookup_field="address",
     )
 
+    class Meta:
+        model = models.Store
+        fields = ("id", "url", "name", "site_url", "public_key", "accepted_currencies")
+        read_only_fields = ("id", "public_key")
+
+
+class StoreEditorSerializer(StoreSerializer):
     def create(self, validated_data):
         request = self.context.get("request")
         currencies = validated_data.pop("accepted_currencies", [])
@@ -380,8 +387,8 @@ class StoreSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = models.Store
-        fields = ("id", "url", "name", "site_url", "public_key", "accepted_currencies")
-        read_only_fields = ("id", "public_key")
+        fields = StoreSerializer.Meta.fields + ("checkout_webhook_url",)
+        read_only_fields = StoreSerializer.Meta.read_only_fields
 
 
 class BookEntrySerializer(serializers.ModelSerializer):

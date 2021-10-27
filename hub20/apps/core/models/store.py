@@ -17,7 +17,8 @@ class Store(models.Model):
     id = models.UUIDField(default=uuid.uuid4, primary_key=True)
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     name = models.CharField(max_length=300)
-    url = models.URLField()
+    url = models.URLField(help_text="URL for your store public site or information page")
+    checkout_webhook_url = models.URLField(null=True, help_text="URL to receive checkout updates")
     accepted_currencies = models.ManyToManyField(EthereumToken)
 
     def __str__(self):

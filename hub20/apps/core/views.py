@@ -19,6 +19,7 @@ from hub20.apps.blockchain.serializers import ChainSerializer
 from hub20.apps.ethereum_money.models import EthereumToken
 
 from . import models, serializers
+from .permissions import IsStoreOwnerOrAnonymousReadOnly
 
 User = get_user_model()
 
@@ -209,18 +210,28 @@ class PaymentViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
 
 
 class StoreViewSet(ModelViewSet):
-    permission_classes = (IsAuthenticated,)
-    serializer_class = serializers.StoreSerializer
-
     def get_permissions(self):
-        perms = (AllowAny,) if self.action == "retrieve" else (IsAuthenticated,)
-        return (perm() for perm in perms)
+        return (
+            (IsAuthenticated(),) if self.action == "list" else (IsStoreOwnerOrAnonymousReadOnly(),)
+        )
+
+    def get_serializer_class(self):
+        return (
+            serializers.StoreEditorSerializer
+            if self.request.user.is_authenticated
+            else serializers.StoreSerializer
+        )
 
     def get_queryset(self) -> QuerySet:
-        return self.request.user.store_set.all()
+        try:
+            return self.request.user.store_set.all()
+        except AttributeError:
+            return models.Store.objects.none()
 
     def get_object(self, *args, **kw):
-        return get_object_or_404(models.Store, id=self.kwargs["pk"])
+        store = get_object_or_404(models.Store, id=self.kwargs["pk"])
+        self.check_object_permissions(self.request, store)
+        return store
 
 
 class UserViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
