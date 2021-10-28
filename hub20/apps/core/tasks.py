@@ -1,5 +1,6 @@
 import logging
 
+import httpx
 from asgiref.sync import async_to_sync
 from celery import shared_task
 from channels.layers import get_channel_layer
@@ -8,7 +9,7 @@ from django.contrib.sessions.models import Session
 from django.utils import timezone
 
 from .consumers import CheckoutConsumer, SessionEventsConsumer
-from .models import Transfer
+from .models import Checkout, Transfer
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -48,6 +49,31 @@ def publish_checkout_event(checkout_id, event="checkout.event", **event_data):
     event_data.update({"type": "checkout_event", "event_name": event})
 
     async_to_sync(layer.group_send)(channel_group_name, event_data)
+
+
+@shared_task
+def call_checkout_webhook(checkout_id):
+    try:
+        checkout = Checkout.objects.get(id=checkout_id)
+        url = checkout.store.checkout_webhook_url
+
+        if not url:
+            logger.info(f"Checkout {checkout_id} does not have a url")
+            return
+
+        try:
+            voucher_data = checkout.voucher_data
+            voucher_data.update(dict(encoded=checkout.store.issue_jwt(**voucher_data)))
+            response = httpx.post(url, json=voucher_data)
+            response.raise_for_status()
+        except httpx.ConnectError:
+            logger.warning(f"Failed to connect to {url}")
+        except httpx.HTTPError as exc:
+            logger.exception(f"Webhook {url} for {checkout_id} resulted in error: {exc}")
+        except Exception as exc:
+            logger.exception(f"Failed to call webhook at {url} for {checkout_id}: {exc}")
+    except Checkout.DoesNotExist:
+        logger.info(f"Checkout {checkout_id} does not exist")
 
 
 @shared_task

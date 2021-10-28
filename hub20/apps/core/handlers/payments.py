@@ -280,6 +280,23 @@ def on_off_chain_payment_create_confirmation(sender, **kw):
         PaymentConfirmation.objects.create(payment=kw["instance"])
 
 
+@receiver(payment_received, sender=BlockchainPayment)
+def on_blockchain_payment_received_call_checkout_webhooks(sender, **kw):
+    pay = kw["payment"]
+
+    for checkout_id in Checkout.objects.filter(routes__payment=pay).values_list("id", flat=True):
+        tasks.call_checkout_webhook.delay(checkout_id)
+
+
+@receiver(post_save, sender=PaymentConfirmation)
+def on_payment_confirmed_call_checkout_webhooks(sender, **kw):
+    confirmation = kw["instance"]
+
+    checkouts = Checkout.objects.filter(routes__payment__confirmation=confirmation)
+    for checkout_id in checkouts.values_list("id", flat=True):
+        tasks.call_checkout_webhook.delay(checkout_id)
+
+
 @receiver(post_save, sender=PaymentConfirmation)
 def on_payment_confirmed_publish_checkout(sender, **kw):
     if not kw["created"]:
@@ -331,6 +348,8 @@ __all__ = [
     "on_block_created_check_confirmed_payments",
     "on_block_sealed_check_confirmed_payments",
     "on_blockchain_payment_received_send_notification",
+    "on_blockchain_payment_received_call_checkout_webhooks",
     "on_off_chain_payment_create_confirmation",
+    "on_payment_confirmed_call_checkout_webhooks",
     "on_payment_confirmed_publish_checkout",
 ]

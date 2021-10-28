@@ -21,6 +21,17 @@ class Store(models.Model):
     checkout_webhook_url = models.URLField(null=True, help_text="URL to receive checkout updates")
     accepted_currencies = models.ManyToManyField(EthereumToken)
 
+    def issue_jwt(self, **data):
+        data.update(
+            {
+                "iat": datetime.datetime.utcnow(),
+                "iss": str(self.id),
+            }
+        )
+
+        private_key = self.rsa.private_key_pem.encode()
+        return jwt.encode(data, private_key, algorithm="RS256")
+
     def __str__(self):
         return f"{self.name} ({self.url})"
 
@@ -51,39 +62,38 @@ class Checkout(PaymentOrder):
     external_identifier = models.TextField()
     requester_ip = models.GenericIPAddressField(null=True)
 
+    @property
+    def voucher_data(self):
+        return {
+            "checkout_id": str(self.id),
+            "external_identifier": self.external_identifier,
+            "token": {"symbol": self.currency.code, "address": self.currency.address},
+            "payments": [
+                {
+                    "id": str(p.id),
+                    "amount": str(p.amount),
+                    "confirmed": p.is_confirmed,
+                    "identifier": p.identifier,
+                    "route": p.route.get_route_name(),
+                }
+                for p in self.payments
+            ],
+            "total_amount": str(self.amount),
+            "total_confirmed": str(self.total_confirmed),
+            "is_paid": self.is_paid,
+            "is_confirmed": self.is_confirmed,
+        }
+
+    @property
+    def voucher(self):
+        return self.store.issue_jwt(**self.voucher_data)
+
     def clean(self):
         if self.store.owner != self.user:
             raise ValidationError("Creator of payment order must be the same as store owner")
 
         if self.currency not in self.store.accepted_currencies.all():
             raise ValidationError(f"{self.store.name} does not accept payment in {self.currency}")
-
-    def issue_voucher(self, **data):
-        data.update(
-            {
-                "iat": datetime.datetime.utcnow(),
-                "iss": self.external_identifier,
-                "checkout_id": str(self.id),
-                "token": {"symbol": self.currency.code, "address": self.currency.address},
-                "payments": [
-                    {
-                        "id": str(p.id),
-                        "amount": str(p.amount),
-                        "confirmed": p.is_confirmed,
-                        "identifier": p.identifier,
-                        "route": p.route.get_route_name(),
-                    }
-                    for p in self.payments
-                ],
-                "total_amount": str(self.amount),
-                "total_confirmed": str(self.total_confirmed),
-                "is_paid": self.is_paid,
-                "is_confirmed": self.is_confirmed,
-            }
-        )
-
-        private_key = self.store.rsa.private_key_pem.encode()
-        return jwt.encode(data, private_key, algorithm="RS256")
 
 
 __all__ = ["Store", "StoreRSAKeyPair", "Checkout"]

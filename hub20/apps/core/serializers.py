@@ -240,7 +240,7 @@ class RaidenPaymentSerializer(PaymentSerializer):
 
 
 class DepositSerializer(serializers.ModelSerializer):
-    url = serializers.HyperlinkedIdentityField(view_name="deposit-detail")
+
     token = EthereumTokenSelectorField(source="currency")
     routes = serializers.SerializerMethodField()
     payments = serializers.SerializerMethodField()
@@ -272,7 +272,6 @@ class DepositSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.Deposit
         fields = (
-            "url",
             "id",
             "token",
             "created",
@@ -283,14 +282,31 @@ class DepositSerializer(serializers.ModelSerializer):
         read_only_fields = ("id", "created", "status")
 
 
+class HttpDepositSerializer(DepositSerializer):
+    url = serializers.HyperlinkedIdentityField(view_name="deposit-detail")
+
+    class Meta:
+        model = DepositSerializer.Meta.model
+        fields = ("url",) + DepositSerializer.Meta.fields
+        read_only_fields = DepositSerializer.Meta.read_only_fields
+
+
 class PaymentOrderSerializer(DepositSerializer):
-    url = serializers.HyperlinkedIdentityField(view_name="payment-order-detail")
     amount = TokenValueField()
 
     class Meta:
         model = models.PaymentOrder
         fields = DepositSerializer.Meta.fields + ("amount",)
         read_only_fields = DepositSerializer.Meta.read_only_fields
+
+
+class HttpPaymentOrderSerializer(PaymentOrderSerializer):
+    url = serializers.HyperlinkedIdentityField(view_name="payment-order-detail")
+
+    class Meta:
+        model = PaymentOrderSerializer.Meta.model
+        fields = PaymentOrderSerializer.Meta.fields + ("url",)
+        read_only_fields = PaymentOrderSerializer.Meta.read_only_fields
 
 
 class PaymentOrderReadSerializer(PaymentOrderSerializer):
@@ -314,7 +330,6 @@ class PaymentConfirmationSerializer(serializers.ModelSerializer):
 
 class CheckoutSerializer(PaymentOrderSerializer):
     store = serializers.PrimaryKeyRelatedField(queryset=models.Store.objects.all())
-    voucher = serializers.SerializerMethodField()
 
     def validate(self, data):
         currency = data["currency"]
@@ -337,9 +352,6 @@ class CheckoutSerializer(PaymentOrderSerializer):
                 requester_ip=client_ip,
                 **validated_data,
             )
-
-    def get_voucher(self, obj):
-        return obj.issue_voucher()
 
     class Meta:
         model = models.Checkout
