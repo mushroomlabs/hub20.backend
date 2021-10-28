@@ -18,6 +18,27 @@ class StoreViewTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["id"], str(self.store.id))
 
+    def test_anonymous_user_can_not_list_stores(self):
+        url = reverse("store-list")
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 401)
+
+    def test_only_store_owner_can_see_store(self):
+        url = reverse("store-detail", kwargs={"pk": self.store.pk})
+        self.client.force_authenticate(user=self.store.owner)
+        self.client.get(url)
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["id"], str(self.store.id))
+
+    def test_non_owner_can_not_see_store(self):
+        url = reverse("store-detail", kwargs={"pk": self.store.pk})
+        another_user = factories.UserFactory()
+        self.client.force_authenticate(user=another_user)
+
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 403)
+
 
 class UserViewTestCase(TestCase):
     def setUp(self):

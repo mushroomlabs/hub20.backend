@@ -4,6 +4,8 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.urls import include, path
 from django.views.generic import TemplateView
+from drf_yasg import openapi
+from drf_yasg.views import get_schema_view
 from rest_auth.views import (
     LoginView,
     LogoutView,
@@ -12,7 +14,7 @@ from rest_auth.views import (
     PasswordResetView,
     UserDetailsView,
 )
-from rest_framework.schemas import get_schema_view
+from rest_framework.permissions import AllowAny
 
 from hub20.apps.core.api import urlpatterns as core_urlpatterns
 
@@ -44,6 +46,16 @@ urlpatterns = [
 urlpatterns.extend(core_urlpatterns)
 
 if settings.SERVE_OPENAPI_URLS:
+    schema_view = get_schema_view(
+        openapi.Info(
+            title="Hub20",
+            description="REST API - Description",
+            default_version="1.0.0",
+        ),
+        public=True,
+        permission_classes=(AllowAny,),
+    )
+
     urlpatterns.extend(
         [
             path(
@@ -55,9 +67,7 @@ if settings.SERVE_OPENAPI_URLS:
             ),
             path(
                 "openapi",
-                get_schema_view(
-                    title="Hub20", description="REST API - Description", version="1.0.0"
-                ),
+                schema_view.without_ui(),
                 name="openapi-schema",
             ),
         ]

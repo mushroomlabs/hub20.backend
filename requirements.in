@@ -14,9 +14,11 @@ django-rest-auth
 django_smtp_ssl
 django-money
 drf-nested-routers
+drf-yasg
 ethereum
 eth-abi
 hdwallet
+httpx
 mypy_extensions
 psycopg2-binary
 pycoingecko

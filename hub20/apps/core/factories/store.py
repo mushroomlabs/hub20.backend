@@ -10,6 +10,7 @@ class StoreFactory(factory.django.DjangoModelFactory):
     owner = factory.SubFactory(UserFactory)
     name = factory.Sequence(lambda n: f"Store #{n:02}")
     url = factory.Sequence(lambda n: f"https://store#{n:02}.example.com")
+    checkout_webhook_url = factory.Sequence(lambda n: f"https://store#{n:02}.example.com/checkout")
 
     @factory.post_generation
     def accepted_currencies(self, create, currencies, **kw):
