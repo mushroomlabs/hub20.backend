@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 
 from asgiref.sync import sync_to_async
 from django.conf import settings
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Avg
 from hexbytes import HexBytes
 from web3 import Web3
@@ -146,11 +146,17 @@ def get_transaction_by_hash(
 
         assert block is not None
 
-        return Transaction.make(
-            tx_data=tx_data,
-            tx_receipt=w3.eth.getTransactionReceipt(transaction_hash),
-            block=block,
-        )
+        try:
+            with transaction.atomic():
+                return Transaction.make(
+                    tx_data=tx_data,
+                    tx_receipt=w3.eth.getTransactionReceipt(transaction_hash),
+                    block=block,
+                )
+        except IntegrityError:
+            chain_id = int(w3.net.version)
+            return Transaction.objects.filter(hash=transaction_hash, chain_id=chain_id).first()
+
     except (TransactionNotFound, AssertionError):
         return None
 
