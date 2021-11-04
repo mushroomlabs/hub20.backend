@@ -70,7 +70,7 @@ class TokenEventFilterRegistry:
 
     @classmethod
     def get(cls, w3: Web3, token: EthereumToken, account: EthereumAccount_T):
-        key = (token.address, account.address)
+        key = (id(w3), token.address, account.address)
         if key in cls._REGISTRY:
             return cls._REGISTRY[key]
         else:
