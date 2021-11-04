@@ -312,6 +312,11 @@ class HttpPaymentOrderSerializer(PaymentOrderSerializer):
 class PaymentOrderReadSerializer(PaymentOrderSerializer):
     url = serializers.HyperlinkedIdentityField(view_name="payment-order-detail")
 
+    class Meta:
+        model = PaymentOrderSerializer.Meta.model
+        fields = PaymentOrderSerializer.Meta.fields + ("url",)
+        read_only_fields = PaymentOrderSerializer.Meta.read_only_fields
+
 
 class PaymentConfirmationSerializer(serializers.ModelSerializer):
     token = CurrencyRelatedField(source="payment.currency")
