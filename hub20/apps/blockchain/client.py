@@ -62,6 +62,8 @@ def blockchain_periodic_handler(period=BLOCK_CREATION_INTERVAL):
                     wait_for_connection(w3=w3)
                     logger.debug(f"Running {handler.__name__} task")
                     await sync_to_async(handler)(w3=w3, *args, **kw)
+                except ValueError as exc:
+                    log_web3_client_exception(exc)
                 except Exception as exc:
                     logger.exception(f"Error on {handler.__name__}: {exc}")
                 finally:
