@@ -38,9 +38,12 @@ class Command(BaseCommand):
             for listener_dotted_name in set(event_handlers):
                 try:
                     listener = import_string(listener_dotted_name)
+                    assert listener is not None, f"{listener_dotted_name} not a valid function"
                     tasks.append(listener())
                 except ImportError as exc:
                     logger.exception(f"Failed to import {listener_dotted_name}: {exc}")
+                except AssertionError as exc:
+                    logger.warning(exc)
 
             asyncio.gather(*tasks)
             loop.run_forever()

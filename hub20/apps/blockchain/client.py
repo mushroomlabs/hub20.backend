@@ -27,6 +27,22 @@ BLOCK_CREATION_INTERVAL = 10  # In seconds
 logger = logging.getLogger(__name__)
 
 
+def log_web3_client_exception(web3_exception):
+    """
+    Some of the web3 client errors (e.g, rpc methods not supported
+    by Infura) comes as a `ValueError` exception with both a `code`
+    and a `message` attribute. This is just a convenience function to
+    warn the user about the error
+    """
+    try:
+        error_response = web3_exception.args[0]
+        error_message = error_response["message"]
+        logger.warning(f"Can not get pending transaction filter: {error_message}")
+    except (IndexError, KeyError):
+        # Nope. This is not the expected error
+        logger.exception(web3_exception)
+
+
 def is_connected_to_blockchain(w3: Web3):
     return w3.isConnected() and (w3.net.peer_count > 0)
 
@@ -44,15 +60,38 @@ def blockchain_periodic_handler(period=BLOCK_CREATION_INTERVAL):
             while True:
                 try:
                     wait_for_connection(w3=w3)
+                    logger.debug(f"Running {handler.__name__} task")
                     await sync_to_async(handler)(w3=w3, *args, **kw)
                 except Exception as exc:
-                    logger.exception(f"Error on {handler.__name__}: {exc}", exc)
+                    logger.exception(f"Error on {handler.__name__}: {exc}")
                 finally:
                     await asyncio.sleep(period)
 
         return wrapper
 
     return decorator
+
+
+def blockchain_scanner(handler):
+    async def wrapper(*args, **kw):
+        w3: Web3 = get_web3()
+
+        wait_for_connection(w3)
+        chain_id = int(w3.net.version)
+        chain = await sync_to_async(Chain.make)(chain_id=chain_id)
+
+        starting_block = 0
+
+        while starting_block < chain.highest_block:
+            end = min(starting_block + BLOCK_SCAN_RANGE, chain.highest_block)
+            try:
+                await sync_to_async(handler)(w3=w3, starting_block=starting_block, end_block=end)
+            except Exception as exc:
+                logger.exception(f"Error on {handler.__name__}: {exc}")
+
+            starting_block += BLOCK_SCAN_RANGE
+
+    return wrapper
 
 
 def blockchain_mined_block_handler(handler):
@@ -64,12 +103,35 @@ def blockchain_mined_block_handler(handler):
         while True:
             try:
                 wait_for_connection(w3=w3)
-                for block_event in block_filter.get_new_entries():
-                    await sync_to_async(handler)(w3=w3, block_event=block_event, *args, **kw)
+                for block_hash in block_filter.get_new_entries():
+                    await sync_to_async(handler)(w3=w3, block_hash=block_hash, *args, **kw)
             except Exception as exc:
-                logger.exception(f"Error on {handler.__name__}: {exc}", exc)
+                logger.exception(f"Error on {handler.__name__}: {exc}")
             finally:
                 await asyncio.sleep(BLOCK_CREATION_INTERVAL)
+
+    return wrapper
+
+
+def blockchain_pending_transaction_handler(handler):
+    async def wrapper(*args, **kw):
+        w3: Web3 = get_web3()
+        wait_for_connection(w3=w3)
+        try:
+            tx_filter = w3.eth.filter("pending")
+        except ValueError as exc:
+            await sync_to_async(log_web3_client_exception)(exc)
+            return
+
+        while True:
+            try:
+                wait_for_connection(w3=w3)
+                for tx_hash in tx_filter.get_new_entries():
+                    await sync_to_async(handler)(w3=w3, transaction_hash=tx_hash, *args, **kw)
+            except Exception as exc:
+                logger.exception(f"Error on {handler.__name__}: {exc}")
+            finally:
+                await asyncio.sleep(BLOCK_CREATION_INTERVAL / 10)
 
     return wrapper
 
@@ -290,9 +352,8 @@ def download_all_chain(w3: Web3, **kw):
 
 
 @blockchain_mined_block_handler
-def notify_new_block(w3: Web3, block_event):
-    block_hash = block_event.hex()
-    logger.info(f"New block: {block_hash}")
+def notify_new_block(w3: Web3, block_hash: HexBytes):
+    logger.info(f"New block: {block_hash.hex()}")
     # We are converting a AttributeDict from Web3 into a standard python dict
     # so that it can be serialized for celery
     block_data = json.loads(Web3.toJSON(w3.eth.get_block(block_hash, full_transactions=True)))
