@@ -45,7 +45,7 @@ class Command(BaseCommand):
                 except AssertionError as exc:
                     logger.warning(exc)
 
-            asyncio.gather(*tasks)
+            asyncio.gather(*tasks, return_exceptions=True)
             loop.run_forever()
         finally:
             loop.close()

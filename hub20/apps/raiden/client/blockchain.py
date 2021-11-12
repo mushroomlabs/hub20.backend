@@ -478,7 +478,7 @@ async def get_token_network_events():
 
 
 @blockchain_mined_block_handler
-def listen_service_deposits(w3: Web3, block_hash: HexBytes, **kw):
+def listen_service_deposits(w3: Web3, block_hash: HexBytes):
 
     user_deposit_contract = get_user_deposit_contract(w3=w3)
     service_token = get_service_token(w3=w3)

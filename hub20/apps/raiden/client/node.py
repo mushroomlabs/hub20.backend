@@ -232,7 +232,7 @@ def raiden_periodic_response_handler(period=5):
     def decorator(handler):
         async def wrapper(*args, **kw):
             raiden_accounts = await sync_to_async(list)(Raiden.objects.all())
-            raiden_clients = [RaidenClient(raiden=raiden) for raiden in raiden_accounts]
+            raiden_clients = [RaidenClient(raiden_account=raiden) for raiden in raiden_accounts]
 
             while True:
                 for raiden_client in raiden_clients:
