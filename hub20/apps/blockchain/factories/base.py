@@ -3,6 +3,7 @@ from typing import List
 import factory
 import factory.fuzzy
 from django.utils import timezone
+from faker import Faker
 
 from ..app_settings import START_BLOCK_NUMBER
 from ..models import BaseEthereumAccount, Block, Chain, Transaction, TransactionLog
@@ -12,6 +13,8 @@ factory.Faker.add_provider(EthereumProvider)
 
 
 TEST_CHAIN_ID = 2
+FAKER = Faker()
+FAKER.add_provider(EthereumProvider)
 
 
 def find_parent_by_block_number(block):

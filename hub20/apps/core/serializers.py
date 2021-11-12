@@ -102,10 +102,10 @@ class TransferSerializer(serializers.ModelSerializer):
 
         currency = data["currency"]
         transfer_amount = EthereumTokenAmount(currency=currency, amount=data["amount"])
-        user_balance = request.user.account.get_balance(currency)
+        user_balance_amount = request.user.account.get_balance_token_amount(currency)
 
-        if user_balance < transfer_amount:
-            raise serializers.ValidationError("Insuffcient balance")
+        if user_balance_amount < transfer_amount:
+            raise serializers.ValidationError("Insufficient balance")
 
         return data
 
