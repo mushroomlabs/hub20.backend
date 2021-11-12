@@ -2,6 +2,7 @@ from django.test import TestCase
 from django.urls import reverse
 from rest_framework.test import APIClient
 
+from hub20.apps.blockchain.factories import FAKER
 from hub20.apps.core import factories
 from hub20.apps.ethereum_money.factories import Erc20TokenAmountFactory, Erc20TokenFactory
 from hub20.apps.ethereum_money.tests.base import add_eth_to_account
@@ -93,6 +94,32 @@ class TokenBalanceViewTestCase(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["address"], self.token.address)
+
+
+class TransferTestCase(TestCase):
+    def setUp(self):
+        self.user = factories.UserFactory()
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+        self.token = Erc20TokenFactory()
+        self.target_address = FAKER.ethereum_address()
+
+    def test_insufficient_balance_returns_error(self):
+        response = self.client.post(
+            reverse("transfer-list"),
+            {
+                "address": self.target_address,
+                "amount": 10,
+                "token": self.token.address,
+            },
+        )
+        self.assertEqual(response.status_code, 400)
+
+        self.assertTrue("non_field_errors" in response.data.keys())
+        self.assertEqual(len(response.data["non_field_errors"]), 1)
+
+        error_details = response.data["non_field_errors"][0]
+        self.assertEqual(error_details.title(), "Insufficient Balance")
 
 
 class CheckoutViewTestCase(TestCase):
