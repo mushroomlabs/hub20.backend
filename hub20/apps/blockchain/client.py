@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 import time
-from typing import Dict, Optional, Tuple
+from typing import Optional, Tuple
 from urllib.parse import urlparse
 
 from asgiref.sync import sync_to_async
@@ -23,9 +23,119 @@ from .exceptions import Web3TransactionError
 from .models import Block, Chain, Transaction
 
 BLOCK_CREATION_INTERVAL = 10  # In seconds
-WEB3_CLIENTS: Dict[str, Web3] = {}
 
 logger = logging.getLogger(__name__)
+
+
+def log_web3_client_exception(web3_exception):
+    """
+    Some of the web3 client errors (e.g, rpc methods not supported
+    by Infura) comes as a `ValueError` exception with both a `code`
+    and a `message` attribute. This is just a convenience function to
+    warn the user about the error
+    """
+    try:
+        error_response = web3_exception.args[0]
+        error_message = error_response["message"]
+        logger.warning(f"Can not get pending transaction filter: {error_message}")
+    except (IndexError, KeyError):
+        # Nope. This is not the expected error
+        logger.exception(web3_exception)
+
+
+def is_connected_to_blockchain(w3: Web3):
+    return w3.isConnected() and (w3.net.peer_count > 0)
+
+
+def wait_for_connection(w3: Web3):
+    while not is_connected_to_blockchain(w3=w3):
+        logger.info("Not connected to blockchain. Waiting for reconnection...")
+        time.sleep(BLOCK_CREATION_INTERVAL / 2)
+
+
+def blockchain_periodic_handler(period=BLOCK_CREATION_INTERVAL):
+    def decorator(handler):
+        async def wrapper(*args, **kw):
+            w3: Web3 = get_web3()
+            while True:
+                try:
+                    wait_for_connection(w3=w3)
+                    logger.debug(f"Running {handler.__name__} task")
+                    await sync_to_async(handler)(w3=w3, *args, **kw)
+                except ValueError as exc:
+                    log_web3_client_exception(exc)
+                except Exception as exc:
+                    logger.exception(f"Error on {handler.__name__}: {exc}")
+                finally:
+                    await asyncio.sleep(period)
+
+        return wrapper
+
+    return decorator
+
+
+def blockchain_scanner(handler):
+    async def wrapper(*args, **kw):
+        w3: Web3 = get_web3()
+
+        wait_for_connection(w3)
+        chain_id = int(w3.net.version)
+        chain = await sync_to_async(Chain.make)(chain_id=chain_id)
+
+        starting_block = 0
+
+        while starting_block < chain.highest_block:
+            end = min(starting_block + BLOCK_SCAN_RANGE, chain.highest_block)
+            try:
+                await sync_to_async(handler)(w3=w3, starting_block=starting_block, end_block=end)
+            except Exception as exc:
+                logger.exception(f"Error on {handler.__name__}: {exc}")
+
+            starting_block += BLOCK_SCAN_RANGE
+
+    return wrapper
+
+
+def blockchain_mined_block_handler(handler):
+    async def wrapper(*args, **kw):
+        w3: Web3 = get_web3()
+        wait_for_connection(w3=w3)
+        block_filter = w3.eth.filter("latest")
+
+        while True:
+            try:
+                wait_for_connection(w3=w3)
+                for block_hash in block_filter.get_new_entries():
+                    await sync_to_async(handler)(w3=w3, block_hash=block_hash, *args, **kw)
+            except Exception as exc:
+                logger.exception(f"Error on {handler.__name__}: {exc}")
+            finally:
+                await asyncio.sleep(BLOCK_CREATION_INTERVAL)
+
+    return wrapper
+
+
+def blockchain_pending_transaction_handler(handler):
+    async def wrapper(*args, **kw):
+        w3: Web3 = get_web3()
+        wait_for_connection(w3=w3)
+        try:
+            tx_filter = w3.eth.filter("pending")
+        except ValueError as exc:
+            await sync_to_async(log_web3_client_exception)(exc)
+            return
+
+        while True:
+            try:
+                wait_for_connection(w3=w3)
+                for tx_hash in tx_filter.get_new_entries():
+                    await sync_to_async(handler)(w3=w3, transaction_hash=tx_hash, *args, **kw)
+            except Exception as exc:
+                logger.exception(f"Error on {handler.__name__}: {exc}")
+            finally:
+                await asyncio.sleep(BLOCK_CREATION_INTERVAL / 10)
+
+    return wrapper
 
 
 def database_history_gas_price_strategy(w3: Web3, params: Optional[TxParams] = None) -> Wei:
@@ -109,13 +219,9 @@ def make_web3(provider_url: str) -> Web3:
     return w3
 
 
-def get_web3(provider_url: Optional[str] = None, force_new: bool = False) -> Web3:
+def get_web3(provider_url: Optional[str] = None) -> Web3:
     provider_url = provider_url or settings.WEB3_PROVIDER_URI
-    w3 = WEB3_CLIENTS.get(provider_url)
-
-    if w3 is None or force_new:
-        w3 = make_web3(provider_url)
-        WEB3_CLIENTS[provider_url] = w3
+    w3 = make_web3(provider_url)
 
     wait_for_connection(w3)
     client_network_id = int(w3.net.version)
@@ -184,19 +290,6 @@ def get_block_by_number(w3: Web3, block_number: int) -> Optional[Block]:
         return block
 
 
-def fetch_new_block_entries(w3: Web3, block_filter):
-    wait_for_connection(w3)
-    logger.info("Checking for new blocks...")
-    for event in block_filter.get_new_entries():
-        block_hash = event.hex()
-        logger.info(f"New block: {block_hash}")
-        # We are converting a AttributeDict from Web3 into a standard python dict
-        # so that it can be serialized for celery
-        block_data = json.loads(Web3.toJSON(w3.eth.get_block(block_hash, full_transactions=True)))
-
-        signals.block_sealed.send(sender=Block, block_data=block_data)
-
-
 def run_backfill(w3: Web3, start: int, end: int):
     chain_id = int(w3.net.version)
     block_range = (start, end)
@@ -207,10 +300,6 @@ def run_backfill(w3: Web3, start: int, end: int):
 
     for block_number in missing_blocks:
         get_block_by_number(w3=w3, block_number=block_number)
-
-
-def is_connected_to_blockchain(w3: Web3):
-    return w3.isConnected() and (w3.net.peer_count > 0)
 
 
 def run_ethereum_node_connection_check(w3: Web3):
@@ -252,49 +341,41 @@ def run_ethereum_node_sync_check(w3: Web3):
     return is_synced
 
 
-def wait_for_connection(w3: Web3):
-    while not is_connected_to_blockchain(w3=w3):
-        logger.info("Not connected to blockchain. Waiting for reconnection...")
-        time.sleep(BLOCK_CREATION_INTERVAL / 2)
-
-
-async def download_all_chain(w3: Web3, **kw):
-    await sync_to_async(wait_for_connection)(w3)
+def download_all_chain(w3: Web3, **kw):
+    wait_for_connection(w3)
     start = 0
     highest = w3.eth.blockNumber
     while start < highest:
-        await asyncio.sleep(BLOCK_CREATION_INTERVAL)
+        wait_for_connection(w3)
         end = min(start + BLOCK_SCAN_RANGE, highest)
         logger.info(f"Syncing blocks between {start} and {end}")
-        await sync_to_async(run_backfill)(w3=w3, start=start, end=end)
+        run_backfill(w3=w3, start=start, end=end)
         start = end
 
 
-async def listen_new_blocks(w3: Web3, **kw):
-    await sync_to_async(wait_for_connection)(w3)
-    block_filter = w3.eth.filter("latest")
-    while True:
-        await sync_to_async(wait_for_connection)(w3)
-        await sync_to_async(fetch_new_block_entries)(w3=w3, block_filter=block_filter)
-        await asyncio.sleep(BLOCK_CREATION_INTERVAL)
+@blockchain_mined_block_handler
+def notify_new_block(w3: Web3, block_hash: HexBytes):
+    logger.info(f"New block: {block_hash.hex()}")
+    # We are converting a AttributeDict from Web3 into a standard python dict
+    # so that it can be serialized for celery
+    block_data = json.loads(Web3.toJSON(w3.eth.get_block(block_hash, full_transactions=True)))
+
+    signals.block_sealed.send(sender=Block, block_data=block_data)
 
 
-async def sync_chain(w3: Web3, **kw):
-    while True:
-        await sync_to_async(wait_for_connection)(w3)
-        has_peers = w3.net.peer_count > 0
-        is_synced = bool(not w3.eth.syncing)
-        await sync_to_async(signals.chain_status_synced.send)(
-            sender=Chain,
-            chain_id=int(w3.net.version),
-            current_block=w3.eth.blockNumber,
-            synced=is_synced and has_peers,
-        )
-        await asyncio.sleep(BLOCK_CREATION_INTERVAL)
+@blockchain_periodic_handler()
+def sync_chain(w3: Web3, **kw):
+    has_peers = w3.net.peer_count > 0
+    is_synced = bool(not w3.eth.syncing)
+    signals.chain_status_synced.send(
+        sender=Chain,
+        chain_id=int(w3.net.version),
+        current_block=w3.eth.blockNumber,
+        synced=is_synced and has_peers,
+    )
 
 
-async def run_heartbeat(w3: Web3, **kw):
-    while True:
-        await sync_to_async(run_ethereum_node_connection_check)(w3=w3)
-        await sync_to_async(run_ethereum_node_sync_check)(w3=w3)
-        await asyncio.sleep(BLOCK_CREATION_INTERVAL)
+@blockchain_periodic_handler()
+def run_heartbeat(w3: Web3, **kw):
+    run_ethereum_node_connection_check(w3=w3)
+    run_ethereum_node_sync_check(w3=w3)
