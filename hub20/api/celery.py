@@ -21,6 +21,7 @@ class Hub20CeleryConfig:
     }
     task_always_eager = "HUB20_TEST" in os.environ
     task_eager_propagates = "HUB20_TEST" in os.environ
+    accept_content = ["json", "web3"]
 
 
 app = Celery()

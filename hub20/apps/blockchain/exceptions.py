@@ -27,3 +27,7 @@ class HubServiceOutOfSync(APIException):
 
 class Web3TransactionError(Exception):
     pass
+
+
+class Web3UnsupportedMethod(Exception):
+    pass
