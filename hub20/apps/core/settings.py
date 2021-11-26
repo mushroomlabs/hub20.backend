@@ -19,28 +19,6 @@ class AppSettings:
     class Raiden:
         minimum_ether_required = Decimal("0.025")
         minimum_service_token_required = Decimal("5.5")
-        # event_listeners = [
-        #     "hub20.apps.raiden.client.node.sync_channels",
-        #     "hub20.apps.raiden.client.node.sync_payments",
-        # ]
-
-    class Web3:
-        pass
-        # event_listeners = [
-        #     "hub20.apps.raiden.client.blockchain.get_token_network_events",
-        #     "hub20.apps.raiden.client.blockchain.listen_service_deposits",
-        #     "hub20.apps.raiden.client.blockchain.listen_channel_deposits",
-        #     "hub20.apps.raiden.client.blockchain.listen_token_network_events",
-        #     "hub20.apps.blockchain.client.notify_new_block",
-        #     "hub20.apps.blockchain.client.run_heartbeat",
-        #     "hub20.apps.blockchain.client.sync_chain",
-        #     "hub20.apps.ethereum_money.client.listen_eth_transfers",
-        #     "hub20.apps.ethereum_money.client.listen_erc20_approvals",
-        #     "hub20.apps.ethereum_money.client.listen_erc223_mint",
-        #     "hub20.apps.ethereum_money.client.listen_pending_eth_transfers",
-        #     "hub20.apps.core.integrations.web3.handle_token_deposits",
-        #     "hub20.apps.core.integrations.web3.handle_pending_token_deposits",
-        # ]
 
     def __init__(self):
         self.load()
