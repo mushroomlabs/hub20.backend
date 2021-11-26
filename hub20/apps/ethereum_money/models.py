@@ -146,7 +146,7 @@ class HierarchicalDeterministicWallet(BaseEthereumAccount):
         if HD_WALLET_MNEMONIC:
             wallet.from_mnemonic(mnemonic=HD_WALLET_MNEMONIC)
         elif HD_WALLET_ROOT_KEY:
-            wallet.from_root_xprivate_key(xprivate_key=HD_WALLET_ROOT_KEY)
+            wallet.from_xprivate_key(xprivate_key=HD_WALLET_ROOT_KEY)
         else:
             raise ValueError("Can not generate new addresses for HD Wallets. No seed available")
 
