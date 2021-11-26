@@ -1,3 +1,5 @@
+from web3.exceptions import LogTopicError
+
 EIP20_ABI = [
     {
         "constant": True,
@@ -306,3 +308,16 @@ ERC223_ABI = [
         "type": "event",
     },
 ]
+
+
+def get_event_abi(abi, event_name):
+    events = [it for it in abi if it["type"] == "event"]
+    try:
+        return [e for e in events if e["name"] == event_name].pop()
+    except (IndexError, LogTopicError):
+        return None
+
+
+TRANSFER_EVENT_ABI = get_event_abi(abi=EIP20_ABI, event_name="Transfer")
+APPROVAL_EVENT_ABI = get_event_abi(abi=EIP20_ABI, event_name="Approval")
+MINT_EVENT_ABI = get_event_abi(abi=ERC223_ABI, event_name="Minted")

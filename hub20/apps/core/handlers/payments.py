@@ -120,8 +120,8 @@ def on_incoming_transfer_broadcast_send_notification_to_active_sessions(sender, 
         tasks.send_session_event.delay(
             deposit.session_key,
             event=Events.BLOCKCHAIN_DEPOSIT_BROADCAST.value,
-            deposit_id=deposit.id,
-            amount=payment_amount.amount,
+            deposit_id=str(deposit.id),
+            amount=str(payment_amount.amount),
             token=payment_amount.currency.address,
             transaction=tx_hash,
         )
