@@ -33,30 +33,6 @@ def record_account_transactions(chain_id, block_data, transaction_data, transact
     for account in BaseEthereumAccount.objects.filter(address__in=[sender, recipient]):
         block = Block.make(block_data, chain_id=chain_id)
         Transaction.make(tx_data=transaction_data, tx_receipt=transaction_receipt, block=block)
-        celery_pubsub.publish(
-            "account.transaction.mined",
-            chain_id=chain_id,
-            block_data=block_data,
-            transaction_data=transaction_data,
-            transaction_receipt=transaction_receipt,
-            account_address=account.address,
-        )
-
-
-@shared_task
-def check_account_pending_transactions(chain_id, transaction_data):
-    sender = transaction_data["from"]
-    recipient = transaction_data["to"]
-
-    logger.debug(f"Tx pending from {sender} to {recipient} on chain {chain_id}")
-
-    for account in BaseEthereumAccount.objects.filter(address__in=[sender, recipient]):
-        celery_pubsub.publish(
-            "account.transaction.pending",
-            chain_id=chain_id,
-            transaction_data=transaction_data,
-            account=account.address,
-        )
 
 
 @shared_task
@@ -82,7 +58,6 @@ def set_node_sync_nok(chain_id, provider_url):
 
 celery_pubsub.subscribe("blockchain.block.mined", check_blockchain_height)
 celery_pubsub.subscribe("blockchain.transaction.mined", record_account_transactions)
-celery_pubsub.subscribe("blockchain.transaction.pending", check_account_pending_transactions)
 celery_pubsub.subscribe("node.connection.ok", set_node_connection_ok)
 celery_pubsub.subscribe("node.connection.nok", set_node_connection_nok)
 celery_pubsub.subscribe("node.sync.ok", set_node_sync_ok)

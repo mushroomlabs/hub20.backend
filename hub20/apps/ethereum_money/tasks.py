@@ -6,11 +6,10 @@ from celery import shared_task
 logger = logging.getLogger(__name__)
 
 from hub20.apps.blockchain.models import BaseEthereumAccount, Block, Chain, Transaction
-from hub20.apps.blockchain.typing import Address
 
 from . import signals
 from .models import EthereumToken
-from .abi import TRANSFER_EVENT_ABI, MINT_EVENT_ABI
+from .abi import TRANSFER_EVENT_ABI
 from .client import get_transaction_events
 
 
@@ -77,55 +76,21 @@ def record_token_transfers(chain_id, block_data, transaction_data, transaction_r
 
 
 @shared_task
-def record_token_mints(chain_id, block_data, transaction_data, transaction_receipt):
-    events = get_transaction_events(transaction_receipt, MINT_EVENT_ABI)
-
-    for event in events:
-        token_address = event.address
-        recipient_address = event.args._to
-        token = EthereumToken.objects.filter(chain_id=chain_id, address=token_address).first()
-
-        if not token:
-            continue
-
-        account = BaseEthereumAccount.objects.filter(address=recipient_address).first()
-
-        if not account:
-            continue
-
-        amount = token.from_wei(event.args._num)
-        tx = _get_or_create_transaction(
-            chain_id, block_data, transaction_data, transaction_receipt
-        )
-
-        account.transactions.add(tx)
-        signals.incoming_transfer_mined.send(
-            sender=Transaction,
-            chain_id=chain_id,
-            account=account,
-            transaction=tx,
-            amount=amount,
-            address=token.address,
-        )
-
-
-@shared_task
-def check_pending_transaction_for_eth_transfer(
-    chain_id, transaction_data, account_address: Address
-):
+def check_pending_transaction_for_eth_transfer(chain_id, transaction_data):
     sender = transaction_data["from"]
     recipient = transaction_data["to"]
     tx_hash = transaction_data["hash"]
 
     is_ETH_transfer = transaction_data.value != 0
 
-    if is_ETH_transfer:
-        chain = Chain.make(chain_id=chain_id)
-        ETH = EthereumToken.ETH(chain=chain)
-        account = BaseEthereumAccount.objects.get(address=account_address)
-        amount = ETH.from_wei(transaction_data.value)
+    if not is_ETH_transfer:
+        return
 
-    if is_ETH_transfer and sender == account_address:
+    chain = Chain.make(chain_id=chain_id)
+    ETH = EthereumToken.ETH(chain=chain)
+    amount = ETH.from_wei(transaction_data.value)
+
+    for account in BaseEthereumAccount.objects.filter(address=sender):
         signals.outgoing_transfer_broadcast.send(
             sender=Transaction,
             chain_id=chain_id,
@@ -134,7 +99,7 @@ def check_pending_transaction_for_eth_transfer(
             transaction_hash=tx_hash,
         )
 
-    if is_ETH_transfer and recipient == account_address:
+    for account in BaseEthereumAccount.objects.filter(address=recipient):
         signals.incoming_transfer_broadcast.send(
             sender=Transaction,
             chain_id=chain_id,
@@ -145,32 +110,56 @@ def check_pending_transaction_for_eth_transfer(
 
 
 @shared_task
+def check_pending_erc20_transfer_event(chain_id, transaction_data, event):
+    try:
+        token = EthereumToken.objects.get(chain_id=chain_id, address=event.address)
+    except EthereumToken.DoesNotExist:
+        return
+
+    sender = event.args._from
+    recipient = event.args._to
+    amount = token.from_wei(event.args._value)
+
+    for account in BaseEthereumAccount.objects.filter(address=sender):
+        signals.outgoing_transfer_broadcast.send(
+            sender=Transaction,
+            chain_id=chain_id,
+            account=account,
+            amount=amount,
+            transaction_hash=event.transactionHash,
+        )
+
+    for account in BaseEthereumAccount.objects.filter(address=recipient):
+        signals.incoming_transfer_broadcast.send(
+            sender=Transaction,
+            chain_id=chain_id,
+            account=account,
+            amount=amount,
+            transaction_hash=event.transactionHash,
+        )
+
+
+@shared_task
 def check_mined_transaction_for_eth_transfer(
-    chain_id, block_data, transaction_data, transaction_receipt, account_address: Address
+    chain_id, block_data, transaction_data, transaction_receipt
 ):
     sender = transaction_data["from"]
     recipient = transaction_data["to"]
-    tx_hash = transaction_data["hash"]
 
     is_ETH_transfer = transaction_data.value != 0
 
-    if is_ETH_transfer:
-        chain = Chain.make(chain_id=chain_id)
-        ETH = EthereumToken.ETH(chain=chain)
-        account = BaseEthereumAccount.objects.get(address=account_address)
-        amount = ETH.from_wei(transaction_data.value)
+    if not is_ETH_transfer:
+        return
 
-    if account_address in [sender, recipient]:
-        try:
-            tx = Transaction.objects.get(chain_id=chain_id, hash=tx_hash)
-        except Transaction.DoesNotExist:
-            logger.warning("Transaction {tx_hash.hex()} is not recorded on the database")
-            block = Block.make(block_data, chain_id=chain_id)
-            tx = Transaction.make(
-                tx_data=transaction_data, tx_receipt=transaction_receipt, block=block
-            )
+    if not BaseEthereumAccount.objects.filter(address__in=[sender, recipient]).exists():
+        return
 
-    if is_ETH_transfer and sender == account_address:
+    chain = Chain.make(chain_id=chain_id)
+    ETH = EthereumToken.ETH(chain=chain)
+    amount = ETH.from_wei(transaction_data.value)
+    tx = _get_or_create_transaction(chain_id, block_data, transaction_data, transaction_receipt)
+
+    for account in BaseEthereumAccount.objects.filter(address=sender):
         account.transactions.add(tx)
         signals.outgoing_transfer_mined.send(
             sender=Transaction,
@@ -181,7 +170,7 @@ def check_mined_transaction_for_eth_transfer(
             address=recipient,
         )
 
-    if is_ETH_transfer and recipient == account_address:
+    for account in BaseEthereumAccount.objects.filter(address=recipient):
         account.transactions.add(tx)
         signals.incoming_transfer_mined.send(
             sender=Transaction,
@@ -195,6 +184,8 @@ def check_mined_transaction_for_eth_transfer(
 
 celery_pubsub.subscribe("blockchain.transaction.mined", record_token_transactions)
 celery_pubsub.subscribe("blockchain.transaction.mined", record_token_transfers)
-celery_pubsub.subscribe("blockchain.transaction.mined", record_token_mints)
-celery_pubsub.subscribe("account.transaction.pending", check_pending_transaction_for_eth_transfer)
-celery_pubsub.subscribe("account.transaction.mined", check_mined_transaction_for_eth_transfer)
+celery_pubsub.subscribe("blockchain.transaction.mined", check_mined_transaction_for_eth_transfer)
+celery_pubsub.subscribe(
+    "blockchain.transaction.pending", check_pending_transaction_for_eth_transfer
+)
+celery_pubsub.subscribe("blockchain.event.pending", check_pending_erc20_transfer_event)
