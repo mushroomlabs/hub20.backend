@@ -4,21 +4,27 @@ import random
 import uuid
 from typing import Optional
 
+from django.db import models
+from django.db.models import ExpressionWrapper, F, Sum, Q, Exists, OuterRef, Value
+from django.db.models.functions import Lower, Upper, Coalesce
+from django.utils import timezone
+
+
 from django.conf import settings
 from django.contrib.postgres.fields.ranges import IntegerRangeField
-from django.db import models
-from django.db.models import Exists, F, OuterRef, Q, Sum
-from django.utils import timezone
 from model_utils.managers import InheritanceManager
 from model_utils.models import TimeStampedModel
 
 from hub20.apps.blockchain.models import BaseEthereumAccount, Chain, Transaction
-from hub20.apps.ethereum_money.models import EthereumToken, EthereumTokenValueModel
+from hub20.apps.ethereum_money.models import (
+    EthereumToken,
+    EthereumTokenValueModel,
+    EthereumTokenAmountField,
+)
 from hub20.apps.raiden.models import Payment as RaidenPaymentEvent, Raiden
 
 from ..choices import DEPOSIT_STATUS
 from ..settings import app_settings
-from .managers import BlockchainRouteManager, RaidenRouteManager
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +90,76 @@ class PaymentOrderQuerySet(DepositQuerySet):
     def paid(self):
         return self.annotate(total_paid=Sum("routes__payment__amount")).filter(
             total_paid__gte=F("amount")
+        )
+
+
+class BlockchainRouteQuerySet(models.QuerySet):
+    def with_expiration(self) -> models.QuerySet:
+        return self.annotate(
+            start_block=Lower("payment_window"), expiration_block=Upper("payment_window")
+        )
+
+    def with_payment_amounts(self) -> models.QuerySet:
+        return self.annotate(
+            currency=F("payment__currency"),
+            total_paid=Coalesce(
+                Sum("payment__amount"), Value(0), output_field=EthereumTokenAmountField()
+            ),
+            total_confirmed=Coalesce(
+                Sum("payment__amount", filter=Q(payment__confirmation__isnull=False)),
+                Value(0),
+                output_field=EthereumTokenAmountField(),
+            ),
+        )
+
+    def expired(self, block_number: Optional[int] = None) -> models.QuerySet:
+        at_block = block_number if block_number is not None else F("chain__highest_block")
+        return self.filter(expiration_block__lt=at_block)
+
+    def used(self) -> models.QuerySet:
+        return self.with_payment_amounts().filter(
+            total_paid__gte=F("deposit__amount"), currency=F("deposit__currency")
+        )
+
+    def available(self, block_number: Optional[int] = None) -> models.QuerySet:
+        qs = self.with_expiration()
+        at_block = block_number if block_number is not None else F("chain__highest_block")
+
+        return qs.filter(start_block__lte=at_block, expiration_block__gte=at_block)
+
+    def open(self, block_number: Optional[int] = None) -> models.QuerySet:
+        at_block = block_number if block_number is not None else F("chain__highest_block")
+
+        no_defined_amount = Q(deposit__paymentorder__isnull=True)
+
+        confirmed = Q(total_confirmed__gte=F("deposit__paymentorder__amount")) & Q(
+            currency=F("deposit__currency")
+        )
+        expired = Q(expiration_block__lt=at_block)
+        return (
+            self.with_expiration()
+            .exclude(expired)
+            .with_payment_amounts()
+            .filter(no_defined_amount | ~confirmed)
+        )
+
+
+class RaidenRouteQuerySet(models.QuerySet):
+    def with_expiration(self) -> models.QuerySet:
+        return self.annotate(
+            expiration_time=ExpressionWrapper(
+                F("created") + F("payment_window"), output_field=models.DateTimeField()
+            )
+        )
+
+    def expired(self, at: Optional[datetime.datetime] = None) -> models.QuerySet:
+        date_value = at or timezone.now()
+        return self.with_expiration().filter(expiration_time__lt=date_value)
+
+    def available(self, at: Optional[datetime.datetime] = None) -> models.QuerySet:
+        date_value = at or timezone.now()
+        return self.with_expiration().filter(
+            created__lte=date_value, expiration_time__gte=date_value
         )
 
 
@@ -181,7 +257,7 @@ class BlockchainPaymentRoute(PaymentRoute):
     )
     payment_window = IntegerRangeField(default=calculate_blockchain_payment_window)
     chain = models.ForeignKey(Chain, on_delete=models.CASCADE)
-    objects = BlockchainRouteManager()
+    objects = BlockchainRouteQuerySet.as_manager()
 
     @property
     def start_block_number(self):
@@ -211,7 +287,7 @@ class RaidenPaymentRoute(PaymentRoute):
     raiden = models.ForeignKey(Raiden, on_delete=models.CASCADE, related_name="payment_routes")
     identifier = models.BigIntegerField(default=generate_payment_order_id, unique=True)
 
-    objects = RaidenRouteManager()
+    objects = RaidenRouteQuerySet.as_manager()
 
     @property
     def is_expired(self):

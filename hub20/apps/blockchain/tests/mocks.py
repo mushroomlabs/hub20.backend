@@ -15,8 +15,11 @@ factory.Faker.add_provider(EthereumProvider)
 def _make_web3_mock():
     w3 = Web3()
     w3.net = MagicMock()
-    w3.net.version = MagicMock(return_value=str(settings.BLOCKCHAIN_NETWORK_ID))
+    w3.net.version = str(settings.BLOCKCHAIN_NETWORK_ID)
     w3.net.peer_count = random.randint(1, 5)
+    w3.eth = MagicMock()
+    w3.eth.chain_id = settings.BLOCKCHAIN_NETWORK_ID
+
     w3.isConnected = lambda: True
     return w3
 
