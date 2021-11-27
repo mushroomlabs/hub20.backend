@@ -5,6 +5,7 @@ from django.core.management.base import BaseCommand
 from django.utils.module_loading import import_string
 
 from hub20.apps.blockchain.client import event_streams as blockchain_streams
+from hub20.apps.core.integrations.web3 import pending_token_transfers
 
 from .utils import add_shutdown_handlers
 
@@ -17,6 +18,8 @@ BLOCKCHAIN_STREAMS = [
     blockchain_streams.node_sync_status,
     blockchain_streams.node_online_status,
 ]
+
+INTEGRATION_STREAMS = [pending_token_transfers]
 
 
 class Command(BaseCommand):
@@ -36,7 +39,7 @@ class Command(BaseCommand):
 
         add_shutdown_handlers(loop)
 
-        all_streams = BLOCKCHAIN_STREAMS
+        all_streams = BLOCKCHAIN_STREAMS + INTEGRATION_STREAMS
 
         streams = options["streams"] or all_streams
 
