@@ -203,7 +203,7 @@ class EthereumTokenAmount:
         return self.__class__(self.amount - other.amount, self.currency)
 
     def __mul__(self, other: TokenAmount_T) -> EthereumTokenAmount:
-        return EthereumTokenAmount(amount=TokenAmount(other * self.amount), currency=self.currency)
+        return EthereumTokenAmount(amount=TokenAmount(other) * self.amount, currency=self.currency)
 
     def __rmul__(self, other: TokenAmount_T) -> EthereumTokenAmount:
         return self.__mul__(other)

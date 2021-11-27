@@ -187,9 +187,10 @@ def on_order_created_set_blockchain_route(sender, **kw):
     if chain.synced:
         payment_window = BlockchainPaymentRoute.calculate_payment_window(chain)
 
-        available_accounts = BaseEthereumAccount.objects.exclude(
-            blockchain_routes__payment_window__overlap=NumericRange(*payment_window)
+        busy_routes = BlockchainPaymentRoute.objects.open().filter(
+            deposit__currency=deposit.currency
         )
+        available_accounts = BaseEthereumAccount.objects.exclude(blockchain_routes__in=busy_routes)
 
         account = available_accounts.order_by("?").first() or EthereumAccount.generate()
 
