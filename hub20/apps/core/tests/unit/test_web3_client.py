@@ -1,16 +1,10 @@
-from unittest.mock import patch
-
 import pytest
 from django.test import TestCase
 
-from hub20.apps.blockchain.factories import TransactionFactory
-from hub20.apps.blockchain.tests.mocks import Web3Mock
+from hub20.apps.blockchain.tests.mocks import Web3Mock, BlockMock
 from hub20.apps.core.factories import CheckoutFactory
-from hub20.apps.ethereum_money.client import (
-    encode_transfer_data,
-    process_incoming_erc20_transfer_event,
-)
-from hub20.apps.ethereum_money.tests.mocks import Erc20LogFilterMock
+from hub20.apps.ethereum_money.tasks import record_token_transfers
+from hub20.apps.ethereum_money.tests.mocks import Erc20TransferReceiptMock, Erc20TransferDataMock
 
 
 @pytest.mark.django_db(transaction=True)
@@ -22,30 +16,36 @@ class PaymentTransferTestCase(BaseTestCase):
     def setUp(self):
         self.w3 = Web3Mock
 
-    @patch("hub20.apps.ethereum_money.client.get_transaction_by_hash")
-    def test_can_detect_erc20_transfers(self, get_transaction_mock):
+    def test_can_detect_erc20_transfers(self):
 
         checkout = CheckoutFactory()
         route = checkout.routes.select_subclasses().first()
 
         self.assertIsNotNone(route)
 
-        recipient = route.account.address
-
-        tx_filter_entry = Erc20LogFilterMock(
+        transaction_params = dict(
             blockNumber=checkout.currency.chain.highest_block,
-            recipient=recipient,
+            recipient=route.account.address,
             amount=checkout.as_token_amount,
         )
 
-        get_transaction_mock.return_value = TransactionFactory(
-            from_address=tx_filter_entry["args"]["_from"],
-            to_address=checkout.currency.address,
-            data=encode_transfer_data(recipient, checkout.as_token_amount),
+        tx_data = Erc20TransferDataMock(**transaction_params)
+        transaction_receipt = Erc20TransferReceiptMock(
+            hash=tx_data.hash,
+            blockHash=tx_data.blockHash,
+            from_address=tx_data["from"],
+            transactionIndex=tx_data.transactionIndex,
+            **transaction_params,
+        )
+        block_data = BlockMock(
+            hash=tx_data.blockHash, number=tx_data.blockNumber, transactions=[tx_data.hash]
         )
 
-        process_incoming_erc20_transfer_event(
-            w3=self.w3, token=checkout.currency, account=route.account, event=tx_filter_entry
+        record_token_transfers(
+            chain_id=self.w3.eth.chain_id,
+            block_data=block_data,
+            transaction_data=tx_data,
+            transaction_receipt=transaction_receipt,
         )
 
         self.assertEqual(checkout.status, checkout.STATUS.paid)

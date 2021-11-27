@@ -1,5 +1,6 @@
 import logging
 
+import celery_pubsub
 import httpx
 from asgiref.sync import async_to_sync
 from celery import shared_task
@@ -8,11 +9,16 @@ from django.contrib.auth import get_user_model
 from django.contrib.sessions.models import Session
 from django.utils import timezone
 
-from .consumers import CheckoutConsumer, SessionEventsConsumer
+from .consumers import CheckoutConsumer, Events, SessionEventsConsumer
 from .models import Checkout, Transfer
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
+
+
+def _get_open_session_keys():
+    now = timezone.now()
+    return Session.objects.filter(expire_date__gt=now).values_list("session_key", flat=True)
 
 
 @shared_task
@@ -77,5 +83,42 @@ def call_checkout_webhook(checkout_id):
 
 
 @shared_task
+def notify_new_block(chain_id, block_data):
+
+    block_number = block_data["number"]
+    session_keys = _get_open_session_keys()
+    logger.info(f"Notifying {len(session_keys)} clients about block #{block_number}")
+    for session_key in session_keys:
+        event_data = {
+            k: v
+            for k, v in block_data.items()
+            if k in ["gasUsed", "hash", "nonce", "number", "parentsHash", "size", "timestamp"]
+        }
+
+        send_session_event(session_key, event=Events.BLOCKCHAIN_BLOCK_CREATED.value, **event_data)
+
+
+@shared_task
+def notify_node_unavailable(chain_id, provider_url):
+    for session_key in _get_open_session_keys():
+        send_session_event(
+            session_key, event=Events.ETHEREUM_NODE_UNAVAILABLE.value, chain_id=chain_id
+        )
+
+
+@shared_task
+def notify_node_recovered(chain_id, provider_url):
+    for session_key in _get_open_session_keys():
+        send_session_event(session_key, event=Events.ETHEREUM_NODE_OK.value, chain_id=chain_id)
+
+
+@shared_task
 def clear_expired_sessions():
     Session.objects.filter(expire_date__lte=timezone.now()).delete()
+
+
+celery_pubsub.subscribe("blockchain.block.mined", notify_new_block)
+celery_pubsub.subscribe("node.sync.nok", notify_node_unavailable)
+celery_pubsub.subscribe("node.sync.ok", notify_node_recovered)
+celery_pubsub.subscribe("node.connection.nok", notify_node_unavailable)
+celery_pubsub.subscribe("node.connection.ok", notify_node_recovered)

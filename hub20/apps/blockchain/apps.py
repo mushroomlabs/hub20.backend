@@ -6,4 +6,4 @@ class BlockchainConfig(AppConfig):
 
     def ready(self):
         from . import signals  # noqa
-        from . import handlers  # noqa
+        from . import tasks  # noqa

@@ -84,7 +84,7 @@ class BlockchainPaymentTestCase(BaseTestCase):
 
         block_number = tx.block.number + app_settings.Payment.minimum_confirmations
         block_data = BlockMock(number=block_number)
-        block_sealed.send(sender=Block, block_data=block_data)
+        block_sealed.send(sender=Block, chain_id=tx.block.chain_id, block_data=block_data)
 
         balance_amount = self.order.user.account.get_balance_token_amount(self.order.currency)
         self.assertEqual(balance_amount, self.order.as_token_amount)

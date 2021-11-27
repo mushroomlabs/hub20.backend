@@ -16,6 +16,11 @@ from hub20.apps.ethereum_money.factories import Erc20TokenAmountFactory, EtherAm
 factory.Faker.add_provider(EthereumProvider)
 
 
+def pad_hex(value: int, number_bytes: int) -> HexBytes:
+    hex_value = hex(value)
+    return HexBytes("0x" + hex_value[2:].zfill(number_bytes))
+
+
 def pad_address(address: str) -> HexBytes:
     return HexBytes(address.replace("0x", "0x000000000000000000000000"))
 
@@ -25,13 +30,16 @@ def make_transfer_logs(tx_receipt_mock) -> List[Web3Model]:
         Web3Model(
             address=tx_receipt_mock.to,
             topics=[
-                HexBytes("0x0"),
+                HexBytes("0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"),
                 pad_address(tx_receipt_mock.from_address),
                 pad_address(tx_receipt_mock.recipient),
             ],
             logIndex=0,
             blockNumber=tx_receipt_mock.blockNumber,
-            data=hex(tx_receipt_mock.amount.as_wei),
+            blockHash=tx_receipt_mock.blockHash,
+            transactionHash=tx_receipt_mock.hash,
+            transactionIndex=0,
+            data=pad_hex(tx_receipt_mock.amount.as_wei, 64),
         )
     ]
 
@@ -48,6 +56,7 @@ class EtherTransferDataMock(TransactionDataMock):
 
 class Erc20TransferDataMock(TransactionDataMock):
     from_address = factory.Faker("ethereum_address")
+    to = factory.LazyAttribute(lambda obj: obj.amount.currency.address)
     input = factory.LazyAttribute(lambda obj: encode_transfer_data(obj.recipient, obj.amount))
 
     class Params:
@@ -65,6 +74,7 @@ class EtherTransferReceiptMock(TransactionReceiptDataMock):
 
 
 class Erc20TransferReceiptMock(TransactionReceiptDataMock):
+    to = factory.LazyAttribute(lambda obj: obj.amount.currency.address)
     logs = factory.LazyAttribute(make_transfer_logs)
 
     class Params:

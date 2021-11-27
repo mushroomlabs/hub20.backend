@@ -9,7 +9,7 @@ from django.db import models
 from django.db.models import Avg, Max, Q
 from django.utils import timezone
 from hexbytes import HexBytes
-from model_utils.managers import InheritanceManager
+from model_utils.managers import InheritanceManager, QueryManager
 from web3 import Web3
 from web3.types import TxParams, Wei
 
@@ -57,6 +57,10 @@ class Chain(models.Model):
     synced = models.BooleanField()
     online = models.BooleanField(default=False)
     highest_block = models.PositiveIntegerField()
+    enabled = models.BooleanField(default=True)
+
+    objects = models.Manager()
+    available = QueryManager(enabled=True, synced=True, online=True)
 
     @property
     def provider_hostname(self):

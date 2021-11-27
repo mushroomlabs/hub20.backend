@@ -29,6 +29,9 @@ uritemplate
 uvicorn
 web3
 
+# Replace this with pypi's package once it is updated
+git+https://github.com/mushroomlabs/celery-pubsub.git
+
 # Testing / CI / Document Generation
 bump2version
 pytest-asyncio

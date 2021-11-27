@@ -72,4 +72,4 @@ services:
   # Background command to listen to blockchain and raiden events
   job_listen_events:
     <<: *backend_service
-    command: django-admin run_event_listeners
+    command: django-admin run_event_streams
