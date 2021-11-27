@@ -1,29 +1,21 @@
 import logging
-from functools import wraps
 from typing import Optional
 
 from django.contrib.auth import get_user_model
 from eth_utils import to_checksum_address
 from ethereum.abi import ContractTranslator
 from web3 import Web3
-from web3.exceptions import MismatchedABI
 from web3._utils.events import get_event_data
+from web3.exceptions import MismatchedABI
 
-from hub20.apps.blockchain.client import (
-    get_transaction_by_hash,
-    get_web3,
-)
-from hub20.apps.blockchain.models import Chain, Transaction
+from hub20.apps.blockchain.client import get_web3
+from hub20.apps.blockchain.models import Chain
 from hub20.apps.blockchain.typing import Address, EthereumAccount_T
 from hub20.apps.ethereum_money import get_ethereum_account_model
 
 from .abi import EIP20_ABI
 from .app_settings import TRANSFER_GAS_LIMIT
 from .models import EthereumToken, EthereumTokenAmount
-from .signals import (
-    incoming_transfer_broadcast,
-    outgoing_transfer_mined,
-)
 from .typing import EthereumClient_T
 
 logger = logging.getLogger(__name__)
@@ -43,60 +35,10 @@ def get_transaction_events(transaction_receipt, event_abi):
     return events
 
 
-def token_scanner(handler):
-    @wraps(handler)
-    def wrapper(*args, **kw):
-        return handler(tokens=EthereumToken.ERC20tokens.all(), *args, **kw)
-
-    return wrapper
-
-
-def _decode_transfer_arguments(w3: Web3, token: EthereumToken, tx_data):
-    try:
-        contract = w3.eth.contract(abi=EIP20_ABI, address=token.address)
-        fn, args = contract.decode_function_input(tx_data.input)
-
-        # TODO: is this really the best way to identify the transaction as a value transfer?
-        transfer_idenfifier = contract.functions.transfer.function_identifier
-        if not transfer_idenfifier == fn.function_identifier:
-            return None
-
-        return args
-    except ValueError:
-        return None
-    except Exception as exc:
-        logger.exception(exc)
-
-
 def encode_transfer_data(recipient_address, amount: EthereumTokenAmount):
     translator = ContractTranslator(EIP20_ABI)
     encoded_data = translator.encode_function_call("transfer", (recipient_address, amount.as_wei))
     return f"0x{encoded_data.hex()}"
-
-
-def get_transfer_value_by_tx_data(
-    w3: Web3, token: EthereumToken, tx_data
-) -> Optional[EthereumTokenAmount]:
-    if not token.is_ERC20:
-        return token.from_wei(tx_data.value)
-
-    args = _decode_transfer_arguments(w3, token, tx_data)
-    if args is not None:
-        return token.from_wei(args["_value"])
-
-
-def get_transfer_recipient_by_tx_data(w3: Web3, token: EthereumToken, tx_data):
-    args = _decode_transfer_arguments(w3, token, tx_data)
-    if args is not None:
-        return args["_to"]
-
-
-def get_transfer_recipient_by_receipt(w3: Web3, token: EthereumToken, tx_receipt):
-    contract = w3.eth.contract(abi=EIP20_ABI, address=token.address)
-    tx_logs = contract.events.Transfer().processReceipt(tx_receipt)
-    assert len(tx_logs) == 1, "There should be only one log entry on transfer function"
-
-    return tx_logs[0].args["_to"]
 
 
 def get_max_fee(w3: Web3) -> EthereumTokenAmount:
@@ -128,34 +70,6 @@ def make_token(w3: Web3, address) -> EthereumToken:
     token_data = get_token_information(w3=w3, address=address)
     chain = Chain.make(chain_id=int(w3.net.version))
     return EthereumToken.make(chain=chain, address=address, **token_data)
-
-
-def process_pending_incoming_erc20_transfer_event(
-    w3: Web3, token: EthereumToken, account: EthereumAccount_T, event
-):
-    logger.info(
-        "Pending {} transfer to {}: {}".format(
-            token.code, account.address, event.transactionHash.hex()
-        )
-    )
-    incoming_transfer_broadcast.send(
-        sender=EthereumToken,
-        account=account,
-        amount=token.from_wei(event.args._value),
-        transaction_hash=event.transactionHash.hex(),
-    )
-
-    amount = token.from_wei(event["args"]["_value"])
-    transaction = get_transaction_by_hash(w3=w3, transaction_hash=event.transactionHash)
-    if transaction:
-        account.transactions.add(transaction)
-        outgoing_transfer_mined.send(
-            sender=Transaction,
-            account=account,
-            transaction=transaction,
-            amount=amount,
-            address=event["args"]["_to"],
-        )
 
 
 class EthereumClient:
