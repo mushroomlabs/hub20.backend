@@ -69,7 +69,7 @@ services:
     <<: *backend_service
     command: celery -A hub20.api beat -l info -S django
 
-  # Background command to listen to blockchain and raiden events
-  job_listen_events:
+  # Background command to listen and publish to events from different networks
+  event_publisher:
     <<: *backend_service
     command: django-admin run_event_streams
