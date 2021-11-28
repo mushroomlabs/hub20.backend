@@ -144,8 +144,7 @@ services:
     volumes:
       - "${HUB20_APP_MOUNT_PATH:-./}:/app"
 
-  # Background command to listen to blockchain and raiden events
-  job_listen_events:
+  event_publisher:
     <<: *development_service
     stdin_open: true
     tty: true
