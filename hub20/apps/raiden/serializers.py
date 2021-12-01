@@ -1,8 +1,10 @@
+from django.conf import settings
 from rest_framework import serializers
 from rest_framework_nested.relations import NestedHyperlinkedIdentityField
 from rest_framework_nested.serializers import NestedHyperlinkedModelSerializer
 
-from hub20.apps.blockchain.client import get_web3
+from hub20.apps.blockchain.client import make_web3
+from hub20.apps.blockchain.models import Chain
 from hub20.apps.blockchain.serializers import HexadecimalField
 from hub20.apps.ethereum_money.app_settings import TRACKED_TOKENS
 from hub20.apps.ethereum_money.models import EthereumTokenAmount
@@ -46,7 +48,9 @@ class ServiceDepositSerializer(serializers.ModelSerializer):
         raiden = models.Raiden.objects.first()
 
         request = self.context.get("request")
-        w3 = get_web3()
+
+        chain = Chain.make(chain_id=settings.BLOCKCHAIN_NETWORK_ID)
+        w3 = make_web3(provider_url=chain.provider_url)
         token = get_service_token(w3=w3)
 
         return self.Meta.model.objects.create(

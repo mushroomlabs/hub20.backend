@@ -6,12 +6,11 @@ from urllib.parse import urlparse
 from django.conf import settings
 from django.contrib.postgres.fields import ArrayField
 from django.db import models
-from django.db.models import Avg, Max, Q
+from django.db.models import Max, Q
 from django.utils import timezone
 from hexbytes import HexBytes
 from model_utils.managers import InheritanceManager, QueryManager
-from web3 import Web3
-from web3.types import TxParams, Wei
+from web3.datastructures import AttributeDict
 
 from .app_settings import CHAIN_ID, START_BLOCK_NUMBER
 from .choices import ETHEREUM_CHAINS
@@ -19,19 +18,6 @@ from .fields import EthereumAddressField, HexField, Uint256Field
 from .typing import Address
 
 logger = logging.getLogger(__name__)
-
-
-def database_history_gas_price_strategy(w3: Web3, params: TxParams = None) -> Wei:
-
-    BLOCK_HISTORY_SIZE = 100
-    chain_id = int(w3.net.version)
-    current_block_number = w3.eth.blockNumber
-    default_price = Web3.toWei(1.2, "gwei")
-
-    txs = Transaction.objects.filter(
-        block__chain=chain_id, block__number__gte=current_block_number - BLOCK_HISTORY_SIZE
-    )
-    return Wei(txs.aggregate(avg_price=Avg("gas_price")).get("avg_price")) or default_price
 
 
 class TransactionQuerySet(models.QuerySet):
@@ -139,6 +125,7 @@ class Transaction(models.Model):
     index = Uint256Field()
     value = Uint256Field()
     data = models.TextField()
+    success = models.BooleanField(null=True)
 
     objects = TransactionQuerySet.as_manager()
 
@@ -154,10 +141,22 @@ class Transaction(models.Model):
         return f"Tx {self.hash_hex}"
 
     @classmethod
-    def make(cls, tx_data, tx_receipt, block: Block):
+    def make(
+        cls,
+        chain_id,
+        block_data: AttributeDict,
+        tx_data: AttributeDict,
+        tx_receipt: AttributeDict,
+        force=False,
+    ):
+        tx = cls.objects.filter(chain_id=chain_id, hash=tx_receipt.transactionHash).first()
+
+        if tx and not force:
+            return tx
+
         try:
             assert tx_data.blockHash == tx_receipt.blockHash, "tx data/receipt block hash mismatch"
-            assert tx_data.blockHash == HexBytes(block.hash), "Block hash mismatch"
+            assert tx_data.blockHash == HexBytes(block_data.hash), "Block hash mismatch"
             assert tx_data.hash == tx_receipt.transactionHash, "Tx hash mismatch"
             assert tx_data["from"] == tx_receipt["from"], "Sender address mismatch"
             assert tx_data["to"] == tx_receipt["to"], "Recipient address mismatch"
@@ -165,6 +164,8 @@ class Transaction(models.Model):
         except AssertionError as exc:
             logger.warning(f"Transaction will not be recorded: {exc}")
             return None
+
+        block = Block.make(block_data, chain_id=chain_id)
 
         tx, _ = cls.objects.get_or_create(
             hash=tx_receipt.transactionHash,
@@ -179,6 +180,7 @@ class Transaction(models.Model):
                 "nonce": tx_data.nonce,
                 "value": tx_data.value,
                 "data": tx_data.input,
+                "success": bool(tx_receipt.status),
             },
         )
 

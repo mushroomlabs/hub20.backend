@@ -12,7 +12,7 @@ from model_utils.choices import Choices
 from model_utils.managers import InheritanceManager, QueryManager
 from model_utils.models import StatusModel, TimeStampedModel
 
-from hub20.apps.blockchain.fields import EthereumAddressField, Uint256Field
+from hub20.apps.blockchain.fields import EthereumAddressField, HexField, Uint256Field
 from hub20.apps.blockchain.models import BaseEthereumAccount, Chain, Transaction
 from hub20.apps.blockchain.typing import Address
 from hub20.apps.ethereum_money.app_settings import TRACKED_TOKENS
@@ -268,20 +268,11 @@ class Payment(models.Model):
         unique_together = ("channel", "identifier", "sender_address", "receiver_address")
 
 
-class ChannelDeposit(EthereumTokenValueModel):
-    channel = models.ForeignKey(Channel, related_name="deposits", on_delete=models.CASCADE)
-    transaction = models.ForeignKey(Transaction, on_delete=models.CASCADE)
-
-
-class ChannelWithdraw(EthereumTokenValueModel):
-    channel = models.ForeignKey(Channel, related_name="withdrawals", on_delete=models.CASCADE)
-    transaction = models.ForeignKey(Transaction, on_delete=models.CASCADE)
-
-
 class RaidenManagementOrder(TimeStampedModel):
     raiden = models.ForeignKey(Raiden, on_delete=models.CASCADE)
     user = models.ForeignKey(User, on_delete=models.PROTECT)
     objects = InheritanceManager()
+    transaction_hash = HexField(max_length=64, unique=True, null=True)
 
 
 class JoinTokenNetworkOrder(RaidenManagementOrder):

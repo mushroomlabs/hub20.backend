@@ -42,7 +42,7 @@ async def pending_token_transfers():
                 ):
                     tx_data = w3.eth.get_transaction(transfer_event.transactionHash)
                     await sync_to_async(celery_pubsub.publish)(
-                        "blockchain.event.pending",
+                        "blockchain.broadcast.event",
                         chain_id=w3.eth.chain_id,
                         transaction_data=tx_data,
                         event=transfer_event,

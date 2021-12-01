@@ -31,8 +31,12 @@ def record_account_transactions(chain_id, block_data, transaction_data, transact
     logger.debug(f"Tx mined from {sender} to {recipient} on chain {chain_id}")
 
     for account in BaseEthereumAccount.objects.filter(address__in=[sender, recipient]):
-        block = Block.make(block_data, chain_id=chain_id)
-        Transaction.make(tx_data=transaction_data, tx_receipt=transaction_receipt, block=block)
+        Transaction.make(
+            chain_id=chain_id,
+            tx_data=transaction_data,
+            tx_receipt=transaction_receipt,
+            block_data=block_data,
+        )
 
 
 @shared_task
@@ -57,7 +61,7 @@ def set_node_sync_nok(chain_id, provider_url):
 
 
 celery_pubsub.subscribe("blockchain.block.mined", check_blockchain_height)
-celery_pubsub.subscribe("blockchain.transaction.mined", record_account_transactions)
+celery_pubsub.subscribe("blockchain.mined.transaction", record_account_transactions)
 celery_pubsub.subscribe("node.connection.ok", set_node_connection_ok)
 celery_pubsub.subscribe("node.connection.nok", set_node_connection_nok)
 celery_pubsub.subscribe("node.sync.ok", set_node_sync_ok)

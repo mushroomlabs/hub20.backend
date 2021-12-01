@@ -6,6 +6,7 @@ from django.utils.module_loading import import_string
 
 from hub20.apps.blockchain.client import event_streams as blockchain_streams
 from hub20.apps.core.integrations.web3 import pending_token_transfers
+from hub20.apps.raiden.client.node import sync_channels, sync_payments
 
 from .utils import add_shutdown_handlers
 
@@ -20,6 +21,8 @@ BLOCKCHAIN_STREAMS = [
 ]
 
 INTEGRATION_STREAMS = [pending_token_transfers]
+
+RAIDEN_STREAMS = [sync_channels, sync_payments]
 
 
 class Command(BaseCommand):
@@ -39,7 +42,7 @@ class Command(BaseCommand):
 
         add_shutdown_handlers(loop)
 
-        all_streams = BLOCKCHAIN_STREAMS + INTEGRATION_STREAMS
+        all_streams = BLOCKCHAIN_STREAMS + INTEGRATION_STREAMS + RAIDEN_STREAMS
 
         streams = options["streams"] or all_streams
 

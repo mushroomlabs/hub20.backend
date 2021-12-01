@@ -6,7 +6,7 @@ from django.core.management.base import BaseCommand
 from django.db.models import QuerySet
 from web3 import Web3
 
-from hub20.apps.blockchain.client import BLOCK_SCAN_RANGE, get_web3
+from hub20.apps.blockchain.client import BLOCK_SCAN_RANGE, make_web3
 from hub20.apps.blockchain.models import BaseEthereumAccount, Chain, Transaction
 from hub20.apps.core.models.accounting import (
     ExternalAddressAccount,
@@ -88,7 +88,7 @@ class Command(BaseCommand):
         ETH = EthereumToken.ETH(chain=chain)
         tokens = EthereumToken.ERC20tokens.all()
 
-        w3 = get_web3()
+        w3 = make_web3(provider_url=chain.provider_url)
 
         index_token_events(w3=w3, chain=chain, accounts=accounts, tokens=tokens)
         index_all_token_network_events(w3=w3)

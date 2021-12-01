@@ -1,9 +1,10 @@
 import logging
 
+from django.conf import settings
 from django.core.management.base import BaseCommand
 from eth_utils import to_checksum_address
 
-from hub20.apps.blockchain.client import get_web3
+from hub20.apps.blockchain.client import make_web3
 from hub20.apps.blockchain.models import Chain
 from hub20.apps.ethereum_money.app_settings import TRACKED_TOKENS
 from hub20.apps.ethereum_money.client import get_token_information
@@ -15,10 +16,15 @@ logger = logging.getLogger(__name__)
 class Command(BaseCommand):
     help = "Loads data relevant to all tokens that are going to be used by the instance"
 
-    def handle(self, *args, **options):
-        w3 = get_web3()
-        chain = Chain.make(chain_id=int(w3.net.version))
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--chain-id", "-c", dest="chain_id", default=settings.BLOCKCHAIN_NETWORK_ID, type=int
+        )
 
+    def handle(self, *args, **options):
+
+        chain = Chain.make(chain_id=options["chain_id"])
+        w3 = make_web3(provider_url=chain.provider_url)
         EthereumToken.ETH(chain=chain)
 
         erc20_token_addresses = [

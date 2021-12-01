@@ -2,7 +2,6 @@ import logging
 from typing import Optional, Tuple
 from urllib.parse import urlparse
 
-from django.conf import settings
 from django.db.models import Avg
 from web3 import Web3
 from web3.gas_strategies.time_based import fast_gas_price_strategy
@@ -12,8 +11,6 @@ from web3.types import TxParams, TxReceipt, Wei
 
 from hub20.apps.blockchain.exceptions import Web3TransactionError
 from hub20.apps.blockchain.models import Transaction
-
-from .utils import wait_for_connection
 
 logger = logging.getLogger(__name__)
 
@@ -51,19 +48,6 @@ def make_web3(provider_url: str) -> Web3:
     w3 = Web3(provider_class(provider_url))
     w3.middleware_onion.inject(geth_poa_middleware, layer=0)
     w3.eth.setGasPriceStrategy(database_history_gas_price_strategy)
-
-    return w3
-
-
-def get_web3(provider_url: Optional[str] = None) -> Web3:
-    provider_url = provider_url or settings.WEB3_PROVIDER_URI
-    w3 = make_web3(provider_url)
-
-    wait_for_connection(w3)
-    client_network_id = int(w3.net.version)
-    app_network_id = settings.BLOCKCHAIN_NETWORK_ID
-    if client_network_id != app_network_id:
-        raise ValueError(f"Web3 node connected to {client_network_id}, we are on {app_network_id}")
 
     return w3
 

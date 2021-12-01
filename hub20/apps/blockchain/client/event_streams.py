@@ -3,18 +3,17 @@ import logging
 
 import celery_pubsub
 from asgiref.sync import sync_to_async
+from requests.exceptions import ConnectionError
 from web3 import Web3
 from web3.exceptions import TransactionNotFound
-from requests.exceptions import ConnectionError
 
 from hub20.apps.blockchain.models import Chain
 
-from .constants import BLOCK_CREATION_INTERVAL
 from .decorators import web3_filter_event_handler
-from .utils import is_connected_to_blockchain
 from .web3 import make_web3
 
 logger = logging.getLogger(__name__)
+BLOCK_CREATION_INTERVAL = 10  # In seconds
 
 
 async def node_online_status():
@@ -23,7 +22,7 @@ async def node_online_status():
         for chain in chains:
             try:
                 w3 = make_web3(provider_url=chain.provider_url)
-                is_online = is_connected_to_blockchain(w3=w3)
+                is_online = w3.isConnected() and (w3.net.peer_count > 0)
             except ConnectionError:
                 is_online = False
             except ValueError:
@@ -82,7 +81,7 @@ async def process_new_block(w3: Web3, chain: Chain, event):
         try:
             tx_receipt = w3.eth.get_transaction_receipt(tx_data.hash)
             await sync_to_async(celery_pubsub.publish)(
-                "blockchain.transaction.mined",
+                "blockchain.mined.transaction",
                 chain_id=w3.eth.chain_id,
                 block_data=block_data,
                 transaction_data=tx_data,
@@ -100,7 +99,7 @@ async def process_pending_transaction(w3: Web3, chain: Chain, event):
         tx_data = w3.eth.getTransaction(tx_hash)
         logger.debug(f"{tx_data['to']} to {tx_data['from']}")
         await sync_to_async(celery_pubsub.publish)(
-            "blockchain.transaction.broadcast", chain_id=w3.eth.chain_id, transaction_data=tx_data
+            "blockchain.broadcast.transaction", chain_id=w3.eth.chain_id, transaction_data=tx_data
         )
     except TransactionNotFound:
         logger.info(f"Transaction {tx_hash} not found at pending status")

@@ -3,6 +3,7 @@ from typing import List
 import factory
 from hexbytes import HexBytes
 
+from hub20.apps.blockchain.constants import ERC20_TRANSFER_TOPIC
 from hub20.apps.blockchain.factories.providers import EthereumProvider
 from hub20.apps.blockchain.tests.mocks import (
     TransactionDataMock,
@@ -30,7 +31,7 @@ def make_transfer_logs(tx_receipt_mock) -> List[Web3Model]:
         Web3Model(
             address=tx_receipt_mock.to,
             topics=[
-                HexBytes("0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"),
+                HexBytes(ERC20_TRANSFER_TOPIC),
                 pad_address(tx_receipt_mock.from_address),
                 pad_address(tx_receipt_mock.recipient),
             ],

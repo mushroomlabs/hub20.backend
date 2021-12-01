@@ -3,18 +3,27 @@ import logging
 
 import celery_pubsub
 from asgiref.sync import sync_to_async
-from requests.exceptions import HTTPError, ConnectionError
+from requests.exceptions import ConnectionError, HTTPError
 from web3 import Web3
 
-from hub20.apps.blockchain.app_settings import BLOCK_SCAN_RANGE
 from hub20.apps.blockchain.exceptions import Web3UnsupportedMethod
 from hub20.apps.blockchain.models import Chain
 
-from .constants import BLOCK_CREATION_INTERVAL
-from .utils import get_or_create_eth_filter, log_web3_client_exception, wait_for_connection
-from .web3 import get_web3, make_web3
+from .web3 import make_web3
 
 logger = logging.getLogger(__name__)
+
+
+def _get_or_create_eth_filter(registry, w3, filter_type):
+    try:
+        return registry[w3.eth.chain_id]
+    except KeyError:
+        try:
+            eth_filter = w3.eth.filter(filter_type)
+        except ValueError:
+            raise Web3UnsupportedMethod("filter method not supported")
+        registry[w3.eth.chain_id] = eth_filter
+        return eth_filter
 
 
 def web3_filter_event_handler(filter_type, polling_interval):
@@ -29,7 +38,7 @@ def web3_filter_event_handler(filter_type, polling_interval):
                     web3_node_host = chain.provider_hostname
                     w3: Web3 = make_web3(provider_url=chain.provider_url)
                     try:
-                        eth_filter = get_or_create_eth_filter(filter_registry, w3, filter_type)
+                        eth_filter = _get_or_create_eth_filter(filter_registry, w3, filter_type)
                         for event in eth_filter.get_new_entries():
                             try:
                                 logger.debug(
@@ -62,67 +71,3 @@ def web3_filter_event_handler(filter_type, polling_interval):
         return wrapper
 
     return decorator
-
-
-def blockchain_scanner(handler):
-    async def wrapper(*args, **kw):
-        w3: Web3 = get_web3()
-
-        wait_for_connection(w3)
-        chain_id = int(w3.net.version)
-        chain = await sync_to_async(Chain.make)(chain_id=chain_id)
-
-        starting_block = 0
-
-        while starting_block < chain.highest_block:
-            end = min(starting_block + BLOCK_SCAN_RANGE, chain.highest_block)
-            try:
-                await sync_to_async(handler)(w3=w3, starting_block=starting_block, end_block=end)
-            except Exception as exc:
-                logger.exception(f"Error on {handler.__name__}: {exc}")
-
-            starting_block += BLOCK_SCAN_RANGE
-
-    return wrapper
-
-
-def blockchain_mined_block_handler(handler):
-    async def wrapper(*args, **kw):
-        w3: Web3 = get_web3()
-        wait_for_connection(w3=w3)
-        block_filter = w3.eth.filter("latest")
-
-        while True:
-            try:
-                wait_for_connection(w3=w3)
-                for block_hash in block_filter.get_new_entries():
-                    await sync_to_async(handler)(w3=w3, block_hash=block_hash, *args, **kw)
-            except Exception as exc:
-                logger.exception(f"Error on {handler.__name__}: {exc}")
-            finally:
-                await asyncio.sleep(BLOCK_CREATION_INTERVAL)
-
-    return wrapper
-
-
-def blockchain_pending_transaction_handler(handler):
-    async def wrapper(*args, **kw):
-        w3: Web3 = get_web3()
-        wait_for_connection(w3=w3)
-        try:
-            tx_filter = w3.eth.filter("pending")
-        except ValueError as exc:
-            await sync_to_async(log_web3_client_exception)(exc)
-            return
-
-        while True:
-            try:
-                wait_for_connection(w3=w3)
-                for tx_hash in tx_filter.get_new_entries():
-                    await sync_to_async(handler)(w3=w3, transaction_hash=tx_hash, *args, **kw)
-            except Exception as exc:
-                logger.exception(f"Error on {handler.__name__}: {exc}")
-            finally:
-                await asyncio.sleep(BLOCK_CREATION_INTERVAL / 10)
-
-    return wrapper

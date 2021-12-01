@@ -1,7 +1,6 @@
 import json
-import uuid
 import os
-
+import uuid
 from decimal import Decimal
 
 from celery import Celery

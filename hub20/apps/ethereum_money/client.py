@@ -8,7 +8,7 @@ from web3 import Web3
 from web3._utils.events import get_event_data
 from web3.exceptions import MismatchedABI
 
-from hub20.apps.blockchain.client import get_web3
+from hub20.apps.blockchain.client import make_web3
 from hub20.apps.blockchain.models import Chain
 from hub20.apps.blockchain.typing import Address, EthereumAccount_T
 from hub20.apps.ethereum_money import get_ethereum_account_model
@@ -75,18 +75,19 @@ def make_token(w3: Web3, address) -> EthereumToken:
 class EthereumClient:
     def __init__(self, account: EthereumAccount_T, w3: Optional[Web3] = None) -> None:
         self.account = account
-        self.w3 = w3 or get_web3()
 
     def build_transfer_transaction(self, recipient, amount: EthereumTokenAmount):
         token = amount.currency
-        chain_id = int(self.w3.net.version)
+
+        w3 = make_web3(provider_url=token.chain.provider_url)
+        chain_id = w3.eth.chain_id
         message = f"Connected to network {chain_id}, token {token.code} is on {token.chain_id}"
         assert token.chain_id == chain_id, message
 
         transaction_params = {
             "chainId": chain_id,
-            "nonce": self.w3.eth.getTransactionCount(self.account.address),
-            "gasPrice": self.w3.eth.generateGasPrice(),
+            "nonce": w3.eth.getTransactionCount(self.account.address),
+            "gasPrice": w3.eth.generateGasPrice(),
             "gas": TRANSFER_GAS_LIMIT,
             "from": self.account.address,
         }
@@ -100,17 +101,19 @@ class EthereumClient:
         return transaction_params
 
     def transfer(self, amount: EthereumTokenAmount, address, *args, **kw):
+        w3 = make_web3(provider_url=amount.currency.chain.provider_url)
         transaction_data = self.build_transfer_transaction(recipient=address, amount=amount)
-        signed_tx = self.sign_transaction(transaction_data=transaction_data)
-        return self.w3.eth.sendRawTransaction(signed_tx.rawTransaction)
+        signed_tx = self.sign_transaction(transaction_data=transaction_data, w3=w3)
+        return w3.eth.sendRawTransaction(signed_tx.rawTransaction)
 
-    def sign_transaction(self, transaction_data, *args, **kw):
+    def sign_transaction(self, transaction_data, w3: Web3, *args, **kw):
         if not hasattr(self.account, "private_key"):
             raise NotImplementedError("Can not sign transaction without the private key")
-        return self.w3.eth.account.signTransaction(transaction_data, self.account.private_key)
+        return w3.eth.account.signTransaction(transaction_data, self.account.private_key)
 
     def get_balance(self, token: EthereumToken):
-        return get_account_balance(w3=self.w3, token=token, address=self.account.address)
+        w3 = make_web3(provider_url=token.chain.provider_url)
+        return get_account_balance(w3=w3, token=token, address=self.account.address)
 
     @classmethod
     def select_for_transfer(
@@ -119,7 +122,9 @@ class EthereumClient:
         receiver: Optional[User] = None,
         address: Optional[Address] = None,
     ) -> Optional[EthereumClient_T]:
-        w3 = get_web3()
+
+        chain = amount.currency.chain
+        w3 = make_web3(provider_url=chain.provider_url)
 
         transfer_fee: EthereumTokenAmount = cls.estimate_transfer_fees(w3=w3)
         assert transfer_fee.is_ETH
@@ -143,5 +148,5 @@ class EthereumClient:
 
     @classmethod
     def estimate_transfer_fees(cls, *args, **kw) -> EthereumTokenAmount:
-        w3 = kw.pop("w3", get_web3())
+        w3 = kw["w3"]
         return get_max_fee(w3=w3)
