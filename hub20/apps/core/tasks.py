@@ -75,7 +75,7 @@ def call_checkout_webhook(checkout_id):
         except httpx.ConnectError:
             logger.warning(f"Failed to connect to {url}")
         except httpx.HTTPError as exc:
-            logger.exception(f"Webhook {url} for {checkout_id} resulted in error: {exc}")
+            logger.warning(f"Webhook {url} for {checkout_id} resulted in error response: {exc}")
         except Exception as exc:
             logger.exception(f"Failed to call webhook at {url} for {checkout_id}: {exc}")
     except Checkout.DoesNotExist:

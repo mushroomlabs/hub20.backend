@@ -5,12 +5,12 @@ from celery import shared_task
 
 logger = logging.getLogger(__name__)
 
-from hub20.apps.blockchain.models import BaseEthereumAccount, Block, Chain, Transaction
+from hub20.apps.blockchain.models import BaseEthereumAccount, Chain, Transaction
 
 from . import signals
-from .models import EthereumToken
 from .abi import TRANSFER_EVENT_ABI
 from .client import get_transaction_events
+from .models import EthereumToken
 
 
 @shared_task

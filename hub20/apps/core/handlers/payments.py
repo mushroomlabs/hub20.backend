@@ -5,7 +5,6 @@ from django.contrib.sessions.models import Session
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.utils import timezone
-from psycopg2.extras import NumericRange
 
 from hub20.apps.blockchain.models import BaseEthereumAccount, Block, Chain, Transaction
 from hub20.apps.blockchain.signals import block_sealed
@@ -144,7 +143,7 @@ def on_incoming_transfer_broadcast_send_notification_to_open_checkouts(sender, *
         tasks.publish_checkout_event.delay(
             checkout.id,
             event=Events.BLOCKCHAIN_DEPOSIT_BROADCAST.value,
-            amount=payment_amount.amount,
+            amount=str(payment_amount.amount),
             token=payment_amount.currency.address,
             transaction=tx_hash,
         )
@@ -263,12 +262,23 @@ def on_blockchain_payment_received_send_notification(sender, **kw):
 
     deposit = Deposit.objects.filter(routes__payment=payment).first()
 
+    checkout = Checkout.objects.filter(routes__payment=payment).first()
+
     if deposit and deposit.session_key:
         tasks.send_session_event.delay(
             session_key=deposit.session_key,
             event=Events.BLOCKCHAIN_DEPOSIT_RECEIVED.value,
             deposit_id=payment.route.deposit.id,
             amount=payment.amount,
+            token=payment.currency.address,
+            transaction=payment.transaction.hash_hex,
+        )
+
+    if checkout:
+        tasks.publish_checkout_event.delay(
+            checkout.id,
+            event=Events.BLOCKCHAIN_DEPOSIT_RECEIVED.value,
+            amount=str(payment.amount),
             token=payment.currency.address,
             transaction=payment.transaction.hash_hex,
         )
