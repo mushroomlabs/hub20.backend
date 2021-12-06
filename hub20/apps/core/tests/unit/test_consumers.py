@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 import celery_pubsub
 import pytest
 from asgiref.sync import sync_to_async
@@ -164,7 +166,7 @@ async def test_checkout_receives_transaction_mined_notification(checkout):
     payment_data = payment_messages[0]
     assert is_0x_prefixed(payment_data["transaction"])
     assert is_0x_prefixed(payment_data["token"])
-    assert payment_data["amount"] == str(checkout.amount), "payment amount does not match"
+    assert Decimal(payment_data["amount"]) == checkout.amount, "payment amount does not match"
 
 
 @pytest.mark.asyncio

@@ -103,3 +103,12 @@ async def process_pending_transaction(w3: Web3, chain: Chain, event):
         )
     except TransactionNotFound:
         logger.info(f"Transaction {tx_hash} not found at pending status")
+
+
+__all__ = [
+    "BLOCK_CREATION_INTERVAL",
+    "node_online_status",
+    "node_sync_status",
+    "process_new_block",
+    "process_pending_transaction",
+]

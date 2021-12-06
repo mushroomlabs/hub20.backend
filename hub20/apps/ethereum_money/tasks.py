@@ -99,7 +99,7 @@ def check_pending_transaction_for_eth_transfer(chain_id, transaction_data):
 
     for account in BaseEthereumAccount.objects.filter(address=recipient):
         signals.incoming_transfer_broadcast.send(
-            sender=Transaction,
+            sender=EthereumToken,
             chain_id=chain_id,
             account=account,
             amount=amount,

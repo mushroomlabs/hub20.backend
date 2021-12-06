@@ -268,23 +268,24 @@ def on_blockchain_payment_received_send_notification(sender, **kw):
 
     checkout = Checkout.objects.filter(routes__payment=payment).first()
 
+    payment_data = dict(
+        amount=str(payment.amount),
+        token=payment.currency.address,
+        transaction=payment.transaction.hash_hex,
+        block_number=payment.transaction.block.number,
+    )
+
     if deposit and deposit.session_key:
         tasks.send_session_event.delay(
             session_key=deposit.session_key,
             event=Events.BLOCKCHAIN_DEPOSIT_RECEIVED.value,
             deposit_id=str(payment.route.deposit.id),
-            amount=str(payment.amount),
-            token=payment.currency.address,
-            transaction=payment.transaction.hash_hex,
+            **payment_data,
         )
 
     if checkout:
         tasks.publish_checkout_event.delay(
-            checkout.id,
-            event=Events.BLOCKCHAIN_DEPOSIT_RECEIVED.value,
-            amount=str(payment.amount),
-            token=payment.currency.address,
-            transaction=payment.transaction.hash_hex,
+            checkout.id, event=Events.BLOCKCHAIN_DEPOSIT_RECEIVED.value, **payment_data
         )
 
 
@@ -343,7 +344,7 @@ def on_payment_confirmed_publish_checkout(sender, **kw):
 
     tasks.publish_checkout_event.delay(
         checkout_id,
-        amount=payment.amount,
+        amount=str(payment.amount),
         token=payment.currency.address,
         event=event and event.value,
         payment_method=payment_method,
