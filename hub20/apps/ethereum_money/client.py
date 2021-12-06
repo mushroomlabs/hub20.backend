@@ -6,7 +6,7 @@ from eth_utils import to_checksum_address
 from ethereum.abi import ContractTranslator
 from web3 import Web3
 from web3._utils.events import get_event_data
-from web3.exceptions import MismatchedABI
+from web3.exceptions import LogTopicError, MismatchedABI
 
 from hub20.apps.blockchain.client import make_web3
 from hub20.apps.blockchain.models import Chain
@@ -30,8 +30,9 @@ def get_transaction_events(transaction_receipt, event_abi):
         try:
             event = get_event_data(w3.codec, event_abi, log)
             events.append(event)
-        except MismatchedABI:
-            pass
+        except (MismatchedABI, LogTopicError) as exc:
+            tx_hash = transaction_receipt.transactionHash.hex()
+            logger.info(f"{exc} when getting events from tx {tx_hash}")
     return events
 
 
