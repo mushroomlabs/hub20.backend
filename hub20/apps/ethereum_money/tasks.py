@@ -120,7 +120,7 @@ def check_pending_erc20_transfer_event(chain_id, transaction_data, event):
 
     for account in BaseEthereumAccount.objects.filter(address=sender):
         signals.outgoing_transfer_broadcast.send(
-            sender=Transaction,
+            sender=EthereumToken,
             chain_id=chain_id,
             account=account,
             amount=amount,
@@ -129,7 +129,7 @@ def check_pending_erc20_transfer_event(chain_id, transaction_data, event):
 
     for account in BaseEthereumAccount.objects.filter(address=recipient):
         signals.incoming_transfer_broadcast.send(
-            sender=Transaction,
+            sender=EthereumToken,
             chain_id=chain_id,
             account=account,
             amount=amount,
