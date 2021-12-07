@@ -75,7 +75,7 @@ def call_checkout_webhook(checkout_id):
         except httpx.ConnectError:
             logger.warning(f"Failed to connect to {url}")
         except httpx.HTTPError as exc:
-            logger.exception(f"Webhook {url} for {checkout_id} resulted in error: {exc}")
+            logger.warning(f"Webhook {url} for {checkout_id} resulted in error response: {exc}")
         except Exception as exc:
             logger.exception(f"Failed to call webhook at {url} for {checkout_id}: {exc}")
     except Checkout.DoesNotExist:
@@ -117,7 +117,7 @@ def clear_expired_sessions():
     Session.objects.filter(expire_date__lte=timezone.now()).delete()
 
 
-celery_pubsub.subscribe("blockchain.block.mined", notify_new_block)
+celery_pubsub.subscribe("blockchain.mined.block", notify_new_block)
 celery_pubsub.subscribe("node.sync.nok", notify_node_unavailable)
 celery_pubsub.subscribe("node.sync.ok", notify_node_recovered)
 celery_pubsub.subscribe("node.connection.nok", notify_node_unavailable)

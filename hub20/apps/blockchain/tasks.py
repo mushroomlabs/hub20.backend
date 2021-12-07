@@ -60,7 +60,7 @@ def set_node_sync_nok(chain_id, provider_url):
     Chain.objects.filter(id=chain_id, provider_url=provider_url).update(synced=False)
 
 
-celery_pubsub.subscribe("blockchain.block.mined", check_blockchain_height)
+celery_pubsub.subscribe("blockchain.mined.block", check_blockchain_height)
 celery_pubsub.subscribe("blockchain.mined.transaction", record_account_transactions)
 celery_pubsub.subscribe("node.connection.ok", set_node_connection_ok)
 celery_pubsub.subscribe("node.connection.nok", set_node_connection_nok)

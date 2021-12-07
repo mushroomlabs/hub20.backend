@@ -1,10 +1,10 @@
 import pytest
 from django.test import TestCase
 
-from hub20.apps.blockchain.tests.mocks import Web3Mock, BlockMock
+from hub20.apps.blockchain.tests.mocks import BlockMock, Web3Mock
 from hub20.apps.core.factories import CheckoutFactory
 from hub20.apps.ethereum_money.tasks import record_token_transfers
-from hub20.apps.ethereum_money.tests.mocks import Erc20TransferReceiptMock, Erc20TransferDataMock
+from hub20.apps.ethereum_money.tests.mocks import Erc20TransferDataMock, Erc20TransferReceiptMock
 
 
 @pytest.mark.django_db(transaction=True)

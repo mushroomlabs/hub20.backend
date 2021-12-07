@@ -47,6 +47,7 @@ class SessionEventsConsumer(JsonWebsocketConsumer):
         logger.debug(f"Session Event consumer {group_name} connected")
 
     def notify_event(self, message):
+        logger.info(f"Message received: {message}")
         message.pop("type", None)
         event = message.pop("event", "notification")
         logger.debug(f"Sending {event} notification... {message}")
@@ -70,9 +71,12 @@ class CheckoutConsumer(JsonWebsocketConsumer):
         async_to_sync(self.channel_layer.group_add)(group_name, self.channel_name)
 
         accept_subprotocol(self)
+        logger.info(f"Checkout consumer {group_name} connected")
 
     def checkout_event(self, message):
         logger.info(f"Message received: {message}")
         message.pop("type", None)
         message["event"] = message.pop("event_name", None)
+
+        logger.debug(f"Sending {message['event']} notification on {self.channel_name}...")
         self.send_json(message)

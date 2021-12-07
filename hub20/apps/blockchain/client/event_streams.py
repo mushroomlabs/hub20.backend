@@ -75,7 +75,7 @@ async def process_new_block(w3: Web3, chain: Chain, event):
     logger.info(f"New block: {event.hex()}")
     block_data = w3.eth.get_block(event, full_transactions=True)
     await sync_to_async(celery_pubsub.publish)(
-        "blockchain.block.mined", chain_id=w3.eth.chain_id, block_data=block_data
+        "blockchain.mined.block", chain_id=w3.eth.chain_id, block_data=block_data
     )
     for tx_data in block_data["transactions"]:
         try:
@@ -103,3 +103,12 @@ async def process_pending_transaction(w3: Web3, chain: Chain, event):
         )
     except TransactionNotFound:
         logger.info(f"Transaction {tx_hash} not found at pending status")
+
+
+__all__ = [
+    "BLOCK_CREATION_INTERVAL",
+    "node_online_status",
+    "node_sync_status",
+    "process_new_block",
+    "process_pending_transaction",
+]

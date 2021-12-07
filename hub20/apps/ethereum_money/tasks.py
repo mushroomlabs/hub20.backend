@@ -5,12 +5,12 @@ from celery import shared_task
 
 logger = logging.getLogger(__name__)
 
-from hub20.apps.blockchain.models import BaseEthereumAccount, Block, Chain, Transaction
+from hub20.apps.blockchain.models import BaseEthereumAccount, Chain, Transaction
 
 from . import signals
-from .models import EthereumToken
 from .abi import TRANSFER_EVENT_ABI
 from .client import get_transaction_events
+from .models import EthereumToken
 
 
 @shared_task
@@ -99,7 +99,7 @@ def check_pending_transaction_for_eth_transfer(chain_id, transaction_data):
 
     for account in BaseEthereumAccount.objects.filter(address=recipient):
         signals.incoming_transfer_broadcast.send(
-            sender=Transaction,
+            sender=EthereumToken,
             chain_id=chain_id,
             account=account,
             amount=amount,
@@ -120,7 +120,7 @@ def check_pending_erc20_transfer_event(chain_id, transaction_data, event):
 
     for account in BaseEthereumAccount.objects.filter(address=sender):
         signals.outgoing_transfer_broadcast.send(
-            sender=Transaction,
+            sender=EthereumToken,
             chain_id=chain_id,
             account=account,
             amount=amount,
@@ -129,7 +129,7 @@ def check_pending_erc20_transfer_event(chain_id, transaction_data, event):
 
     for account in BaseEthereumAccount.objects.filter(address=recipient):
         signals.incoming_transfer_broadcast.send(
-            sender=Transaction,
+            sender=EthereumToken,
             chain_id=chain_id,
             account=account,
             amount=amount,

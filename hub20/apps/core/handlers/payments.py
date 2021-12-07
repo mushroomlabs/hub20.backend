@@ -5,7 +5,6 @@ from django.contrib.sessions.models import Session
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.utils import timezone
-from psycopg2.extras import NumericRange
 
 from hub20.apps.blockchain.models import BaseEthereumAccount, Block, Chain, Transaction
 from hub20.apps.blockchain.signals import block_sealed
@@ -61,7 +60,10 @@ def _check_for_blockchain_payment_confirmations(block_number):
 
 
 def _publish_block_created_event(block_number):
-    for checkout in Checkout.objects.unpaid().with_blockchain_route(block_number):
+    for checkout in Checkout.objects.with_blockchain_route(block_number):
+        logger.debug(
+            f"Scheduling publish event for checkout {checkout.id}: block #{block_number} created"
+        )
         tasks.publish_checkout_event.delay(
             checkout.id,
             event=Events.BLOCKCHAIN_BLOCK_CREATED.value,
@@ -109,7 +111,7 @@ def on_incoming_transfer_broadcast_send_notification_to_active_sessions(sender, 
     payment_amount = kw["amount"]
     tx_hash = kw["transaction_hash"]
 
-    route = BlockchainPaymentRoute.objects.available().filter(account=recipient).first()
+    route = BlockchainPaymentRoute.objects.open().filter(account=recipient).first()
 
     if not route:
         return
@@ -123,7 +125,7 @@ def on_incoming_transfer_broadcast_send_notification_to_active_sessions(sender, 
             deposit_id=str(deposit.id),
             amount=str(payment_amount.amount),
             token=payment_amount.currency.address,
-            transaction=tx_hash,
+            transaction=tx_hash.hex(),
         )
 
 
@@ -133,7 +135,7 @@ def on_incoming_transfer_broadcast_send_notification_to_open_checkouts(sender, *
     payment_amount = kw["amount"]
     tx_hash = kw["transaction_hash"]
 
-    route = BlockchainPaymentRoute.objects.available().filter(account=recipient).first()
+    route = BlockchainPaymentRoute.objects.open().filter(account=recipient).first()
 
     if not route:
         return
@@ -144,9 +146,9 @@ def on_incoming_transfer_broadcast_send_notification_to_open_checkouts(sender, *
         tasks.publish_checkout_event.delay(
             checkout.id,
             event=Events.BLOCKCHAIN_DEPOSIT_BROADCAST.value,
-            amount=payment_amount.amount,
+            amount=str(payment_amount.amount),
             token=payment_amount.currency.address,
-            transaction=tx_hash,
+            transaction=tx_hash.hex(),
         )
 
 
@@ -238,7 +240,8 @@ def on_block_created_check_confirmed_payments(sender, **kw):
 @receiver(post_save, sender=Block)
 def on_block_added_publish_block_created_event(sender, **kw):
     block = kw["instance"]
-    _publish_block_created_event(block.number)
+    if kw["created"]:
+        _publish_block_created_event(block.number)
 
 
 @receiver(post_save, sender=Block)
@@ -263,14 +266,26 @@ def on_blockchain_payment_received_send_notification(sender, **kw):
 
     deposit = Deposit.objects.filter(routes__payment=payment).first()
 
+    checkout = Checkout.objects.filter(routes__payment=payment).first()
+
+    payment_data = dict(
+        amount=str(payment.amount),
+        token=payment.currency.address,
+        transaction=payment.transaction.hash_hex,
+        block_number=payment.transaction.block.number,
+    )
+
     if deposit and deposit.session_key:
         tasks.send_session_event.delay(
             session_key=deposit.session_key,
             event=Events.BLOCKCHAIN_DEPOSIT_RECEIVED.value,
-            deposit_id=payment.route.deposit.id,
-            amount=payment.amount,
-            token=payment.currency.address,
-            transaction=payment.transaction.hash_hex,
+            deposit_id=str(payment.route.deposit.id),
+            **payment_data,
+        )
+
+    if checkout:
+        tasks.publish_checkout_event.delay(
+            checkout.id, event=Events.BLOCKCHAIN_DEPOSIT_RECEIVED.value, **payment_data
         )
 
 
@@ -329,7 +344,7 @@ def on_payment_confirmed_publish_checkout(sender, **kw):
 
     tasks.publish_checkout_event.delay(
         checkout_id,
-        amount=payment.amount,
+        amount=str(payment.amount),
         token=payment.currency.address,
         event=event and event.value,
         payment_method=payment_method,
