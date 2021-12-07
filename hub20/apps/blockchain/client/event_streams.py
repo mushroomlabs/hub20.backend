@@ -75,7 +75,7 @@ async def process_new_block(w3: Web3, chain: Chain, event):
     logger.info(f"New block: {event.hex()}")
     block_data = w3.eth.get_block(event, full_transactions=True)
     await sync_to_async(celery_pubsub.publish)(
-        "blockchain.block.mined", chain_id=w3.eth.chain_id, block_data=block_data
+        "blockchain.mined.block", chain_id=w3.eth.chain_id, block_data=block_data
     )
     for tx_data in block_data["transactions"]:
         try:

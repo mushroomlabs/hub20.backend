@@ -117,7 +117,7 @@ def clear_expired_sessions():
     Session.objects.filter(expire_date__lte=timezone.now()).delete()
 
 
-celery_pubsub.subscribe("blockchain.block.mined", notify_new_block)
+celery_pubsub.subscribe("blockchain.mined.block", notify_new_block)
 celery_pubsub.subscribe("node.sync.nok", notify_node_unavailable)
 celery_pubsub.subscribe("node.sync.ok", notify_node_recovered)
 celery_pubsub.subscribe("node.connection.nok", notify_node_unavailable)
