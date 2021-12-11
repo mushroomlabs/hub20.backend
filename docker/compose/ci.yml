@@ -5,10 +5,6 @@ x-envvars: &ci_environment
     DJANGO_SETTINGS_MODULE: hub20.api.settings
     HUB20_DATA_FOLDER: /var/hub20
     HUB20_STATIC_ROOT: /var/hub20/static
-    HUB20_BROKER_URL: redis://redis:6379/0
-    HUB20_CACHE_BACKEND: django_redis.cache.RedisCache
-    HUB20_CACHE_LOCATION: redis://redis:6379/1
-    HUB20_CHANNEL_LAYER_HOST: redis
     HUB20_CORS_HEADERS_ENABLED: 1
     HUB20_DATABASE_HOST: db
     HUB20_DATABASE_PORT: 5432
