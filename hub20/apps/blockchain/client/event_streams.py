@@ -29,6 +29,9 @@ async def node_online_status():
                 # The node does not support the peer count method. Assume healthy.
                 is_online = w3.isConnected()
 
+            if is_online:
+                await sync_to_async(chain._set_gas_price_estimate)(w3.eth.generate_gas_price())
+
             if chain.online and not is_online:
                 logger.debug(f"Node {chain.provider_hostname} went offline")
                 await sync_to_async(celery_pubsub.publish)(
