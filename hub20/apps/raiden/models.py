@@ -43,6 +43,10 @@ class TokenNetwork(models.Model):
         return open_channels.filter(participant_addresses__contains=[address]).exists()
 
     @property
+    def chain(self):
+        return self.token.chain
+
+    @property
     def events(self):
         return TokenNetworkChannelEvent.objects.filter(channel__token_network=self)
 
@@ -117,6 +121,10 @@ class Raiden(BaseEthereumAccount):
         return self.channels.filter(status=Channel.STATUS.opened)
 
     @property
+    def chains(self):
+        return Chain.objects.filter(tokens__tokennetwork__channel__raiden=self).distinct()
+
+    @property
     def payments(self):
         return Payment.objects.filter(channel__raiden=self)
 
@@ -182,15 +190,16 @@ class Channel(StatusModel):
 
         token = EthereumToken.ERC20tokens.filter(address=token_address).first()
 
-        if token is None:
-            chain = Chain.make()
-            token = EthereumToken.make(address=token_address, chain=chain)
+        assert token is not None
+        assert token.chain in raiden.chains
 
-        token_network = TokenNetwork.objects.filter(address=token_network_address).first()
+        token_network, _ = TokenNetwork.objects.get_or_create(
+            address=token_network_address, defaults={"token": token}
+        )
+
         if token_network is None:
             token_network = TokenNetwork.objects.create(address=token_network_address, token=token)
 
-        assert token_network.address == token_network_address
         assert token_network.token.address == token_address
 
         balance = token.from_wei(channel_data.pop("balance"))

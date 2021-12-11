@@ -75,6 +75,8 @@ def record_token_transfers(chain_id, block_data, transaction_data, transaction_r
 
 @shared_task
 def check_pending_transaction_for_eth_transfer(chain_id, transaction_data):
+    chain = Chain.objects.get(id=chain_id, enabled=True)
+
     sender = transaction_data["from"]
     recipient = transaction_data["to"]
     tx_hash = transaction_data["hash"]
@@ -84,7 +86,6 @@ def check_pending_transaction_for_eth_transfer(chain_id, transaction_data):
     if not is_ETH_transfer:
         return
 
-    chain = Chain.make(chain_id=chain_id)
     ETH = EthereumToken.ETH(chain=chain)
     amount = ETH.from_wei(transaction_data.value)
 
@@ -141,6 +142,7 @@ def check_pending_erc20_transfer_event(chain_id, transaction_data, event):
 def check_mined_transaction_for_eth_transfer(
     chain_id, block_data, transaction_data, transaction_receipt
 ):
+    chain = Chain.objects.get(id=chain_id, enabled=True)
     sender = transaction_data["from"]
     recipient = transaction_data["to"]
 
@@ -152,7 +154,6 @@ def check_mined_transaction_for_eth_transfer(
     if not BaseEthereumAccount.objects.filter(address__in=[sender, recipient]).exists():
         return
 
-    chain = Chain.make(chain_id=chain_id)
     ETH = EthereumToken.ETH(chain=chain)
     amount = ETH.from_wei(transaction_data.value)
     tx = Transaction.make(

@@ -56,7 +56,10 @@ def check_required_service_token_deposit(raiden: Raiden, w3: Web3):
 
 def ensure_preconditions(raiden: Raiden, w3: Web3):
     chain_id = int(w3.net.version)
-    chain = Chain.make(chain_id)
+    try:
+        chain = Chain.objects.get(id=chain_id, enabled=True)
+    except Chain.DoesNotExist:
+        raise RaidenMissingPrecondition(f"Not connected to network {chain_id}")
 
     chain_uri = chain.provider_url
     w3_uri = w3.provider.endpoint_uri

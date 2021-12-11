@@ -5,6 +5,7 @@ from urllib.parse import urlparse
 
 from django.conf import settings
 from django.contrib.postgres.fields import ArrayField
+from django.core.cache import cache
 from django.db import models
 from django.db.models import Max, Q
 from django.utils import timezone
@@ -49,21 +50,21 @@ class Chain(models.Model):
     available = QueryManager(enabled=True, synced=True, online=True)
 
     @property
+    def gas_price_estimate_cache_key(self):
+        return f"GAS_PRICE_ESTIMATE_{self.id}"
+
+    @property
     def provider_hostname(self):
         endpoint = urlparse(self.provider_url)
         return endpoint.hostname
 
-    @classmethod
-    def make(cls, chain_id: Optional[int] = CHAIN_ID):
-        chain, _ = cls.objects.get_or_create(
-            id=chain_id,
-            defaults={
-                "synced": False,
-                "highest_block": 0,
-                "provider_url": settings.WEB3_PROVIDER_URI,
-            },
-        )
-        return chain
+    def _get_gas_price_estimate(self):
+        return cache.get(self.gas_price_estimate_cache_key, None)
+
+    def _set_gas_price_estimate(self, value):
+        return cache.set(self.gas_price_estimate_cache_key, value)
+
+    gas_price_estimate = property(_get_gas_price_estimate, _set_gas_price_estimate)
 
 
 class Block(models.Model):
