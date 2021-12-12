@@ -7,7 +7,7 @@ from requests.exceptions import ConnectionError
 from web3 import Web3
 from web3.exceptions import TransactionNotFound
 
-from hub20.apps.blockchain.models import Chain
+from hub20.apps.blockchain.models import Chain, Web3Provider
 
 from .decorators import web3_filter_event_handler
 from .web3 import make_web3
@@ -18,10 +18,11 @@ BLOCK_CREATION_INTERVAL = 10  # In seconds
 
 async def node_online_status():
     while True:
-        chains = await sync_to_async(list)(Chain.active.all())
-        for chain in chains:
+        providers = await sync_to_async(list)(Web3Provider.available.select_related("chain"))
+        for provider in providers:
+            chain = provider.chain
             try:
-                w3 = make_web3(provider_url=chain.provider_url)
+                w3 = make_web3(provider=provider)
                 is_online = w3.isConnected() and (w3.net.peer_count > 0)
             except ConnectionError:
                 is_online = False
@@ -32,16 +33,16 @@ async def node_online_status():
             if is_online:
                 await sync_to_async(chain._set_gas_price_estimate)(w3.eth.generate_gas_price())
 
-            if chain.online and not is_online:
-                logger.debug(f"Node {chain.provider_hostname} went offline")
+            if provider.connected and not is_online:
+                logger.debug(f"Node {provider.hostname} went offline")
                 await sync_to_async(celery_pubsub.publish)(
-                    "node.connection.nok", chain_id=chain.id, provider_url=chain.provider_url
+                    "node.connection.nok", chain_id=chain.id, provider_url=provider.url
                 )
 
             elif is_online and not chain.online:
                 logger.debug(f"Node {chain.provider_hostname} is back online")
                 await sync_to_async(celery_pubsub.publish)(
-                    "node.connection.ok", chain_id=chain.id, provider_url=chain.provider_url
+                    "node.connection.ok", chain_id=chain.id, provider_url=provider.url
                 )
 
         await asyncio.sleep(BLOCK_CREATION_INTERVAL)
@@ -49,10 +50,10 @@ async def node_online_status():
 
 async def node_sync_status():
     while True:
-        chains = await sync_to_async(list)(Chain.active.all())
-        for chain in chains:
+        providers = await sync_to_async(list)(Web3Provider.available.select_related("chain"))
+        for provider in providers:
             try:
-                w3 = make_web3(provider_url=chain.provider_url)
+                w3 = make_web3(provider=provider)
                 is_synced = bool(not w3.eth.syncing)
             except ValueError:
                 # The node does not support the eth_syncing method. Assume healthy.
@@ -60,14 +61,14 @@ async def node_sync_status():
             except ConnectionError:
                 continue
 
-            if chain.synced and not is_synced:
+            if provider.synced and not is_synced:
                 await sync_to_async(celery_pubsub.publish)(
-                    "node.sync.nok", provider_url=chain.provider_url
+                    "node.sync.nok", provider_url=provider.url
                 )
-            elif is_synced and not chain.synced:
-                logger.debug(f"Node {chain.provider_hostname} is back in sync")
+            elif is_synced and not provider.synced:
+                logger.debug(f"Node {provider.hostname} is back in sync")
                 await sync_to_async(celery_pubsub.publish)(
-                    "node.sync.ok", provider_url=chain.provider_url
+                    "node.sync.ok", provider_url=provider.url
                 )
 
         await asyncio.sleep(BLOCK_CREATION_INTERVAL)

@@ -13,11 +13,7 @@ from hub20.apps.blockchain.models import BaseEthereumAccount
 from hub20.apps.blockchain.tests.mocks import BlockMock
 from hub20.apps.core.api import consumer_patterns
 from hub20.apps.core.consumers import Events
-from hub20.apps.core.factories import (
-    CheckoutFactory,
-    Erc20TokenPaymentConfirmationFactory,
-    Erc20TokenPaymentOrderFactory,
-)
+from hub20.apps.core.factories import CheckoutFactory, Erc20TokenPaymentOrderFactory
 from hub20.apps.core.middleware import TokenAuthMiddlewareStack
 from hub20.apps.core.settings import app_settings
 from hub20.apps.ethereum_money.abi import EIP20_ABI
@@ -208,7 +204,7 @@ async def test_checkout_receives_transaction_broadcast_notification(checkout):
     payment_data = payment_messages[0]
     assert is_0x_prefixed(payment_data["transaction"])
     assert is_0x_prefixed(payment_data["token"])
-    assert payment_data["amount"] == str(checkout.amount), "payment amount does not match"
+    assert Decimal(payment_data["amount"]) == checkout.amount, "payment amount does not match"
 
 
 @pytest.mark.asyncio

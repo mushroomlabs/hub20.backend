@@ -9,13 +9,15 @@ from web3.providers import HTTPProvider, IPCProvider, WebsocketProvider
 from web3.types import TxReceipt
 
 from hub20.apps.blockchain.exceptions import Web3TransactionError
+from hub20.apps.blockchain.models import Web3Provider
 
 logger = logging.getLogger(__name__)
 
 
-def make_web3(provider_url: str) -> Web3:
-    endpoint = urlparse(provider_url)
-    logger.debug(f"Instantiating new Web3 for {endpoint.hostname}")
+def make_web3(provider: Web3Provider) -> Web3:
+    endpoint = urlparse(provider.url)
+
+    logger.debug(f"Instantiating new Web3 for {provider.hostname}")
     provider_class = {
         "http": HTTPProvider,
         "https": HTTPProvider,
@@ -23,7 +25,7 @@ def make_web3(provider_url: str) -> Web3:
         "wss": WebsocketProvider,
     }.get(endpoint.scheme, IPCProvider)
 
-    w3 = Web3(provider_class(provider_url))
+    w3 = Web3(provider_class(provider.url))
     w3.middleware_onion.inject(geth_poa_middleware, layer=0)
     w3.eth.setGasPriceStrategy(fast_gas_price_strategy)
 

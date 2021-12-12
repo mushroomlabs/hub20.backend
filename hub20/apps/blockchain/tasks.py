@@ -4,7 +4,7 @@ import celery_pubsub
 from celery import shared_task
 from django.db.transaction import atomic
 
-from .models import BaseEthereumAccount, Block, Chain, Transaction
+from .models import BaseEthereumAccount, Block, Chain, Transaction, Web3Provider
 from .signals import block_sealed
 
 logger = logging.getLogger(__name__)
@@ -44,22 +44,22 @@ def record_account_transactions(chain_id, block_data, transaction_data, transact
 @shared_task
 def set_node_connection_ok(chain_id, provider_url):
     logger.debug(f"Setting node {provider_url} to online")
-    Chain.objects.filter(id=chain_id, provider_url=provider_url).update(online=True)
+    Web3Provider.objects.filter(chain_id=chain_id, url=provider_url).update(connected=True)
 
 
 @shared_task
 def set_node_connection_nok(chain_id, provider_url):
-    Chain.objects.filter(id=chain_id, provider_url=provider_url).update(online=False)
+    Web3Provider.objects.filter(chain_id=chain_id, url=provider_url).update(connected=False)
 
 
 @shared_task
 def set_node_sync_ok(chain_id, provider_url):
-    Chain.objects.filter(id=chain_id, provider_url=provider_url).update(synced=True)
+    Web3Provider.objects.filter(chain_id=chain_id, url=provider_url).update(synced=True)
 
 
 @shared_task
 def set_node_sync_nok(chain_id, provider_url):
-    Chain.objects.filter(id=chain_id, provider_url=provider_url).update(synced=False)
+    Web3Provider.objects.filter(chain_id=chain_id, url=provider_url).update(synced=False)
 
 
 celery_pubsub.subscribe("blockchain.mined.block", check_blockchain_height)

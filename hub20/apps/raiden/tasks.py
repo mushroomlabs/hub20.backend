@@ -21,7 +21,7 @@ def check_token_network_channel_events(
 ):
     try:
         token_network = models.TokenNetwork.objects.get(address=transaction_receipt["to"])
-        w3 = make_web3(provider_url=token_network.token.chain.provider_url)
+        w3 = make_web3(provider=token_network.token.chain.provider)
         contract = get_token_network_contract(w3=w3, token_network=token_network)
 
         channel_opened_events = contract.events.ChannelOpened().processReceipt(transaction_receipt)
@@ -83,9 +83,7 @@ def make_udc_deposit(order_id: int):
         logging.warning(f"UDC Order {order_id} not found")
         return
 
-    chain = order.currency.chain
-
-    w3 = make_web3(provider_url=chain.provider_url)
+    w3 = make_web3(provider=order.currency.chain.provider)
     token_amount = order.as_token_amount
 
     try:
@@ -102,8 +100,7 @@ def make_channel_deposit(order_id: int):
         logger.warning(f"Channel Deposit Order {order_id} not found")
         return
 
-    chain = order.channel.token.chain
-    w3 = make_web3(provider_url=chain.provider_url)
+    w3 = make_web3(provider=order.channel.token.chain.provider)
 
     client = RaidenClient(raiden_account=order.raiden)
     token_amount = EthereumTokenAmount(currency=order.channel.token, amount=order.amount)
@@ -148,7 +145,7 @@ def join_token_network(order_id: int):
     client = RaidenClient(raiden_account=order.raiden)
     token_amount = EthereumTokenAmount(currency=order.token_network.token, amount=order.amount)
 
-    w3 = make_web3(provider_url=order.token_network.token.chain.provider_url)
+    w3 = make_web3(provider=order.token_network.token.chain.provider)
 
     chain_balance = get_account_balance(
         w3=w3, token=order.token_network.token, address=order.raiden.address

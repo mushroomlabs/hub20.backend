@@ -88,6 +88,9 @@ class PaymentOrderQuerySet(DepositQuerySet):
 
 
 class BlockchainRouteQuerySet(models.QuerySet):
+    def with_provider(self) -> models.QuerySet:
+        return self.filter(chain__provider__isnull=False, chain__provider__enabled=True)
+
     def with_expiration(self) -> models.QuerySet:
         return self.annotate(
             start_block=Lower("payment_window"), expiration_block=Upper("payment_window")
@@ -130,8 +133,10 @@ class BlockchainRouteQuerySet(models.QuerySet):
             currency=F("deposit__currency")
         )
         expired = Q(expiration_block__lt=at_block)
+
         return (
-            self.with_expiration()
+            self.with_provider()
+            .with_expiration()
             .exclude(expired)
             .with_payment_amounts()
             .filter(no_defined_amount | ~confirmed)

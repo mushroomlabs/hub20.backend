@@ -7,7 +7,7 @@ from django.db.models import QuerySet
 from web3 import Web3
 
 from hub20.apps.blockchain.client import make_web3
-from hub20.apps.blockchain.models import BaseEthereumAccount, Chain, Transaction
+from hub20.apps.blockchain.models import BaseEthereumAccount, Chain, Transaction, Web3Provider
 from hub20.apps.core.models.accounting import (
     ExternalAddressAccount,
     RaidenClientAccount,
@@ -81,8 +81,9 @@ class Command(BaseCommand):
             WalletAccount.objects.get_or_create(account=wallet)
 
         # Index Transactions
-        for chain in Chain.available.all():
-            w3 = make_web3(provider_url=chain.provider_url)
+        for provider in Web3Provider.available.all():
+            chain = provider.chain
+            w3 = make_web3(provider=provider)
             Treasury.objects.get_or_create(chain=chain)
 
             ETH = EthereumToken.ETH(chain=chain)

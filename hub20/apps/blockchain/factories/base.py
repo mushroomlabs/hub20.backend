@@ -2,6 +2,7 @@ from typing import List
 
 import factory
 import factory.fuzzy
+from django.db.models.signals import post_save
 from django.utils import timezone
 from faker import Faker
 
@@ -37,6 +38,9 @@ class BaseWalletFactory(factory.django.DjangoModelFactory):
 class ChainFactory(factory.django.DjangoModelFactory):
     id = TEST_CHAIN_ID
     highest_block = 0
+    provider = factory.RelatedFactory(
+        "hub20.apps.blockchain.factories.base.Web3ProviderFactory", factory_related_name="chain"
+    )
 
     @factory.post_generation
     def blocks(obj, create, extracted, **kw):
@@ -49,17 +53,6 @@ class ChainFactory(factory.django.DjangoModelFactory):
             for block in extracted:
                 obj.blocks.add(block)
 
-    @factory.post_generation
-    def providers(obj, create, extracted, **kw):
-        if not create:
-            return
-
-        if not extracted:
-            Web3ProviderFactory(chain=obj)
-        else:
-            for provider in extracted:
-                obj.providers.add(provider)
-
     class Meta:
         model = Chain
         django_get_or_create = ("id",)
@@ -67,17 +60,10 @@ class ChainFactory(factory.django.DjangoModelFactory):
 
 class SyncedChainFactory(ChainFactory):
     highest_block = START_BLOCK_NUMBER
-
-    @factory.post_generation
-    def providers(obj, create, extracted, **kw):
-        if not create:
-            return
-
-        if not extracted:
-            SyncedWeb3ProviderFactory(chain=obj)
-        else:
-            for provider in extracted:
-                obj.providers.add(provider)
+    provider = factory.RelatedFactory(
+        "hub20.apps.blockchain.factories.base.SyncedWeb3ProviderFactory",
+        factory_related_name="chain",
+    )
 
 
 class BlockFactory(factory.django.DjangoModelFactory):
@@ -130,6 +116,7 @@ class Web3ProviderFactory(factory.django.DjangoModelFactory):
 
     class Meta:
         model = Web3Provider
+        django_get_or_create = ("chain",)
 
 
 class SyncedWeb3ProviderFactory(Web3ProviderFactory):

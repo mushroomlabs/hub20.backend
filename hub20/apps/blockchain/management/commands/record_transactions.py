@@ -24,7 +24,7 @@ class Command(BaseCommand):
 
         chain_id = options["chain_id"]
         chain = Chain.active.get(id=chain_id)
-        w3 = make_web3(provider_url=chain.provider_url)
+        w3 = make_web3(provider=chain.provider)
 
         txs = options["transactions"]
         already_recorded = Transaction.objects.filter(chain_id=chain_id, hash__in=txs).values_list(

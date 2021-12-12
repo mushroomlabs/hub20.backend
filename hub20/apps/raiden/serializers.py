@@ -58,7 +58,7 @@ class ServiceDepositSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
         chain = data.pop("chain")
-        w3 = make_web3(provider_url=chain.provider_url)
+        w3 = make_web3(provider=chain.provider)
         token = get_service_token(w3=w3)
         raiden = data["raiden"]
 
@@ -80,7 +80,7 @@ class ServiceDepositSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
 
         chain = validated_data.pop("chain")
-        w3 = make_web3(provider_url=chain.provider_url)
+        w3 = make_web3(provider=chain.provider)
         token = get_service_token(w3=w3)
 
         return self.Meta.model.objects.create(user=request.user, currency=token, **validated_data)

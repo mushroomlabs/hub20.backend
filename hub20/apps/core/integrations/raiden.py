@@ -2,7 +2,7 @@ import logging
 
 from web3 import Web3
 
-from hub20.apps.blockchain.models import Chain
+from hub20.apps.blockchain.models import Chain, Web3Provider
 from hub20.apps.core.settings import app_settings
 from hub20.apps.ethereum_money.client import get_account_balance
 from hub20.apps.ethereum_money.models import EthereumToken, EthereumTokenAmount
@@ -13,10 +13,10 @@ from hub20.apps.raiden.models import Raiden
 logger = logging.getLogger(__name__)
 
 
-def check_is_ethereum_node_synced(w3: Web3, chain: Chain):
+def check_is_ethereum_node_synced(w3: Web3):
     synced = bool(not w3.eth.syncing)
     if not synced:
-        raise RaidenMissingPrecondition(f"{chain.provider_url} is not synced")
+        raise RaidenMissingPrecondition(f"Not connected to chain #{w3.eth.chain_id}")
 
 
 def check_required_ether_balance(raiden: Raiden, w3: Web3, chain: Chain):
@@ -58,10 +58,10 @@ def ensure_preconditions(raiden: Raiden, w3: Web3):
     chain_id = w3.eth.chain_id
     w3_uri = w3.provider.endpoint_uri
     try:
-        chain = Chain.objects.get(id=chain_id, providers__url=w3_uri)
-    except Chain.DoesNotExist:
+        provider = Web3Provider.available.get(chain_id=chain_id, url=w3_uri)
+    except Web3Provider.DoesNotExist:
         raise RaidenMissingPrecondition(f"Not connected to network {chain_id}")
 
-    check_is_ethereum_node_synced(w3=w3, chain=chain)
-    check_required_ether_balance(raiden=raiden, w3=w3, chain=chain)
+    check_is_ethereum_node_synced(w3=w3)
+    check_required_ether_balance(raiden=raiden, w3=w3, chain=provider.chain)
     check_required_service_token_deposit(raiden=raiden, w3=w3)

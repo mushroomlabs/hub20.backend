@@ -16,7 +16,7 @@ from raiden_contracts.contract_manager import (
 from web3 import Web3
 
 from hub20.apps.blockchain.client import make_web3, send_transaction
-from hub20.apps.blockchain.models import Chain
+from hub20.apps.blockchain.models import Web3Provider
 from hub20.apps.blockchain.typing import EthereumAccount_T
 from hub20.apps.ethereum_money.abi import EIP20_ABI
 from hub20.apps.ethereum_money.client import get_account_balance, make_token
@@ -35,8 +35,9 @@ logger = logging.getLogger(__name__)
 def _get_contract_data(chain_id: int, contract_name: str):
     try:
         contract_data = get_contracts_deployment_info(chain_id)
+        assert contract_data is not None
         return contract_data["contracts"][contract_name]
-    except KeyError:
+    except (KeyError, AssertionError):
         return None
 
 
@@ -172,13 +173,13 @@ def get_service_deposit_balance(w3: Web3, raiden: Raiden) -> EthereumTokenAmount
 
 
 def get_token_networks():
-    for chain in Chain.available.all():
-        w3: Web3 = make_web3(provider_url=chain.provider_url)
+    for provider in Web3Provider.available.all():
+        w3: Web3 = make_web3(provider=provider)
 
         token_registry_contract = get_token_network_registry_contract(w3=w3)
         get_token_network_address = token_registry_contract.functions.token_to_token_networks
 
-        for token in EthereumToken.ERC20tokens.filter(chain_id=chain.id):
+        for token in EthereumToken.ERC20tokens.filter(chain_id=provider.chain_id):
             token_network_address = get_token_network_address(token.address).call()
             if token_network_address != EthereumToken.NULL_ADDRESS:
                 TokenNetwork.objects.update_or_create(

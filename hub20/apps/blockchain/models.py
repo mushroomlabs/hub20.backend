@@ -41,7 +41,7 @@ class Chain(models.Model):
     )
     highest_block = models.PositiveIntegerField()
     objects = models.Manager()
-    active = QueryManager(providers__enabled=True)
+    active = QueryManager(provider__enabled=True)
 
     @property
     def gas_price_estimate_cache_key(self):
@@ -49,7 +49,7 @@ class Chain(models.Model):
 
     @property
     def synced(self):
-        return self.providers.filter(synced=True, enabled=True).exists()
+        return self.provider.synced and self.provider.enabled
 
     def _get_gas_price_estimate(self):
         return cache.get(self.gas_price_estimate_cache_key, None)
@@ -234,7 +234,7 @@ class BaseEthereumAccount(models.Model):
 
 class Web3Provider(models.Model):
     url = models.URLField(unique=True)
-    chain = models.ForeignKey(Chain, related_name="providers", on_delete=models.CASCADE)
+    chain = models.OneToOneField(Chain, related_name="provider", on_delete=models.CASCADE)
     enabled = models.BooleanField(default=True)
     synced = models.BooleanField(default=False)
     connected = models.BooleanField(default=False)
@@ -242,8 +242,12 @@ class Web3Provider(models.Model):
     available = QueryManager(enabled=True, synced=True, connected=True)
 
     @property
+    def is_online(self):
+        return self.connected and self.synced
+
+    @property
     def hostname(self):
-        return urlparse(self.provider_url).hostname
+        return urlparse(self.url).hostname
 
 
 class Explorer(models.Model):
