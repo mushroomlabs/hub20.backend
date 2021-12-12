@@ -59,7 +59,7 @@ def _check_for_blockchain_payment_confirmations(block_number):
         PaymentConfirmation.objects.create(payment=payment)
 
 
-def _publish_block_created_event(block_number):
+def _publish_block_created_event(chain_id, block_number):
     for checkout in Checkout.objects.with_blockchain_route(block_number):
         logger.debug(
             f"Scheduling publish event for checkout {checkout.id}: block #{block_number} created"
@@ -68,6 +68,7 @@ def _publish_block_created_event(block_number):
             checkout.id,
             event=Events.BLOCKCHAIN_BLOCK_CREATED.value,
             block=block_number,
+            chain_id=chain_id,
         )
 
 
@@ -221,7 +222,8 @@ def on_order_created_set_raiden_route(sender, **kw):
 @receiver(block_sealed, sender=Block)
 def on_block_sealed_publish_block_created_event(sender, **kw):
     block_data = kw["block_data"]
-    _publish_block_created_event(block_data.get("number"))
+    chain_id = kw["chain_id"]
+    _publish_block_created_event(chain_id=chain_id, block_number=block_data.get("number"))
 
 
 @receiver(block_sealed, sender=Block)
@@ -235,13 +237,6 @@ def on_block_created_check_confirmed_payments(sender, **kw):
     if kw["created"]:
         block = kw["instance"]
         _check_for_blockchain_payment_confirmations(block.number)
-
-
-@receiver(post_save, sender=Block)
-def on_block_added_publish_block_created_event(sender, **kw):
-    block = kw["instance"]
-    if kw["created"]:
-        _publish_block_created_event(block.number)
 
 
 @receiver(post_save, sender=Block)
@@ -359,7 +354,6 @@ __all__ = [
     "on_raiden_payment_received_check_raiden_payments",
     "on_order_created_set_blockchain_route",
     "on_order_created_set_raiden_route",
-    "on_block_added_publish_block_created_event",
     "on_block_added_publish_expired_blockchain_routes",
     "on_block_created_check_confirmed_payments",
     "on_block_sealed_check_confirmed_payments",

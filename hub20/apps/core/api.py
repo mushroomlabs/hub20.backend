@@ -12,7 +12,6 @@ router.register("checkout", views.CheckoutViewSet, basename="checkout")
 router.register("payments", views.PaymentViewSet, basename="payments")
 router.register("stores", views.StoreViewSet, basename="store")
 router.register("users", views.UserViewSet, basename="users")
-router.register("chains", views.ChainViewSet, basename="chains")
 
 
 urlpatterns = [
