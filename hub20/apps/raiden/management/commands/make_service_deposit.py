@@ -31,7 +31,7 @@ class Command(BaseCommand):
             assert generated_address == address, "Private Key does not match"
             account = KeystoreAccount(address=address, private_key=private_key)
 
-        chain = Chain.make(chain_id=options["chain_id"])
+        chain = Chain.objects.get(enabled=True, id=options["chain_id"])
         w3 = make_web3(provider_url=chain.provider_url)
 
         token = get_service_token(w3=w3)

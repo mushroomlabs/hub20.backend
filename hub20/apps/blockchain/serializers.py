@@ -20,12 +20,19 @@ logger = logging.getLogger(__name__)
 
 
 class ChainSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Chain
+        fields = read_only_fields = "id"
+
+
+class Web3ProviderSerializer(serializers.ModelSerializer):
     network = serializers.IntegerField(source="id", read_only=True)
     height = serializers.IntegerField(source="highest_block", read_only=True)
+    gas_price_estimate = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = Chain
-        fields = read_only_fields = ("network", "height", "synced", "online")
+        fields = read_only_fields = ("network", "height", "synced", "online", "gas_price_estimate")
 
 
 # ================================================ #

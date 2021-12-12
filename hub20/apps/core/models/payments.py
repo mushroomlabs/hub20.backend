@@ -4,22 +4,20 @@ import random
 import uuid
 from typing import Optional
 
-from django.db import models
-from django.db.models import ExpressionWrapper, F, Sum, Q, Exists, OuterRef, Value
-from django.db.models.functions import Lower, Upper, Coalesce
-from django.utils import timezone
-
-
 from django.conf import settings
 from django.contrib.postgres.fields.ranges import IntegerRangeField
+from django.db import models
+from django.db.models import Exists, ExpressionWrapper, F, OuterRef, Q, Sum, Value
+from django.db.models.functions import Coalesce, Lower, Upper
+from django.utils import timezone
 from model_utils.managers import InheritanceManager
 from model_utils.models import TimeStampedModel
 
 from hub20.apps.blockchain.models import BaseEthereumAccount, Chain, Transaction
 from hub20.apps.ethereum_money.models import (
     EthereumToken,
-    EthereumTokenValueModel,
     EthereumTokenAmountField,
+    EthereumTokenValueModel,
 )
 from hub20.apps.raiden.models import Payment as RaidenPaymentEvent, Raiden
 
@@ -38,10 +36,6 @@ def generate_payment_order_id():
     UPPER_BOUND = 2 ** 53 - 1  # Javascript can not handle numbers bigger than 2^53 - 1
 
     return random.randint(LOWER_BOUND, UPPER_BOUND)
-
-
-def calculate_blockchain_payment_window():
-    return BlockchainPaymentRoute.calculate_payment_window(chain=Chain.make())
 
 
 def calculate_raiden_payment_window():
@@ -255,7 +249,7 @@ class BlockchainPaymentRoute(PaymentRoute):
     account = models.ForeignKey(
         BaseEthereumAccount, on_delete=models.CASCADE, related_name="blockchain_routes"
     )
-    payment_window = IntegerRangeField(default=calculate_blockchain_payment_window)
+    payment_window = IntegerRangeField()
     chain = models.ForeignKey(Chain, on_delete=models.CASCADE)
     objects = BlockchainRouteQuerySet.as_manager()
 

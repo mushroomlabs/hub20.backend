@@ -4,15 +4,15 @@ import celery_pubsub
 from celery import shared_task
 from django.db.transaction import atomic
 
-logger = logging.getLogger(__name__)
+from .models import BaseEthereumAccount, Chain, Transaction
 
-from .models import BaseEthereumAccount, Block, Chain, Transaction
+logger = logging.getLogger(__name__)
 
 
 @shared_task
 @atomic()
 def check_blockchain_height(chain_id, block_data):
-    chain = Chain.make(chain_id=chain_id)
+    chain = Chain.objects.get(id=chain_id, enabled=True)
 
     block_number = block_data["number"]
 

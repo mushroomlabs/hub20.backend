@@ -6,7 +6,7 @@ from django.core.management.base import BaseCommand
 from django.db.models import QuerySet
 from web3 import Web3
 
-from hub20.apps.blockchain.client import BLOCK_SCAN_RANGE, make_web3
+from hub20.apps.blockchain.client import make_web3
 from hub20.apps.blockchain.models import BaseEthereumAccount, Chain, Transaction
 from hub20.apps.core.models.accounting import (
     ExternalAddressAccount,
@@ -30,6 +30,9 @@ from hub20.apps.raiden.models import Payment as RaidenPayment, Raiden
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
+
+
+BLOCK_SCAN_RANGE = 5000
 
 
 def index_token_events(w3: Web3, chain: Chain, accounts: QuerySet, tokens: QuerySet):
@@ -69,33 +72,29 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         accounts = BaseEthereumAccount.objects.all()
+        transaction_type = ContentType.objects.get_for_model(Transaction)
+
         for user in User.objects.all():
             UserAccount.objects.get_or_create(user=user)
 
         for wallet in accounts:
             WalletAccount.objects.get_or_create(account=wallet)
 
-        raiden = Raiden.objects.first()
+        # Index Transactions
+        for chain in Chain.available.all():
+            w3 = make_web3(provider_url=chain.provider_url)
+            Treasury.objects.get_or_create(chain=chain)
 
-        if raiden is not None:
-            RaidenClientAccount.objects.get_or_create(raiden=raiden)
+            ETH = EthereumToken.ETH(chain=chain)
+            tokens = EthereumToken.ERC20tokens.filter(chain=chain)
 
-        chain = Chain.make()
-        Treasury.objects.get_or_create(chain=chain)
+            index_token_events(w3=w3, chain=chain, accounts=accounts, tokens=tokens)
+            index_all_token_network_events(w3=w3)
 
-        transaction_type = ContentType.objects.get_for_model(Transaction)
-
-        ETH = EthereumToken.ETH(chain=chain)
-        tokens = EthereumToken.ERC20tokens.all()
-
-        w3 = make_web3(provider_url=chain.provider_url)
-
-        index_token_events(w3=w3, chain=chain, accounts=accounts, tokens=tokens)
-        index_all_token_network_events(w3=w3)
-
-        if raiden is not None:
-            get_all_service_deposits(w3=w3, raiden=raiden)
-            get_all_channel_deposits(w3=w3, raiden=raiden)
+            for raiden in Raiden.objects.all():
+                RaidenClientAccount.objects.get_or_create(raiden=raiden)
+                get_all_service_deposits(w3=w3, raiden=raiden)
+                get_all_channel_deposits(w3=w3, raiden=raiden)
 
         # Ethereum Value Transfers
         for account in accounts:
@@ -137,7 +136,7 @@ class Command(BaseCommand):
                 wallet_book.debits.get_or_create(**params)
 
         # Raiden payments
-        if raiden is not None:
+        for raiden in Raiden.objects.all():
             payment_type = ContentType.objects.get_for_model(RaidenPayment)
             for channel in raiden.channels.all():
                 logger.info(f"Recording entries for {channel}")

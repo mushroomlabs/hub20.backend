@@ -4,7 +4,6 @@ from rest_framework_nested.relations import NestedHyperlinkedIdentityField
 from rest_framework_nested.serializers import NestedHyperlinkedModelSerializer
 
 from hub20.apps.blockchain.client import make_web3
-from hub20.apps.blockchain.models import Chain
 from hub20.apps.blockchain.serializers import HexadecimalField
 from hub20.apps.ethereum_money.app_settings import TRACKED_TOKENS
 from hub20.apps.ethereum_money.models import EthereumTokenAmount
@@ -16,8 +15,12 @@ from hub20.apps.ethereum_money.serializers import (
 from hub20.apps.ethereum_money.typing import TokenAmount
 
 from . import models
-from .client.blockchain import get_service_token
+from .client.blockchain import get_service_token, get_service_token_contract
 from .client.node import RaidenClient
+
+
+class ChainField(serializers.PrimaryKeyRelatedField):
+    queryset = models.Chain.objects.filter(enabled=True).order_by("id")
 
 
 class TokenNetworkField(serializers.RelatedField):
@@ -39,28 +42,54 @@ class TokenNetworkSerializer(serializers.ModelSerializer):
 
 class ServiceDepositSerializer(serializers.ModelSerializer):
     url = serializers.HyperlinkedIdentityField(view_name="service-deposit-detail")
+    raiden = serializers.HyperlinkedRelatedField(
+        view_name="raiden-detail", queryset=models.Raiden.objects.all()
+    )
     transaction = HexadecimalField(read_only=True, source="result.transaction.hash")
+    chain = ChainField(write_only=True)
     token = EthereumTokenSerializer(source="currency", read_only=True)
     amount = TokenValueField()
     error = serializers.CharField(source="error.message", read_only=True)
 
-    def create(self, validated_data):
-        raiden = models.Raiden.objects.first()
+    def validate_amount(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("Need to deposit a value larger than 0")
 
+        return value
+
+    def validate(self, data):
+        chain = data.pop("chain")
+        w3 = make_web3(provider_url=chain.provider_url)
+        token = get_service_token(w3=w3)
+        raiden = data["raiden"]
+
+        if chain not in raiden.chains:
+            raise serializers.ValidationError(
+                f"{raiden} does not seem to be connected to chain {chain.id}"
+            )
+
+        contract = get_service_token_contract(w3=w3)
+        deposit_amount = EthereumTokenAmount(currency=token, amount=data["amount"])
+        balance = token.from_wei(contract.functions.balanceOf(raiden.address).call())
+
+        if balance < deposit_amount:
+            raise serializers.ValidationError(f"Insufficient balance: {balance}")
+
+        return data
+
+    def create(self, validated_data):
         request = self.context.get("request")
 
-        chain = Chain.make(chain_id=settings.BLOCKCHAIN_NETWORK_ID)
+        chain = validated_data.pop("chain")
         w3 = make_web3(provider_url=chain.provider_url)
         token = get_service_token(w3=w3)
 
-        return self.Meta.model.objects.create(
-            raiden=raiden, user=request.user, currency=token, **validated_data
-        )
+        return self.Meta.model.objects.create(user=request.user, currency=token, **validated_data)
 
     class Meta:
         model = models.UserDepositContractOrder
-        fields = ("url", "created", "amount", "token", "transaction", "error")
-        read_only_fields = ("url", "created", "token", "transaction", "error")
+        fields = ("url", "created", "raiden", "amount", "token", "chain", "transaction", "error")
+        read_only_fields = ("url", "created", "raiden", "token", "transaction", "error")
 
 
 class ChannelSerializer(NestedHyperlinkedModelSerializer):

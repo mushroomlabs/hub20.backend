@@ -37,6 +37,8 @@ class BaseWalletFactory(factory.django.DjangoModelFactory):
 class ChainFactory(factory.django.DjangoModelFactory):
     id = TEST_CHAIN_ID
     provider_url = "https://web3.example.com"
+    online = True
+    enabled = True
     synced = False
     highest_block = 0
 

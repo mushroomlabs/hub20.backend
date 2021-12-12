@@ -45,6 +45,9 @@ class EtherBlockchainPaymentRouteFactory(factory.django.DjangoModelFactory):
     deposit = factory.SubFactory(EtherPaymentOrderFactory)
     account = factory.SubFactory(EthereumAccountFactory)
     chain = factory.SubFactory(SyncedChainFactory)
+    payment_window = factory.LazyAttribute(
+        lambda obj: (obj.chain.highest_block, obj.chain.highest_block + 100)
+    )
 
     class Meta:
         model = models.BlockchainPaymentRoute

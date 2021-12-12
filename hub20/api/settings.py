@@ -98,35 +98,35 @@ DATABASES = {
 DEFAULT_AUTO_FIELD = "django.db.models.AutoField"
 
 
+# Both Channel Layer and the cache system will require a running redis
+# server, so the only thing you can change here is the URL (host/port/db)
+
+
 # Channel Configurations
-CHANNEL_LAYER_BACKEND = os.getenv(
-    "HUB20_CHANNEL_LAYER_BACKEND", "channels_redis.core.RedisChannelLayer"
-)
-CHANNEL_LAYER_HOST = os.getenv("HUB20_CHANNEL_LAYER_HOST", "redis")
-CHANNEL_LAYER_PORT = int(os.getenv("HUB20_CHANNEL_LAYER_PORT", 6379))
+CHANNEL_LAYER_BACKEND = "channels_redis.core.RedisChannelLayer"
+CHANNEL_LAYER_URL = os.getenv("HUB20_CHANNEL_LAYER_URL", "redis://redis:6379/2")
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": CHANNEL_LAYER_BACKEND,
-        "CONFIG": {"hosts": [(CHANNEL_LAYER_HOST, CHANNEL_LAYER_PORT)]},
+        "CONFIG": {"hosts": (CHANNEL_LAYER_URL,)},
     }
 }
 
-# Caches
-CACHE_BACKEND = os.getenv(
-    "HUB20_CACHE_BACKEND", "django.core.cache.backends.filebased.FileBasedCache"
-)
-
-CACHE_LOCATION = os.getenv("HUB20_CACHE_LOCATION", "/tmp/hub20_cache")
-
-
-CACHE_OPTIONS = {
-    "django_redis.cache.RedisCache": {"CLIENT_CLASS": "django_redis.client.DefaultClient"}
-}.get(CACHE_BACKEND, {})
-
-
+# Cache configuration
+CACHE_BACKEND = "django_redis.cache.RedisCache"
+CACHE_LOCATION = os.getenv("HUB20_CACHE_LOCATION", "redis://redis:6379/1")
+CACHE_OPTIONS = {"CLIENT_CLASS": "django_redis.client.DefaultClient"}
 CACHES = {
     "default": {"BACKEND": CACHE_BACKEND, "LOCATION": CACHE_LOCATION, "OPTIONS": CACHE_OPTIONS}
 }
+
+
+# Celery can use redis and many other systems as its task broker (e.g,
+# RabbitMQ). Given that we already have a running redis for cache and
+# channel layers, we use the same server in the default configuration
+
+# Celery configuration
+CELERY_BROKER_URL = os.getenv("HUB20_BROKER_URL", "redis://redis:6379/0")
 
 
 # This needs to be set up if you don't have a front-end proxy server

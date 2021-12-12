@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from celery import Celery
 from celery.schedules import crontab
+from django.conf import settings
 from hexbytes import HexBytes
 from kombu.serialization import register
 from web3.datastructures import AttributeDict
@@ -63,7 +64,7 @@ register(
 class Hub20CeleryConfig:
     name = "Hub20"
 
-    broker_url = "memory" if "HUB20_TEST" in os.environ else os.getenv("HUB20_BROKER_URL")
+    broker_url = "memory" if "HUB20_TEST" in os.environ else settings.CELERY_BROKER_URL
     broker_use_ssl = "HUB20_BROKER_USE_SSL" in os.environ
     beat_schedule = {
         "clear-expired-sessions": {
