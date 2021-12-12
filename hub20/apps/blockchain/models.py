@@ -3,7 +3,6 @@ import logging
 from typing import Optional
 from urllib.parse import urlparse
 
-from django.conf import settings
 from django.contrib.postgres.fields import ArrayField
 from django.core.cache import cache
 from django.db import models
@@ -13,7 +12,7 @@ from hexbytes import HexBytes
 from model_utils.managers import InheritanceManager, QueryManager
 from web3.datastructures import AttributeDict
 
-from .app_settings import CHAIN_ID, START_BLOCK_NUMBER
+from .app_settings import START_BLOCK_NUMBER
 from .choices import ETHEREUM_CHAINS
 from .fields import EthereumAddressField, HexField, Uint256Field
 from .typing import Address
@@ -40,23 +39,17 @@ class Chain(models.Model):
         choices=ETHEREUM_CHAINS,
         default=ETHEREUM_CHAINS.mainnet,
     )
-    provider_url = models.URLField(unique=True)
-    synced = models.BooleanField()
-    online = models.BooleanField(default=False)
     highest_block = models.PositiveIntegerField()
-    enabled = models.BooleanField(default=True)
-
     objects = models.Manager()
-    available = QueryManager(enabled=True, synced=True, online=True)
+    active = QueryManager(providers__enabled=True)
 
     @property
     def gas_price_estimate_cache_key(self):
         return f"GAS_PRICE_ESTIMATE_{self.id}"
 
     @property
-    def provider_hostname(self):
-        endpoint = urlparse(self.provider_url)
-        return endpoint.hostname
+    def synced(self):
+        return self.providers.filter(synced=True, enabled=True).exists()
 
     def _get_gas_price_estimate(self):
         return cache.get(self.gas_price_estimate_cache_key, None)
@@ -239,4 +232,31 @@ class BaseEthereumAccount(models.Model):
         return private_key and bytearray.fromhex(private_key[2:])
 
 
-__all__ = ["Block", "Chain", "Transaction", "TransactionLog", "BaseEthereumAccount"]
+class Web3Provider(models.Model):
+    url = models.URLField(unique=True)
+    chain = models.ForeignKey(Chain, related_name="providers", on_delete=models.CASCADE)
+    enabled = models.BooleanField(default=True)
+    synced = models.BooleanField(default=False)
+    connected = models.BooleanField(default=False)
+
+    available = QueryManager(enabled=True, synced=True, connected=True)
+
+    @property
+    def hostname(self):
+        return urlparse(self.provider_url).hostname
+
+
+class Explorer(models.Model):
+    url = models.URLField(unique=True)
+    chain = models.ForeignKey(Chain, related_name="explorers", on_delete=models.CASCADE)
+
+
+__all__ = [
+    "Block",
+    "Chain",
+    "Transaction",
+    "TransactionLog",
+    "BaseEthereumAccount",
+    "Web3Provider",
+    "Explorer",
+]

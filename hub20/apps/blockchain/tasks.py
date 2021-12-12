@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 @shared_task
 def check_blockchain_height(chain_id, block_data):
-    chain = Chain.objects.get(id=chain_id, enabled=True)
+    chain = Chain.active.get(id=chain_id)
 
     with atomic():
         block_number = block_data["number"]

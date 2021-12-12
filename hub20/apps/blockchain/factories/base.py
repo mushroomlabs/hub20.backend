@@ -6,7 +6,7 @@ from django.utils import timezone
 from faker import Faker
 
 from ..app_settings import START_BLOCK_NUMBER
-from ..models import BaseEthereumAccount, Block, Chain, Transaction, TransactionLog
+from ..models import BaseEthereumAccount, Block, Chain, Transaction, TransactionLog, Web3Provider
 from .providers import EthereumProvider
 
 factory.Faker.add_provider(EthereumProvider)
@@ -36,10 +36,6 @@ class BaseWalletFactory(factory.django.DjangoModelFactory):
 
 class ChainFactory(factory.django.DjangoModelFactory):
     id = TEST_CHAIN_ID
-    provider_url = "https://web3.example.com"
-    online = True
-    enabled = True
-    synced = False
     highest_block = 0
 
     @factory.post_generation
@@ -53,14 +49,35 @@ class ChainFactory(factory.django.DjangoModelFactory):
             for block in extracted:
                 obj.blocks.add(block)
 
+    @factory.post_generation
+    def providers(obj, create, extracted, **kw):
+        if not create:
+            return
+
+        if not extracted:
+            Web3ProviderFactory(chain=obj)
+        else:
+            for provider in extracted:
+                obj.providers.add(provider)
+
     class Meta:
         model = Chain
         django_get_or_create = ("id",)
 
 
 class SyncedChainFactory(ChainFactory):
-    synced = True
     highest_block = START_BLOCK_NUMBER
+
+    @factory.post_generation
+    def providers(obj, create, extracted, **kw):
+        if not create:
+            return
+
+        if not extracted:
+            SyncedWeb3ProviderFactory(chain=obj)
+        else:
+            for provider in extracted:
+                obj.providers.add(provider)
 
 
 class BlockFactory(factory.django.DjangoModelFactory):
@@ -102,3 +119,19 @@ class TransactionLogFactory(factory.django.DjangoModelFactory):
 
     class Meta:
         model = TransactionLog
+
+
+class Web3ProviderFactory(factory.django.DjangoModelFactory):
+    chain = factory.SubFactory(ChainFactory)
+    url = factory.Sequence(lambda n: f"https://web3-{n:02}.example.com")
+    connected = True
+    enabled = True
+    synced = False
+
+    class Meta:
+        model = Web3Provider
+
+
+class SyncedWeb3ProviderFactory(Web3ProviderFactory):
+    chain = factory.SubFactory(SyncedChainFactory)
+    synced = True

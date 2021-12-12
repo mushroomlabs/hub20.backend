@@ -55,16 +55,12 @@ def check_required_service_token_deposit(raiden: Raiden, w3: Web3):
 
 
 def ensure_preconditions(raiden: Raiden, w3: Web3):
-    chain_id = int(w3.net.version)
+    chain_id = w3.eth.chain_id
+    w3_uri = w3.provider.endpoint_uri
     try:
-        chain = Chain.objects.get(id=chain_id, enabled=True)
+        chain = Chain.objects.get(id=chain_id, providers__url=w3_uri)
     except Chain.DoesNotExist:
         raise RaidenMissingPrecondition(f"Not connected to network {chain_id}")
-
-    chain_uri = chain.provider_url
-    w3_uri = w3.provider.endpoint_uri
-    if w3_uri != chain_uri:
-        logger.warning(f"Chain is using {chain_uri} and we are connected to {w3_uri}")
 
     check_is_ethereum_node_synced(w3=w3, chain=chain)
     check_required_ether_balance(raiden=raiden, w3=w3, chain=chain)

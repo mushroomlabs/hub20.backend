@@ -43,7 +43,7 @@ def encode_transfer_data(recipient_address, amount: EthereumTokenAmount):
 
 
 def get_max_fee(w3: Web3) -> EthereumTokenAmount:
-    chain = Chain.objects.get(id=w3.eth.chain_id, enabled=True)
+    chain = Chain.active.get(id=w3.eth.chain_id)
     ETH = EthereumToken.ETH(chain=chain)
 
     gas_price = chain.gas_price_estimate or w3.eth.generateGasPrice()
@@ -69,7 +69,7 @@ def get_token_information(w3: Web3, address):
 
 def make_token(w3: Web3, address) -> EthereumToken:
     token_data = get_token_information(w3=w3, address=address)
-    chain = Chain.objects.get(enabled=True, id=w3.eth.chain_id)
+    chain = Chain.active.get(id=w3.eth.chain_id)
     return EthereumToken.make(chain=chain, address=address, **token_data)
 
 

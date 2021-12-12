@@ -9,4 +9,4 @@ from .serializers import ChainSerializer
 class ChainViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
     permission_classes = (IsAuthenticated,)
     serializer_class = ChainSerializer
-    queryset = Chain.objects.filter(enabled=True)
+    queryset = Chain.active.all()

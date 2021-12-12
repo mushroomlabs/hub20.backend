@@ -1,4 +1,3 @@
-from django.conf import settings
 from rest_framework import serializers
 from rest_framework_nested.relations import NestedHyperlinkedIdentityField
 from rest_framework_nested.serializers import NestedHyperlinkedModelSerializer
@@ -20,7 +19,7 @@ from .client.node import RaidenClient
 
 
 class ChainField(serializers.PrimaryKeyRelatedField):
-    queryset = models.Chain.objects.filter(enabled=True).order_by("id")
+    queryset = models.Chain.active.all().order_by("id")
 
 
 class TokenNetworkField(serializers.RelatedField):

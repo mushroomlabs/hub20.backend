@@ -23,7 +23,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
 
-        chain = Chain.objects.get(enabled=True, id=options["chain_id"])
+        chain = Chain.active.get(id=options["chain_id"])
         w3 = make_web3(provider_url=chain.provider_url)
         EthereumToken.ETH(chain=chain)
 

@@ -278,16 +278,13 @@ class NetworkStatusView(StatusView):
 class NetworkStatusListView(NetworkStatusView):
     def get(self, request, **kw):
         return Response(
-            [
-                self.get_chain_status_data(chain)
-                for chain in Chain.objects.filter(enabled=True).order_by("id")
-            ]
+            [self.get_chain_status_data(chain) for chain in Chain.active.all().order_by("id")]
         )
 
 
 class NetworkStatusDetailView(NetworkStatusView):
     def get(self, request, **kw):
-        chain = get_object_or_404(Chain, enabled=True, id=self.kwargs["pk"])
+        chain = get_object_or_404(Chain, providers__enabled=True, id=self.kwargs["pk"])
 
         return Response(self.get_chain_status_data(chain))
 

@@ -75,7 +75,7 @@ def record_token_transfers(chain_id, block_data, transaction_data, transaction_r
 
 @shared_task
 def check_pending_transaction_for_eth_transfer(chain_id, transaction_data):
-    chain = Chain.objects.get(id=chain_id, enabled=True)
+    chain = Chain.actve.get(id=chain_id)
 
     sender = transaction_data["from"]
     recipient = transaction_data["to"]
@@ -142,7 +142,7 @@ def check_pending_erc20_transfer_event(chain_id, transaction_data, event):
 def check_mined_transaction_for_eth_transfer(
     chain_id, block_data, transaction_data, transaction_receipt
 ):
-    chain = Chain.objects.get(id=chain_id, enabled=True)
+    chain = Chain.active.get(id=chain_id)
     sender = transaction_data["from"]
     recipient = transaction_data["to"]
 

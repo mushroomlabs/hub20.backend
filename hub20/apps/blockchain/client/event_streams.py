@@ -18,7 +18,7 @@ BLOCK_CREATION_INTERVAL = 10  # In seconds
 
 async def node_online_status():
     while True:
-        chains = await sync_to_async(list)(Chain.objects.filter(enabled=True))
+        chains = await sync_to_async(list)(Chain.active.all())
         for chain in chains:
             try:
                 w3 = make_web3(provider_url=chain.provider_url)
@@ -49,7 +49,7 @@ async def node_online_status():
 
 async def node_sync_status():
     while True:
-        chains = await sync_to_async(list)(Chain.objects.filter(enabled=True))
+        chains = await sync_to_async(list)(Chain.active.all())
         for chain in chains:
             try:
                 w3 = make_web3(provider_url=chain.provider_url)
