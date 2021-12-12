@@ -16,7 +16,7 @@ from rest_framework.views import APIView
 from rest_framework.viewsets import GenericViewSet, ModelViewSet
 
 from hub20.apps.blockchain.models import Chain
-from hub20.apps.blockchain.serializers import ChainSerializer, Web3ProviderSerializer
+from hub20.apps.blockchain.serializers import Web3ProviderSerializer
 from hub20.apps.ethereum_money.models import EthereumToken
 from hub20.apps.raiden.client.blockchain import GAS_REQUIRED_FOR_DEPOSIT
 
@@ -234,12 +234,6 @@ class StoreViewSet(ModelViewSet):
         store = get_object_or_404(models.Store, id=self.kwargs["pk"])
         self.check_object_permissions(self.request, store)
         return store
-
-
-class ChainViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
-    permission_classes = (IsAuthenticated,)
-    serializer_class = ChainSerializer
-    queryset = Chain.objects.filter(enabled=True)
 
 
 class UserViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):

@@ -7,11 +7,11 @@ from rest_framework import serializers
 from rest_framework.reverse import reverse
 
 from hub20.apps.blockchain.serializers import EthereumAddressField, HexadecimalField
-from hub20.apps.ethereum_money.models import EthereumToken, EthereumTokenAmount
+from hub20.apps.ethereum_money.models import EthereumTokenAmount
 from hub20.apps.ethereum_money.serializers import (
-    CurrencyRelatedField,
-    EthereumTokenSelectorField,
     EthereumTokenSerializer,
+    HyperlinkedEthereumTokenSerializer,
+    HyperlinkedRelatedTokenField,
     TokenValueField,
 )
 
@@ -65,7 +65,7 @@ class TransferSerializer(serializers.ModelSerializer):
     url = serializers.HyperlinkedIdentityField(view_name="transfer-detail")
     address = EthereumAddressField(required=False, allow_null=True)
     recipient = UserRelatedField(source="receiver", required=False, allow_null=True)
-    token = CurrencyRelatedField(source="currency")
+    token = HyperlinkedRelatedTokenField(source="currency")
     target = serializers.CharField(read_only=True)
     status = serializers.CharField(read_only=True)
 
@@ -132,7 +132,7 @@ class TransferSerializer(serializers.ModelSerializer):
 
 
 class TransferExecutionSerializer(serializers.ModelSerializer):
-    token = CurrencyRelatedField(source="transfer.currency")
+    token = HyperlinkedRelatedTokenField(source="transfer.currency")
     target = serializers.CharField(source="transfer.target", read_only=True)
     amount = TokenValueField(source="transfer.amount")
 
@@ -241,7 +241,7 @@ class RaidenPaymentSerializer(PaymentSerializer):
 
 class DepositSerializer(serializers.ModelSerializer):
 
-    token = EthereumTokenSelectorField(source="currency")
+    token = HyperlinkedRelatedTokenField(source="currency")
     routes = serializers.SerializerMethodField()
     payments = serializers.SerializerMethodField()
 
@@ -319,7 +319,7 @@ class PaymentOrderReadSerializer(PaymentOrderSerializer):
 
 
 class PaymentConfirmationSerializer(serializers.ModelSerializer):
-    token = CurrencyRelatedField(source="payment.currency")
+    token = HyperlinkedRelatedTokenField(source="payment.currency")
     amount = TokenValueField(source="payment.amount")
     route = serializers.SerializerMethodField()
 
@@ -381,12 +381,7 @@ class StoreSerializer(serializers.ModelSerializer):
     url = serializers.HyperlinkedIdentityField(view_name="store-detail")
     site_url = serializers.URLField(source="url")
     public_key = serializers.CharField(source="rsa.public_key_pem", read_only=True)
-    accepted_currencies = serializers.HyperlinkedRelatedField(
-        queryset=EthereumToken.tracked.all(),
-        many=True,
-        view_name="ethereum_money:token-detail",
-        lookup_field="address",
-    )
+    accepted_currencies = HyperlinkedRelatedTokenField(many=True)
 
     class Meta:
         model = models.Store
@@ -465,15 +460,21 @@ class DebitSerializer(BookEntrySerializer):
         fields = read_only_fields = BookEntrySerializer.Meta.fields
 
 
-class AccountingBookSerializer(EthereumTokenSerializer):
+class AccountingBookSerializer(HyperlinkedEthereumTokenSerializer):
     total_credit = TokenValueField(read_only=True)
     total_debit = TokenValueField(read_only=True)
     balance = TokenValueField(read_only=True)
 
     class Meta:
         model = EthereumTokenSerializer.Meta.model
-        fields = EthereumTokenSerializer.Meta.fields + ("total_credit", "total_debit", "balance")
+        fields = EthereumTokenSerializer.Meta.fields + (
+            "url",
+            "total_credit",
+            "total_debit",
+            "balance",
+        )
         read_only_fields = EthereumTokenSerializer.Meta.fields + (
+            "url",
             "total_credit",
             "total_debit",
             "balance",

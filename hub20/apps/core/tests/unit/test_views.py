@@ -110,7 +110,10 @@ class TransferTestCase(TestCase):
             {
                 "address": self.target_address,
                 "amount": 10,
-                "token": self.token.address,
+                "token": reverse(
+                    "ethereum_money:token-detail",
+                    kwargs=dict(address=self.token.address, chain_id=self.token.chain_id),
+                ),
             },
         )
         self.assertEqual(response.status_code, 400)
@@ -134,7 +137,8 @@ class CheckoutViewTestCase(TestCase):
         post_data = {
             "amount": amount.amount,
             "token": reverse(
-                "ethereum_money:token-detail", kwargs={"address": amount.currency.address}
+                "ethereum_money:token-detail",
+                kwargs=dict(address=amount.currency.address, chain_id=amount.currency.chain_id),
             ),
             "store": self.store.id,
             "external_identifier": "API Test",

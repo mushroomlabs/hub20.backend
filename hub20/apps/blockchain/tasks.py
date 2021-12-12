@@ -4,23 +4,25 @@ import celery_pubsub
 from celery import shared_task
 from django.db.transaction import atomic
 
-from .models import BaseEthereumAccount, Chain, Transaction
+from .models import BaseEthereumAccount, Block, Chain, Transaction
+from .signals import block_sealed
 
 logger = logging.getLogger(__name__)
 
 
 @shared_task
-@atomic()
 def check_blockchain_height(chain_id, block_data):
     chain = Chain.objects.get(id=chain_id, enabled=True)
 
-    block_number = block_data["number"]
+    with atomic():
+        block_number = block_data["number"]
+        if chain.highest_block > block_number:
+            chain.blocks.filter(number__gt=block_number).delete()
 
-    if chain.highest_block > block_data["number"]:
-        chain.blocks.filter(number__gt=block_number).delete()
+        chain.highest_block = block_number
+        chain.save()
 
-    chain.highest_block = block_number
-    chain.save()
+    block_sealed.send(sender=Block, chain_id=chain_id, block_data=block_data)
 
 
 @shared_task

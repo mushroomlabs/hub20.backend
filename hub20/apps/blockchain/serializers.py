@@ -20,9 +20,14 @@ logger = logging.getLogger(__name__)
 
 
 class ChainSerializer(serializers.ModelSerializer):
+    url = serializers.HyperlinkedIdentityField(view_name="blockchain:chains-detail")
+
     class Meta:
         model = Chain
-        fields = read_only_fields = "id"
+        fields = read_only_fields = (
+            "url",
+            "id",
+        )
 
 
 class Web3ProviderSerializer(serializers.ModelSerializer):

@@ -11,7 +11,10 @@ class TokenViewTestCase(TestCase):
         self.client = APIClient()
 
     def test_anonymous_user_can_see_store(self):
-        url = reverse("ethereum_money:token-detail", kwargs={"address": self.token.address})
+        url = reverse(
+            "ethereum_money:token-detail",
+            kwargs={"address": self.token.address, "chain_id": self.token.chain_id},
+        )
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["address"], str(self.token.address))
