@@ -2,12 +2,19 @@ from typing import List
 
 import factory
 import factory.fuzzy
-from django.db.models.signals import post_save
 from django.utils import timezone
 from faker import Faker
 
 from ..app_settings import START_BLOCK_NUMBER
-from ..models import BaseEthereumAccount, Block, Chain, Transaction, TransactionLog, Web3Provider
+from ..models import (
+    BaseEthereumAccount,
+    Block,
+    Chain,
+    NativeToken,
+    Transaction,
+    TransactionLog,
+    Web3Provider,
+)
 from .providers import EthereumProvider
 
 factory.Faker.add_provider(EthereumProvider)
@@ -40,6 +47,9 @@ class ChainFactory(factory.django.DjangoModelFactory):
     highest_block = 0
     provider = factory.RelatedFactory(
         "hub20.apps.blockchain.factories.base.Web3ProviderFactory", factory_related_name="chain"
+    )
+    native_token = factory.RelatedFactory(
+        "hub20.apps.blockchain.factories.base.NativeTokenFactory", factory_related_name="chain"
     )
 
     @factory.post_generation
@@ -105,6 +115,16 @@ class TransactionLogFactory(factory.django.DjangoModelFactory):
 
     class Meta:
         model = TransactionLog
+
+
+class NativeTokenFactory(factory.django.DjangoModelFactory):
+    chain = factory.SubFactory(ChainFactory)
+    name = factory.Sequence(lambda n: f"Native Token #{n:02n}")
+    symbol = factory.Sequence(lambda n: f"ETH{n:02n}")
+
+    class Meta:
+        model = NativeToken
+        django_get_or_create = ("chain",)
 
 
 class Web3ProviderFactory(factory.django.DjangoModelFactory):

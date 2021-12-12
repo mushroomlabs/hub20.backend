@@ -81,13 +81,13 @@ def check_pending_transaction_for_eth_transfer(chain_id, transaction_data):
     recipient = transaction_data["to"]
     tx_hash = transaction_data["hash"]
 
-    is_ETH_transfer = transaction_data.value != 0
+    is_native_token_transfer = transaction_data.value != 0
 
-    if not is_ETH_transfer:
+    if not is_native_token_transfer:
         return
 
-    ETH = EthereumToken.ETH(chain=chain)
-    amount = ETH.from_wei(transaction_data.value)
+    native_token = EthereumToken.make_native(chain=chain)
+    amount = native_token.from_wei(transaction_data.value)
 
     for account in BaseEthereumAccount.objects.filter(address=sender):
         signals.outgoing_transfer_broadcast.send(
@@ -146,16 +146,16 @@ def check_mined_transaction_for_eth_transfer(
     sender = transaction_data["from"]
     recipient = transaction_data["to"]
 
-    is_ETH_transfer = transaction_data.value != 0
+    is_native_token_transfer = transaction_data.value != 0
 
-    if not is_ETH_transfer:
+    if not is_native_token_transfer:
         return
 
     if not BaseEthereumAccount.objects.filter(address__in=[sender, recipient]).exists():
         return
 
-    ETH = EthereumToken.ETH(chain=chain)
-    amount = ETH.from_wei(transaction_data.value)
+    native_token = EthereumToken.make_native(chain=chain)
+    amount = native_token.from_wei(transaction_data.value)
     tx = Transaction.make(
         chain_id=chain_id,
         block_data=block_data,

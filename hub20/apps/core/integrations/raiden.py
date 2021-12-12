@@ -20,18 +20,18 @@ def check_is_ethereum_node_synced(w3: Web3):
 
 
 def check_required_ether_balance(raiden: Raiden, w3: Web3, chain: Chain):
-    ETH = EthereumToken.ETH(chain)
-    on_chain_ether_balance = get_account_balance(w3=w3, token=ETH, address=raiden.address)
-    required_ether = EthereumTokenAmount(
-        amount=app_settings.Raiden.minimum_ether_required, currency=ETH
+    native_token = EthereumToken.make_native(chain)
+    on_chain_balance = get_account_balance(w3=w3, token=native_token, address=raiden.address)
+    required_amount = EthereumTokenAmount(
+        amount=app_settings.Raiden.minimum_ether_required, currency=native_token
     )
 
-    if on_chain_ether_balance < required_ether:
+    if on_chain_balance < required_amount:
         raise RaidenMissingPrecondition(
-            f"Minimum balance of {required_ether.formatted} must be available"
+            f"Minimum balance of {required_amount.formatted} must be available"
         )
     else:
-        logger.info(f"{on_chain_ether_balance.formatted} available for transactions")
+        logger.info(f"{on_chain_balance.formatted} available for transactions")
 
 
 def check_required_service_token_deposit(raiden: Raiden, w3: Web3):

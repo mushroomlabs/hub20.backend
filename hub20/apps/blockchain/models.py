@@ -13,7 +13,6 @@ from model_utils.managers import InheritanceManager, QueryManager
 from web3.datastructures import AttributeDict
 
 from .app_settings import START_BLOCK_NUMBER
-from .choices import ETHEREUM_CHAINS
 from .fields import EthereumAddressField, HexField, Uint256Field
 from .typing import Address
 
@@ -34,11 +33,9 @@ class TransactionQuerySet(models.QuerySet):
 
 
 class Chain(models.Model):
-    id = models.PositiveIntegerField(
-        primary_key=True,
-        choices=ETHEREUM_CHAINS,
-        default=ETHEREUM_CHAINS.mainnet,
-    )
+    id = models.PositiveIntegerField(primary_key=True)
+    name = models.CharField(max_length=128, default="EVM-compatible network")
+    is_mainnet = models.BooleanField(default=True)
     highest_block = models.PositiveIntegerField()
     objects = models.Manager()
     active = QueryManager(provider__enabled=True)
@@ -206,6 +203,19 @@ class TransactionLog(models.Model):
         unique_together = ("transaction", "index")
 
 
+class AbstractTokenInfo(models.Model):
+    name = models.CharField(max_length=500)
+    symbol = models.CharField(max_length=16)
+    decimals = models.PositiveIntegerField(default=18)
+
+    class Meta:
+        abstract = True
+
+
+class NativeToken(AbstractTokenInfo):
+    chain = models.OneToOneField(Chain, on_delete=models.CASCADE, related_name="native_token")
+
+
 class BaseEthereumAccount(models.Model):
     address = EthereumAddressField(unique=True, db_index=True)
     transactions = models.ManyToManyField(Transaction)
@@ -261,6 +271,8 @@ __all__ = [
     "Transaction",
     "TransactionLog",
     "BaseEthereumAccount",
+    "AbstractTokenInfo",
+    "NativeToken",
     "Web3Provider",
     "Explorer",
 ]

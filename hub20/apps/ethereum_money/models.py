@@ -5,7 +5,6 @@ import os
 from typing import Any, Optional
 
 import ethereum
-from django.conf import settings
 from django.db import models
 from django.db.models import Max, Q, Sum
 from hdwallet import HDWallet
@@ -34,11 +33,9 @@ class EthereumToken(models.Model):
     is_listed = models.BooleanField(default=False)
 
     objects = models.Manager()
-    ERC20tokens = QueryManager(
-        ~Q(address=NULL_ADDRESS) & Q(chain_id=settings.BLOCKCHAIN_NETWORK_ID)
-    )
-    tracked = QueryManager(is_listed=True, chain_id=settings.BLOCKCHAIN_NETWORK_ID)
-    ethereum = QueryManager(address=NULL_ADDRESS, chain_id=settings.BLOCKCHAIN_NETWORK_ID)
+    native = QueryManager(address=NULL_ADDRESS)
+    ERC20tokens = QueryManager(~Q(address=NULL_ADDRESS))
+    tracked = QueryManager(is_listed=True)
 
     @property
     def is_ERC20(self) -> bool:
@@ -62,20 +59,21 @@ class EthereumToken(models.Model):
         value = TokenAmount(wei_amount) / (10 ** self.decimals)
         return EthereumTokenAmount(amount=value, currency=self)
 
-    @staticmethod
-    def ETH(chain: Chain):
-        eth, _ = EthereumToken.objects.update_or_create(
+    @classmethod
+    def make_native(cls, chain: Chain):
+        token, _ = cls.objects.update_or_create(
             chain=chain,
-            code="ETH",
-            address=EthereumToken.NULL_ADDRESS,
-            defaults={"is_listed": True, "name": "Ethereum"},
+            address=cls.NULL_ADDRESS,
+            defaults=dict(
+                is_listed=True, name=chain.native_token.name, decimals=chain.native_token.decimals
+            ),
         )
-        return eth
+        return token
 
     @classmethod
     def make(cls, address: str, chain: Chain, **defaults):
-        if address == EthereumToken.NULL_ADDRESS:
-            return EthereumToken.ETH(chain)
+        if address == cls.NULL_ADDRESS:
+            return cls.make_native(chain)
 
         obj, _ = cls.objects.update_or_create(address=address, chain=chain, defaults=defaults)
         return obj
@@ -187,7 +185,7 @@ class EthereumTokenAmount:
         return hex(self.as_wei)
 
     @property
-    def is_ETH(self) -> bool:
+    def is_native_token(self) -> bool:
         return self.currency.address == EthereumToken.NULL_ADDRESS
 
     def _check_currency_type(self, other: EthereumTokenAmount):

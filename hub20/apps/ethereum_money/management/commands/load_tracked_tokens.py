@@ -25,7 +25,7 @@ class Command(BaseCommand):
 
         provider = Web3Provider.available.get(chain_id=options["chain_id"])
         w3 = make_web3(provider=provider)
-        EthereumToken.ETH(chain=provider.chain)
+        EthereumToken.make_native(chain=provider.chain)
 
         erc20_token_addresses = [
             to_checksum_address(t) for t in TRACKED_TOKENS if t != EthereumToken.NULL_ADDRESS

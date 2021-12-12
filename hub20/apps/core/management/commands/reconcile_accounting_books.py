@@ -86,7 +86,7 @@ class Command(BaseCommand):
             w3 = make_web3(provider=provider)
             Treasury.objects.get_or_create(chain=chain)
 
-            ETH = EthereumToken.ETH(chain=chain)
+            native_token = EthereumToken.make_native(chain=chain)
             tokens = EthereumToken.ERC20tokens.filter(chain=chain)
 
             index_token_events(w3=w3, chain=chain, accounts=accounts, tokens=tokens)
@@ -97,44 +97,44 @@ class Command(BaseCommand):
                 get_all_service_deposits(w3=w3, raiden=raiden)
                 get_all_channel_deposits(w3=w3, raiden=raiden)
 
-        # Ethereum Value Transfers
-        for account in accounts:
-            wallet_book = account.onchain_account.get_book(token=ETH)
+            # Native Token Value Transfers
+            for account in accounts:
+                wallet_book = account.onchain_account.get_book(token=native_token)
 
-            # Ethereum Transactions Received
-            for tx in account.transactions.filter(to_address=account.address, value__gt=0):
-                amount = ETH.from_wei(tx.value)
-                params = dict(
-                    reference_type=transaction_type,
-                    reference_id=tx.id,
-                    currency=ETH,
-                    amount=amount.amount,
-                )
-                external_address_account, _ = ExternalAddressAccount.objects.get_or_create(
-                    address=tx.from_address
-                )
-                external_address_book = external_address_account.get_book(token=ETH)
+                # Ethereum Transactions Received
+                for tx in account.transactions.filter(to_address=account.address, value__gt=0):
+                    amount = native_token.from_wei(tx.value)
+                    params = dict(
+                        reference_type=transaction_type,
+                        reference_id=tx.id,
+                        currency=native_token,
+                        amount=amount.amount,
+                    )
+                    external_address_account, _ = ExternalAddressAccount.objects.get_or_create(
+                        address=tx.from_address
+                    )
+                    external_address_book = external_address_account.get_book(token=native_token)
 
-                external_address_book.debits.get_or_create(**params)
-                wallet_book.credits.get_or_create(**params)
+                    external_address_book.debits.get_or_create(**params)
+                    wallet_book.credits.get_or_create(**params)
 
-            # Ethereum Transactions Sent
-            for tx in account.transactions.filter(from_address=account.address, value__gt=0):
-                amount = ETH.from_wei(tx.value)
-                params = dict(
-                    reference_type=transaction_type,
-                    reference_id=tx.id,
-                    currency=ETH,
-                    amount=amount.amount,
-                )
-                external_address_account, _ = ExternalAddressAccount.objects.get_or_create(
-                    address=tx.to_address
-                )
+                # Ethereum Transactions Sent
+                for tx in account.transactions.filter(from_address=account.address, value__gt=0):
+                    amount = native_token.from_wei(tx.value)
+                    params = dict(
+                        reference_type=transaction_type,
+                        reference_id=tx.id,
+                        currency=native_token,
+                        amount=amount.amount,
+                    )
+                    external_address_account, _ = ExternalAddressAccount.objects.get_or_create(
+                        address=tx.to_address
+                    )
 
-                external_address_book = external_address_account.get_book(token=ETH)
+                    external_address_book = external_address_account.get_book(token=ETH)
 
-                external_address_book.credits.get_or_create(**params)
-                wallet_book.debits.get_or_create(**params)
+                    external_address_book.credits.get_or_create(**params)
+                    wallet_book.debits.get_or_create(**params)
 
         # Raiden payments
         for raiden in Raiden.objects.all():

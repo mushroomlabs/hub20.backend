@@ -178,16 +178,16 @@ def on_blockchain_transfer_executed_move_fee_from_sender_to_treasury(sender, **k
         transaction = execution.transaction
 
         fee = execution.fee
-        ETH = execution.fee.currency
+        native_token = execution.fee.currency
 
-        treasury_book = transaction.block.chain.treasury.get_book(token=ETH)
-        sender_book = execution.transfer.sender.account.get_book(token=ETH)
+        treasury_book = transaction.block.chain.treasury.get_book(token=native_token)
+        sender_book = execution.transfer.sender.account.get_book(token=native_token)
 
         transaction_type = ContentType.objects.get_for_model(transaction)
         params = dict(
             reference_type=transaction_type,
             reference_id=transaction.id,
-            currency=ETH,
+            currency=native_token,
             amount=fee.amount,
         )
 
@@ -205,18 +205,18 @@ def on_transaction_submitted_move_fee_from_wallet_to_fee_account(sender, **kw):
         if not wallet:
             return
 
-        ETH = EthereumToken.ETH(chain=transaction.block.chain)
-        fee = ETH.from_wei(transaction.gas_fee)
+        native_token = EthereumToken.make_native(chain=transaction.block.chain)
+        fee = native_token.from_wei(transaction.gas_fee)
         fee_account = ExternalAddressAccount.get_transaction_fee_account()
 
-        wallet_book = wallet.onchain_account.get_book(token=ETH)
-        fee_book = fee_account.get_book(token=ETH)
+        wallet_book = wallet.onchain_account.get_book(token=native_token)
+        fee_book = fee_account.get_book(token=native_token)
 
         transaction_type = ContentType.objects.get_for_model(transaction)
         params = dict(
             reference_type=transaction_type,
             reference_id=transaction.id,
-            currency=ETH,
+            currency=native_token,
             amount=fee.amount,
         )
 
