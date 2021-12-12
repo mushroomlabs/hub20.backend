@@ -19,8 +19,11 @@ class TokenView(generics.RetrieveAPIView):
 
     def get_object(self) -> models.EthereumToken:
         address = self.kwargs.get("address")
+        chain_id = self.kwargs.get("chain_id")
 
         if not is_address(address):
             raise Http404(f"{address} is not a valid token address")
 
-        return get_object_or_404(models.EthereumToken, address=address)
+        return get_object_or_404(
+            models.EthereumToken, is_listed=True, address=address, chain_id=chain_id
+        )

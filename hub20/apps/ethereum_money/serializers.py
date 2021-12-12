@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from rest_framework.reverse import reverse
 
 from hub20.apps.blockchain.serializers import EthereumAddressField
 
@@ -12,18 +13,30 @@ class TokenValueField(serializers.DecimalField):
         super().__init__(*args, **kw)
 
 
-class CurrencyRelatedField(serializers.SlugRelatedField):
+class HyperlinkedRelatedTokenField(serializers.HyperlinkedRelatedField):
+    view_name = "ethereum_money:token-detail"
     queryset = models.EthereumToken.tracked.all()
 
+    def get_attribute(self, instance):
+        return getattr(instance, self.source)
+
+    def get_url(self, obj, view_name, request, format):
+        url_kwargs = {"chain_id": obj.chain_id, "address": obj.address}
+        return reverse(view_name, kwargs=url_kwargs, request=request, format=format)
+
+    def get_object(self, view_name, view_args, view_kwargs):
+        lookup_kwargs = {"chain_id": view_kwargs["chain_id"], "address": view_kwargs["address"]}
+        return self.queryset.get(**lookup_kwargs)
+
+
+class HyperlinkedTokenIdentityField(serializers.HyperlinkedIdentityField):
     def __init__(self, *args, **kw):
-        kw.setdefault("slug_field", "address")
+        kw.setdefault("view_name", "ethereum_money:token-detail")
         super().__init__(*args, **kw)
 
-
-class EthereumTokenSelectorField(serializers.HyperlinkedRelatedField):
-    queryset = models.EthereumToken.tracked.all()
-    view_name = "ethereum_money:token-detail"
-    lookup_field = "address"
+    def get_url(self, obj, view_name, request, format):
+        url_kwargs = {"chain_id": obj.chain_id, "address": obj.address}
+        return reverse(view_name, kwargs=url_kwargs, request=request, format=format)
 
 
 class EthereumTokenSerializer(serializers.ModelSerializer):
@@ -36,14 +49,12 @@ class EthereumTokenSerializer(serializers.ModelSerializer):
 
 
 class EthereumTokenAmountSerializer(serializers.ModelSerializer):
-    currency = CurrencyRelatedField()
+    token = HyperlinkedRelatedTokenField(source="currency")
     amount = TokenValueField()
 
 
 class HyperlinkedEthereumTokenSerializer(EthereumTokenSerializer):
-    url = serializers.HyperlinkedIdentityField(
-        view_name="ethereum_money:token-detail", lookup_field="address"
-    )
+    url = HyperlinkedTokenIdentityField()
 
     class Meta:
         model = models.EthereumToken
