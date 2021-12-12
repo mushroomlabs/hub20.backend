@@ -33,7 +33,7 @@ class TransactionQuerySet(models.QuerySet):
 
 
 class Chain(models.Model):
-    id = models.PositiveIntegerField(primary_key=True)
+    id = models.PositiveBigIntegerField(primary_key=True)
     name = models.CharField(max_length=128, default="EVM-compatible network")
     is_mainnet = models.BooleanField(default=True)
     highest_block = models.PositiveIntegerField()
@@ -243,12 +243,13 @@ class BaseEthereumAccount(models.Model):
 
 
 class Web3Provider(models.Model):
-    url = models.URLField(unique=True)
+    url = models.URLField()
     chain = models.OneToOneField(Chain, related_name="provider", on_delete=models.CASCADE)
     enabled = models.BooleanField(default=True)
     synced = models.BooleanField(default=False)
     connected = models.BooleanField(default=False)
 
+    objects = models.Manager()
     available = QueryManager(enabled=True, synced=True, connected=True)
 
     @property
@@ -261,8 +262,11 @@ class Web3Provider(models.Model):
 
 
 class Explorer(models.Model):
-    url = models.URLField(unique=True)
     chain = models.ForeignKey(Chain, related_name="explorers", on_delete=models.CASCADE)
+    url = models.URLField()
+
+    class Meta:
+        unique_together = ("url", "chain")
 
 
 __all__ = [
