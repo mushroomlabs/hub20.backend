@@ -40,7 +40,7 @@ urlpatterns = [
     path("", IndexView.as_view(), name="index"),
     path("register/", include("rest_auth.registration.urls")),
     path("tokens/", include("hub20.apps.ethereum_money.api", namespace="ethereum_money")),
-    path("networks/blockchain/", include("hub20.apps.blockchain.api", namespace="blockchain")),
+    path("networks/blockchains/", include("hub20.apps.blockchain.api", namespace="blockchain")),
     path("networks/raiden/", include("hub20.apps.raiden.api")),
 ]
 
