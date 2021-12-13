@@ -16,7 +16,7 @@ from rest_framework.views import APIView
 from rest_framework.viewsets import GenericViewSet, ModelViewSet
 
 from hub20.apps.blockchain.models import Chain
-from hub20.apps.blockchain.serializers import Web3ProviderSerializer
+from hub20.apps.blockchain.serializers import ChainSerializer
 from hub20.apps.ethereum_money.models import EthereumToken
 from hub20.apps.raiden.client.blockchain import GAS_REQUIRED_FOR_DEPOSIT
 
@@ -268,7 +268,7 @@ class NetworkStatusView(StatusView):
 
         return {
             "url": reverse("status-network-detail", request=self.request, kwargs={"pk": chain.id}),
-            "blockchain": Web3ProviderSerializer(chain).data,
+            "blockchain": ChainSerializer(chain).data,
             "raiden": {
                 "deposit_max_gas_cost": gas_price and (gas_price * GAS_REQUIRED_FOR_DEPOSIT)
             },
@@ -278,16 +278,13 @@ class NetworkStatusView(StatusView):
 class NetworkStatusListView(NetworkStatusView):
     def get(self, request, **kw):
         return Response(
-            [
-                self.get_chain_status_data(chain)
-                for chain in Chain.objects.filter(enabled=True).order_by("id")
-            ]
+            [self.get_chain_status_data(chain) for chain in Chain.active.all().order_by("id")]
         )
 
 
 class NetworkStatusDetailView(NetworkStatusView):
     def get(self, request, **kw):
-        chain = get_object_or_404(Chain, enabled=True, id=self.kwargs["pk"])
+        chain = get_object_or_404(Chain, provider__enabled=True, id=self.kwargs["pk"])
 
         return Response(self.get_chain_status_data(chain))
 

@@ -1,4 +1,3 @@
-from django.conf import settings
 from rest_framework import serializers
 from rest_framework_nested.relations import NestedHyperlinkedIdentityField
 from rest_framework_nested.serializers import NestedHyperlinkedModelSerializer
@@ -20,7 +19,7 @@ from .client.node import RaidenClient
 
 
 class ChainField(serializers.PrimaryKeyRelatedField):
-    queryset = models.Chain.objects.filter(enabled=True).order_by("id")
+    queryset = models.Chain.active.all().order_by("id")
 
 
 class TokenNetworkField(serializers.RelatedField):
@@ -59,7 +58,7 @@ class ServiceDepositSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
         chain = data.pop("chain")
-        w3 = make_web3(provider_url=chain.provider_url)
+        w3 = make_web3(provider=chain.provider)
         token = get_service_token(w3=w3)
         raiden = data["raiden"]
 
@@ -81,7 +80,7 @@ class ServiceDepositSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
 
         chain = validated_data.pop("chain")
-        w3 = make_web3(provider_url=chain.provider_url)
+        w3 = make_web3(provider=chain.provider)
         token = get_service_token(w3=w3)
 
         return self.Meta.model.objects.create(user=request.user, currency=token, **validated_data)

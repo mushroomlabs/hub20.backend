@@ -6,7 +6,15 @@ from django.utils import timezone
 from faker import Faker
 
 from ..app_settings import START_BLOCK_NUMBER
-from ..models import BaseEthereumAccount, Block, Chain, Transaction, TransactionLog
+from ..models import (
+    BaseEthereumAccount,
+    Block,
+    Chain,
+    NativeToken,
+    Transaction,
+    TransactionLog,
+    Web3Provider,
+)
 from .providers import EthereumProvider
 
 factory.Faker.add_provider(EthereumProvider)
@@ -36,11 +44,13 @@ class BaseWalletFactory(factory.django.DjangoModelFactory):
 
 class ChainFactory(factory.django.DjangoModelFactory):
     id = TEST_CHAIN_ID
-    provider_url = "https://web3.example.com"
-    online = True
-    enabled = True
-    synced = False
     highest_block = 0
+    provider = factory.RelatedFactory(
+        "hub20.apps.blockchain.factories.base.Web3ProviderFactory", factory_related_name="chain"
+    )
+    native_token = factory.RelatedFactory(
+        "hub20.apps.blockchain.factories.base.NativeTokenFactory", factory_related_name="chain"
+    )
 
     @factory.post_generation
     def blocks(obj, create, extracted, **kw):
@@ -59,8 +69,11 @@ class ChainFactory(factory.django.DjangoModelFactory):
 
 
 class SyncedChainFactory(ChainFactory):
-    synced = True
     highest_block = START_BLOCK_NUMBER
+    provider = factory.RelatedFactory(
+        "hub20.apps.blockchain.factories.base.SyncedWeb3ProviderFactory",
+        factory_related_name="chain",
+    )
 
 
 class BlockFactory(factory.django.DjangoModelFactory):
@@ -102,3 +115,30 @@ class TransactionLogFactory(factory.django.DjangoModelFactory):
 
     class Meta:
         model = TransactionLog
+
+
+class NativeTokenFactory(factory.django.DjangoModelFactory):
+    chain = factory.SubFactory(ChainFactory)
+    name = factory.Sequence(lambda n: f"Native Token #{n:02n}")
+    symbol = factory.Sequence(lambda n: f"ETH{n:02n}")
+
+    class Meta:
+        model = NativeToken
+        django_get_or_create = ("chain",)
+
+
+class Web3ProviderFactory(factory.django.DjangoModelFactory):
+    chain = factory.SubFactory(ChainFactory)
+    url = factory.Sequence(lambda n: f"https://web3-{n:02}.example.com")
+    connected = True
+    enabled = True
+    synced = False
+
+    class Meta:
+        model = Web3Provider
+        django_get_or_create = ("chain",)
+
+
+class SyncedWeb3ProviderFactory(Web3ProviderFactory):
+    chain = factory.SubFactory(SyncedChainFactory)
+    synced = True

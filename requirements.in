@@ -22,6 +22,7 @@ httpx
 mypy_extensions
 psycopg2-binary
 pycoingecko
+pydantic
 pycryptodome
 pyjwt
 raiden_contracts

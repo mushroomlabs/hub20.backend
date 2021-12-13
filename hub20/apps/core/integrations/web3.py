@@ -21,7 +21,11 @@ async def pending_token_transfers():
     while True:
         open_routes = await sync_to_async(list)(
             BlockchainPaymentRoute.objects.open().select_related(
-                "deposit", "deposit__currency", "deposit__currency__chain", "account"
+                "deposit",
+                "deposit__currency",
+                "deposit__currency__chain",
+                "deposit__currency__chain__provider",
+                "account",
             )
         )
 
@@ -35,7 +39,7 @@ async def pending_token_transfers():
             if not token.is_ERC20:
                 continue
 
-            w3 = make_web3(provider_url=token.chain.provider_url)
+            w3 = make_web3(provider=token.chain.provider)
             contract = w3.eth.contract(abi=EIP20_ABI, address=token.address)
 
             try:

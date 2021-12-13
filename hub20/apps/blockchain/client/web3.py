@@ -4,17 +4,24 @@ from urllib.parse import urlparse
 
 from web3 import Web3
 from web3.gas_strategies.time_based import fast_gas_price_strategy
-from web3.middleware import geth_poa_middleware
+from web3.middleware import (
+    geth_poa_middleware,
+    latest_block_based_cache_middleware,
+    simple_cache_middleware,
+    time_based_cache_middleware,
+)
 from web3.providers import HTTPProvider, IPCProvider, WebsocketProvider
 from web3.types import TxReceipt
 
 from hub20.apps.blockchain.exceptions import Web3TransactionError
+from hub20.apps.blockchain.models import Web3Provider
 
 logger = logging.getLogger(__name__)
 
 
-def make_web3(provider_url: str) -> Web3:
+def get_web3(provider_url: str) -> Web3:
     endpoint = urlparse(provider_url)
+
     logger.debug(f"Instantiating new Web3 for {endpoint.hostname}")
     provider_class = {
         "http": HTTPProvider,
@@ -25,9 +32,16 @@ def make_web3(provider_url: str) -> Web3:
 
     w3 = Web3(provider_class(provider_url))
     w3.middleware_onion.inject(geth_poa_middleware, layer=0)
+    w3.middleware_onion.add(time_based_cache_middleware)
+    w3.middleware_onion.add(latest_block_based_cache_middleware)
+    w3.middleware_onion.add(simple_cache_middleware)
     w3.eth.setGasPriceStrategy(fast_gas_price_strategy)
 
     return w3
+
+
+def make_web3(provider: Web3Provider) -> Web3:
+    return get_web3(provider_url=provider.url)
 
 
 def send_transaction(

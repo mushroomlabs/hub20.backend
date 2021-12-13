@@ -3,7 +3,6 @@ import logging
 from typing import Optional
 from urllib.parse import urlparse
 
-from django.conf import settings
 from django.contrib.postgres.fields import ArrayField
 from django.core.cache import cache
 from django.db import models
@@ -13,9 +12,8 @@ from hexbytes import HexBytes
 from model_utils.managers import InheritanceManager, QueryManager
 from web3.datastructures import AttributeDict
 
-from .app_settings import CHAIN_ID, START_BLOCK_NUMBER
-from .choices import ETHEREUM_CHAINS
-from .fields import EthereumAddressField, HexField, Uint256Field
+from .app_settings import START_BLOCK_NUMBER
+from .fields import EthereumAddressField, HexField, Uint256Field, Web3ProviderURLField
 from .typing import Address
 
 logger = logging.getLogger(__name__)
@@ -35,28 +33,20 @@ class TransactionQuerySet(models.QuerySet):
 
 
 class Chain(models.Model):
-    id = models.PositiveIntegerField(
-        primary_key=True,
-        choices=ETHEREUM_CHAINS,
-        default=ETHEREUM_CHAINS.mainnet,
-    )
-    provider_url = models.URLField(unique=True)
-    synced = models.BooleanField()
-    online = models.BooleanField(default=False)
+    id = models.PositiveBigIntegerField(primary_key=True)
+    name = models.CharField(max_length=128, default="EVM-compatible network")
+    is_mainnet = models.BooleanField(default=True)
     highest_block = models.PositiveIntegerField()
-    enabled = models.BooleanField(default=True)
-
     objects = models.Manager()
-    available = QueryManager(enabled=True, synced=True, online=True)
+    active = QueryManager(provider__enabled=True)
 
     @property
     def gas_price_estimate_cache_key(self):
         return f"GAS_PRICE_ESTIMATE_{self.id}"
 
     @property
-    def provider_hostname(self):
-        endpoint = urlparse(self.provider_url)
-        return endpoint.hostname
+    def synced(self):
+        return self.provider.synced and self.provider.enabled
 
     def _get_gas_price_estimate(self):
         return cache.get(self.gas_price_estimate_cache_key, None)
@@ -65,6 +55,12 @@ class Chain(models.Model):
         return cache.set(self.gas_price_estimate_cache_key, value)
 
     gas_price_estimate = property(_get_gas_price_estimate, _set_gas_price_estimate)
+
+    def __str__(self):
+        return f"{self.name} ({self.id})"
+
+    class Meta:
+        ordering = ("id",)
 
 
 class Block(models.Model):
@@ -213,6 +209,19 @@ class TransactionLog(models.Model):
         unique_together = ("transaction", "index")
 
 
+class AbstractTokenInfo(models.Model):
+    name = models.CharField(max_length=500)
+    symbol = models.CharField(max_length=16)
+    decimals = models.PositiveIntegerField(default=18)
+
+    class Meta:
+        abstract = True
+
+
+class NativeToken(AbstractTokenInfo):
+    chain = models.OneToOneField(Chain, on_delete=models.CASCADE, related_name="native_token")
+
+
 class BaseEthereumAccount(models.Model):
     address = EthereumAddressField(unique=True, db_index=True)
     transactions = models.ManyToManyField(Transaction)
@@ -239,4 +248,47 @@ class BaseEthereumAccount(models.Model):
         return private_key and bytearray.fromhex(private_key[2:])
 
 
-__all__ = ["Block", "Chain", "Transaction", "TransactionLog", "BaseEthereumAccount"]
+class Web3Provider(models.Model):
+    chain = models.OneToOneField(Chain, related_name="provider", on_delete=models.CASCADE)
+    url = Web3ProviderURLField()
+    enabled = models.BooleanField(default=True)
+    synced = models.BooleanField(default=False)
+    connected = models.BooleanField(default=False)
+
+    objects = models.Manager()
+    active = QueryManager(enabled=True)
+    available = QueryManager(synced=True, connected=True)
+
+    @property
+    def is_online(self):
+        return self.connected and self.synced
+
+    @property
+    def hostname(self):
+        return urlparse(self.url).hostname
+
+    def __str__(self):
+        return self.hostname
+
+
+class Explorer(models.Model):
+    chain = models.ForeignKey(Chain, related_name="explorers", on_delete=models.CASCADE)
+    name = models.CharField(max_length=200, null=True)
+    url = models.URLField()
+    standard = models.CharField(max_length=200, null=True)
+
+    class Meta:
+        unique_together = ("url", "chain")
+
+
+__all__ = [
+    "Block",
+    "Chain",
+    "Transaction",
+    "TransactionLog",
+    "BaseEthereumAccount",
+    "AbstractTokenInfo",
+    "NativeToken",
+    "Web3Provider",
+    "Explorer",
+]

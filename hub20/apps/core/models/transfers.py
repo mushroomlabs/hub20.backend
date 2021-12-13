@@ -196,8 +196,8 @@ class BlockchainTransferExecution(TransferExecution):
 
     @property
     def fee(self) -> EthereumTokenAmount:
-        ETH = EthereumToken.ETH(chain=self.transaction.block.chain)
-        return ETH.from_wei(self.transaction.gas_fee)
+        native_token = EthereumToken.make_native(chain=self.transaction.block.chain)
+        return native_token.from_wei(self.transaction.gas_fee)
 
 
 class RaidenTransferExecution(TransferExecution):

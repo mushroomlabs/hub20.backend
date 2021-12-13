@@ -43,11 +43,11 @@ def encode_transfer_data(recipient_address, amount: EthereumTokenAmount):
 
 
 def get_max_fee(w3: Web3) -> EthereumTokenAmount:
-    chain = Chain.objects.get(id=w3.eth.chain_id, enabled=True)
-    ETH = EthereumToken.ETH(chain=chain)
+    chain = Chain.active.get(id=w3.eth.chain_id)
+    native_token = EthereumToken.make_native(chain=chain)
 
     gas_price = chain.gas_price_estimate or w3.eth.generateGasPrice()
-    return ETH.from_wei(TRANSFER_GAS_LIMIT * gas_price)
+    return native_token.from_wei(TRANSFER_GAS_LIMIT * gas_price)
 
 
 def get_account_balance(w3: Web3, token: EthereumToken, address: Address) -> EthereumTokenAmount:
@@ -69,7 +69,7 @@ def get_token_information(w3: Web3, address):
 
 def make_token(w3: Web3, address) -> EthereumToken:
     token_data = get_token_information(w3=w3, address=address)
-    chain = Chain.objects.get(enabled=True, id=w3.eth.chain_id)
+    chain = Chain.active.get(id=w3.eth.chain_id)
     return EthereumToken.make(chain=chain, address=address, **token_data)
 
 
@@ -80,7 +80,7 @@ class EthereumClient:
     def build_transfer_transaction(self, recipient, amount: EthereumTokenAmount):
         token = amount.currency
 
-        w3 = make_web3(provider_url=token.chain.provider_url)
+        w3 = make_web3(provider=token.chain.provider)
         chain_id = w3.eth.chain_id
         message = f"Connected to network {chain_id}, token {token.code} is on {token.chain_id}"
         assert token.chain_id == chain_id, message
@@ -102,7 +102,7 @@ class EthereumClient:
         return transaction_params
 
     def transfer(self, amount: EthereumTokenAmount, address, *args, **kw):
-        w3 = make_web3(provider_url=amount.currency.chain.provider_url)
+        w3 = make_web3(provider=amount.currency.chain.provider)
         transaction_data = self.build_transfer_transaction(recipient=address, amount=amount)
         signed_tx = self.sign_transaction(transaction_data=transaction_data, w3=w3)
         return w3.eth.sendRawTransaction(signed_tx.rawTransaction)
@@ -113,7 +113,7 @@ class EthereumClient:
         return w3.eth.account.signTransaction(transaction_data, self.account.private_key)
 
     def get_balance(self, token: EthereumToken):
-        w3 = make_web3(provider_url=token.chain.provider_url)
+        w3 = make_web3(provider=token.chain.provider)
         return get_account_balance(w3=w3, token=token, address=self.account.address)
 
     @classmethod
@@ -125,23 +125,23 @@ class EthereumClient:
     ) -> Optional[EthereumClient_T]:
 
         chain = amount.currency.chain
-        w3 = make_web3(provider_url=chain.provider_url)
+        w3 = make_web3(provider=chain.provider)
 
         transfer_fee: EthereumTokenAmount = cls.estimate_transfer_fees(w3=w3)
-        assert transfer_fee.is_ETH
+        assert transfer_fee.is_native_token
 
         ETH = transfer_fee.currency
 
         accounts = EthereumAccount.objects.all().order_by("?")
 
-        if amount.is_ETH:
+        if amount.is_native_token:
             amount += transfer_fee
 
         for account in accounts:
             get_balance = lambda t: get_account_balance(w3=w3, token=t, address=account.address)
 
             eth_balance = get_balance(ETH)
-            token_balance = eth_balance if amount.is_ETH else get_balance(amount.currency)
+            token_balance = eth_balance if amount.is_native_token else get_balance(amount.currency)
 
             if eth_balance >= transfer_fee and token_balance >= amount:
                 return cls(account=account, w3=w3)
