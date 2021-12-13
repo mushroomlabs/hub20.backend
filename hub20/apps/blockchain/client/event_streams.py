@@ -18,8 +18,9 @@ BLOCK_CREATION_INTERVAL = 10  # In seconds
 
 async def node_online_status():
     while True:
-        providers = await sync_to_async(list)(Web3Provider.available.select_related("chain"))
+        providers = await sync_to_async(list)(Web3Provider.active.select_related("chain"))
         for provider in providers:
+            logger.debug(f"Checking status from {provider.hostname}")
             chain = provider.chain
             try:
                 w3 = make_web3(provider=provider)
@@ -39,8 +40,8 @@ async def node_online_status():
                     "node.connection.nok", chain_id=chain.id, provider_url=provider.url
                 )
 
-            elif is_online and not chain.online:
-                logger.debug(f"Node {chain.provider_hostname} is back online")
+            elif is_online and not provider.connected:
+                logger.debug(f"Node {provider.hostname} is back online")
                 await sync_to_async(celery_pubsub.publish)(
                     "node.connection.ok", chain_id=chain.id, provider_url=provider.url
                 )
@@ -50,7 +51,7 @@ async def node_online_status():
 
 async def node_sync_status():
     while True:
-        providers = await sync_to_async(list)(Web3Provider.available.select_related("chain"))
+        providers = await sync_to_async(list)(Web3Provider.active.select_related("chain"))
         for provider in providers:
             try:
                 w3 = make_web3(provider=provider)
@@ -68,7 +69,7 @@ async def node_sync_status():
             elif is_synced and not provider.synced:
                 logger.debug(f"Node {provider.hostname} is back in sync")
                 await sync_to_async(celery_pubsub.publish)(
-                    "node.sync.ok", provider_url=provider.url
+                    "node.sync.ok", chain_id=provider.chain_id, provider_url=provider.url
                 )
 
         await asyncio.sleep(BLOCK_CREATION_INTERVAL)
