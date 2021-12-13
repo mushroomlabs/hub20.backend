@@ -1,7 +1,6 @@
 import binascii
 import logging
 
-from django.conf import settings
 from django.core.management.base import BaseCommand
 from web3.exceptions import TransactionNotFound
 
@@ -16,9 +15,7 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("transactions", metavar="N", nargs="+", type=str)
-        parser.add_argument(
-            "--chain", dest="chain_id", default=settings.BLOCKCHAIN_NETWORK_ID, type=int
-        )
+        parser.add_argument("--chain", dest="chain_id", required=True, type=int)
 
     def handle(self, *args, **options):
 

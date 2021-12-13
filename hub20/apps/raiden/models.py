@@ -15,7 +15,6 @@ from model_utils.models import StatusModel, TimeStampedModel
 from hub20.apps.blockchain.fields import EthereumAddressField, HexField, Uint256Field
 from hub20.apps.blockchain.models import BaseEthereumAccount, Chain, Transaction
 from hub20.apps.blockchain.typing import Address
-from hub20.apps.ethereum_money.app_settings import TRACKED_TOKENS
 from hub20.apps.ethereum_money.models import (
     EthereumToken,
     EthereumTokenAmount,
@@ -31,7 +30,6 @@ class TokenNetwork(models.Model):
     address = EthereumAddressField()
     token = models.OneToOneField(EthereumToken, on_delete=models.CASCADE)
     objects = models.Manager()
-    tracked = QueryManager(token__address__in=TRACKED_TOKENS)
 
     def can_reach(self, address) -> bool:
         # This is a very naive assumption. One should not assume that we can

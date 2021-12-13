@@ -4,7 +4,6 @@ from rest_framework_nested.serializers import NestedHyperlinkedModelSerializer
 
 from hub20.apps.blockchain.client import make_web3
 from hub20.apps.blockchain.serializers import HexadecimalField
-from hub20.apps.ethereum_money.app_settings import TRACKED_TOKENS
 from hub20.apps.ethereum_money.models import EthereumTokenAmount
 from hub20.apps.ethereum_money.serializers import (
     EthereumTokenSerializer,
@@ -23,7 +22,7 @@ class ChainField(serializers.PrimaryKeyRelatedField):
 
 
 class TokenNetworkField(serializers.RelatedField):
-    queryset = models.TokenNetwork.objects.filter(token__address__in=TRACKED_TOKENS)
+    queryset = models.TokenNetwork.objects.all()
     lookup_field = "address"
 
 

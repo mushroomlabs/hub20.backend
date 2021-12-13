@@ -15,7 +15,6 @@ x-envvars: &ci_environment
     HUB20_EMAIL_BACKEND: django.core.mail.backends.console.EmailBackend
     HUB20_SECRET_KEY: base-hub20-secret-key
     HUB20_BLOCKCHAIN_NETWORK_ID: 5
-    HUB20_TRACKED_TOKENS: 0x0000000000000000000000000000000000000000,0x1c36690810ad06fb15552657c7a8ff653eb46f76
     HUB20_ETHEREUM_HD_WALLET_ROOT_KEY: deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef
 
 services:

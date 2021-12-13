@@ -4,8 +4,6 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAdminUser
 from rest_framework.response import Response
 
-from hub20.apps.ethereum_money.app_settings import TRACKED_TOKENS
-
 from . import models, serializers
 
 
@@ -83,7 +81,7 @@ class TokenNetworkViewMixin:
     serializer_class = serializers.TokenNetworkSerializer
     lookup_field = "address"
     lookup_url_kwarg = "address"
-    queryset: QuerySet = models.TokenNetwork.objects.filter(token__address__in=TRACKED_TOKENS)
+    queryset: QuerySet = models.TokenNetwork.objects.all()
 
 
 class TokenNetworkViewSet(

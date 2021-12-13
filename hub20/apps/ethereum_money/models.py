@@ -37,7 +37,6 @@ class EthereumToken(models.Model):
     objects = models.Manager()
     native = QueryManager(address=NULL_ADDRESS)
     ERC20tokens = QueryManager(~Q(address=NULL_ADDRESS))
-    tracked = QueryManager(is_listed=True)
 
     @property
     def is_ERC20(self) -> bool:

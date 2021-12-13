@@ -2,7 +2,6 @@ import getpass
 import logging
 
 import ethereum
-from django.conf import settings
 from django.core.management.base import BaseCommand
 from eth_utils import to_checksum_address
 
@@ -21,9 +20,7 @@ class Command(BaseCommand):
         parser.add_argument("-a", "--account", required=True, type=str)
         parser.add_argument("-t", "--token", required=True, type=str)
         parser.add_argument("--amount", default=1000, type=int)
-        parser.add_argument(
-            "--chain-id", "-c", dest="chain_id", default=settings.BLOCKCHAIN_NETWORK_ID, type=int
-        )
+        parser.add_argument("--chain-id", "-c", dest="chain_id", required=True, type=int)
 
     def handle(self, *args, **options):
         address = to_checksum_address(options["account"])
@@ -41,7 +38,7 @@ class Command(BaseCommand):
             assert generated_address == address, "Private Key does not match"
             account = KeystoreAccount(address=address, private_key=private_key)
 
-        provider = Chain.available.get(chain_id=options["chain_id"])
+        provider = Web3Provider.available.get(chain_id=options["chain_id"])
         w3 = make_web3(provider=provider)
 
         is_mainnet = provider.chain_id == 1
