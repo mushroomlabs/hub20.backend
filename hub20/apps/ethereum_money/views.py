@@ -11,7 +11,7 @@ class TokenListView(generics.ListAPIView):
     serializer_class = serializers.HyperlinkedEthereumTokenSerializer
 
     def get_queryset(self) -> QuerySet:
-        return models.EthereumToken.tracked.all()
+        return models.EthereumToken.objects.all()
 
 
 class TokenView(generics.RetrieveAPIView):

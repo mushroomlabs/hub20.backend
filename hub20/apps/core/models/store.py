@@ -67,7 +67,7 @@ class Checkout(PaymentOrder):
         return {
             "checkout_id": str(self.id),
             "external_identifier": self.external_identifier,
-            "token": {"symbol": self.currency.code, "address": self.currency.address},
+            "token": {"symbol": self.currency.symbol, "address": self.currency.address},
             "payments": [
                 {
                     "id": str(p.id),

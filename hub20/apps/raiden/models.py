@@ -56,7 +56,7 @@ class TokenNetwork(models.Model):
         return self.channels.aggregate(max_block=max_block_aggregate).get("max_block")
 
     def __str__(self):
-        return f"{self.address} - ({self.token.code} @ {self.token.chain_id})"
+        return f"{self.address} - ({self.token.symbol} @ {self.token.chain_id})"
 
 
 class TokenNetworkChannel(models.Model):

@@ -38,7 +38,7 @@ class EthereumCurrencyFactory(factory.django.DjangoModelFactory):
 
 class ETHFactory(EthereumCurrencyFactory):
     name = fuzzy.FuzzyChoice(choices=["Ethereum"])
-    code = fuzzy.FuzzyChoice(choices=["ETH"])
+    symbol = fuzzy.FuzzyChoice(choices=["ETH"])
     address = EthereumToken.NULL_ADDRESS
 
     class Meta:
@@ -48,7 +48,7 @@ class ETHFactory(EthereumCurrencyFactory):
 
 class Erc20TokenFactory(EthereumCurrencyFactory):
     name = factory.Sequence(lambda n: f"ERC20 Token #{n:03}")
-    code = factory.Sequence(lambda n: f"TOK#{n:03}")
+    symbol = factory.Sequence(lambda n: f"TOK#{n:03}")
     address = factory.Faker("ethereum_address")
 
     class Meta:

@@ -18,6 +18,7 @@ from hub20.apps.blockchain.models import BaseEthereumAccount, Chain
 
 from .abi import EIP20_ABI
 from .app_settings import HD_WALLET_MNEMONIC, HD_WALLET_ROOT_KEY
+from .fields import TokenLogoURLField
 from .typing import TokenAmount, TokenAmount_T, Wei
 
 logger = logging.getLogger(__name__)
@@ -26,10 +27,11 @@ logger = logging.getLogger(__name__)
 class EthereumToken(models.Model):
     NULL_ADDRESS = "0x0000000000000000000000000000000000000000"
     chain = models.ForeignKey(Chain, on_delete=models.CASCADE, related_name="tokens")
-    code = models.CharField(max_length=8)
+    address = EthereumAddressField(default=NULL_ADDRESS)
+    symbol = models.CharField(max_length=20)
     name = models.CharField(max_length=500)
     decimals = models.PositiveIntegerField(default=18)
-    address = EthereumAddressField(default=NULL_ADDRESS)
+    logoURI = TokenLogoURLField(null=True)
     is_listed = models.BooleanField(default=False)
 
     objects = models.Manager()
@@ -42,7 +44,7 @@ class EthereumToken(models.Model):
         return self.address != self.NULL_ADDRESS
 
     def __str__(self) -> str:
-        components = [self.code]
+        components = [self.symbol]
         if self.is_ERC20:
             components.append(self.address)
 
@@ -174,7 +176,7 @@ class EthereumTokenAmount:
         frac = self.amount % 1
 
         amount_formatted = str(integral) if not bool(frac) else self.amount.normalize()
-        return f"{amount_formatted} {self.currency.code}"
+        return f"{amount_formatted} {self.currency.symbol}"
 
     @property
     def as_wei(self) -> Wei:
