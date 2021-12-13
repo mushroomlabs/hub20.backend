@@ -13,7 +13,7 @@ from model_utils.managers import InheritanceManager, QueryManager
 from web3.datastructures import AttributeDict
 
 from .app_settings import START_BLOCK_NUMBER
-from .fields import EthereumAddressField, HexField, Uint256Field
+from .fields import EthereumAddressField, HexField, Uint256Field, Web3ProviderURLField
 from .typing import Address
 
 logger = logging.getLogger(__name__)
@@ -55,6 +55,12 @@ class Chain(models.Model):
         return cache.set(self.gas_price_estimate_cache_key, value)
 
     gas_price_estimate = property(_get_gas_price_estimate, _set_gas_price_estimate)
+
+    def __str__(self):
+        return f"{self.name} ({self.id})"
+
+    class Meta:
+        ordering = ("id",)
 
 
 class Block(models.Model):
@@ -243,14 +249,15 @@ class BaseEthereumAccount(models.Model):
 
 
 class Web3Provider(models.Model):
-    url = models.URLField()
     chain = models.OneToOneField(Chain, related_name="provider", on_delete=models.CASCADE)
+    url = Web3ProviderURLField()
     enabled = models.BooleanField(default=True)
     synced = models.BooleanField(default=False)
     connected = models.BooleanField(default=False)
 
     objects = models.Manager()
-    available = QueryManager(enabled=True, synced=True, connected=True)
+    active = QueryManager(enabled=True)
+    available = QueryManager(synced=True, connected=True)
 
     @property
     def is_online(self):
@@ -260,10 +267,15 @@ class Web3Provider(models.Model):
     def hostname(self):
         return urlparse(self.url).hostname
 
+    def __str__(self):
+        return self.hostname
+
 
 class Explorer(models.Model):
     chain = models.ForeignKey(Chain, related_name="explorers", on_delete=models.CASCADE)
+    name = models.CharField(max_length=200, null=True)
     url = models.URLField()
+    standard = models.CharField(max_length=200, null=True)
 
     class Meta:
         unique_together = ("url", "chain")

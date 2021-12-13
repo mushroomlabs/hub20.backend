@@ -55,6 +55,6 @@ class Command(BaseCommand):
 
                 blockchain_explorers = chain_data.explorers or []
                 for explorer in blockchain_explorers:
-                    models.Explorer.objects.get_or_create(chain=chain, url=explorer)
+                    models.Explorer.objects.get_or_create(chain=chain, defaults=explorer.dict())
             except Exception as exc:
                 logger.exception(exc)

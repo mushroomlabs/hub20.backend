@@ -3,11 +3,11 @@ from django.utils.translation import gettext_lazy as _
 from ethereum.utils import checksum_encode
 from hexbytes import HexBytes
 
-from .validators import validate_checksumed_address
+from . import validators
 
 
 class EthereumAddressField(models.CharField):
-    default_validators = [validate_checksumed_address]
+    default_validators = [validators.validate_checksumed_address]
     description = "Ethereum address"
 
     def __init__(self, *args, **kwargs):
@@ -108,3 +108,7 @@ class Sha3HashField(HexField):
         name, path, args, kwargs = super().deconstruct()
         del kwargs["max_length"]
         return name, path, args, kwargs
+
+
+class Web3ProviderURLField(models.URLField):
+    default_validators = [validators.web3_url_validator]
