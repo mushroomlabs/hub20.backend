@@ -127,7 +127,7 @@ def make_service_deposit(w3: Web3, account: EthereumAccount_T, amount: EthereumT
 
     if service_token_address != token.address:
         raise ValueError(
-            f"Deposit must be in {service_token_address}, {token.code} is {token.address}"
+            f"Deposit must be in {service_token_address}, {token.symbol} is {token.address}"
         )
 
     token_proxy = w3.eth.contract(address=token.address, abi=EIP20_ABI)

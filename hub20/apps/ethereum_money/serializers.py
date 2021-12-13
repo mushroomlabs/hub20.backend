@@ -15,7 +15,7 @@ class TokenValueField(serializers.DecimalField):
 
 class HyperlinkedRelatedTokenField(serializers.HyperlinkedRelatedField):
     view_name = "ethereum_money:token-detail"
-    queryset = models.EthereumToken.tracked.all()
+    queryset = models.EthereumToken.objects.all()
 
     def get_attribute(self, instance):
         return getattr(instance, self.source)
@@ -44,8 +44,14 @@ class EthereumTokenSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = models.EthereumToken
-        fields = ("code", "name", "address", "network_id", "decimals")
-        read_only_fields = ("code", "name", "address", "network_id", "decimals")
+        fields = read_only_fields = (
+            "symbol",
+            "name",
+            "address",
+            "network_id",
+            "decimals",
+            "logoURI",
+        )
 
 
 class EthereumTokenAmountSerializer(serializers.ModelSerializer):

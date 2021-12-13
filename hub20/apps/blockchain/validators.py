@@ -18,29 +18,34 @@ def validate_checksumed_address(address):
         )
 
 
-def web3_url_validator(url):
-    web3_client_schemes = ["http", "https", "ws", "wss", "ipc"]
-    parsed = urlparse(url)
+def uri_parsable_scheme_validator(schemes):
+    def decorator(url):
+        parsed = urlparse(url)
 
-    errors = []
+        errors = []
 
-    if parsed.scheme not in web3_client_schemes:
-        errors.append(
-            ValidationError(
-                "Scheme %(value)s is not accepted",
-                code="required",
-                params=dict(value=parsed.scheme),
+        if parsed.scheme not in schemes:
+            errors.append(
+                ValidationError(
+                    "Scheme %(value)s is not acceptable",
+                    code="required",
+                    params=dict(value=parsed.scheme),
+                )
             )
-        )
 
-    if not parsed.netloc:
-        errors.append(
-            ValidationError(
-                "Could not find host/location for %(value)s ",
-                code="required",
-                params=dict(value=url),
+        if not parsed.netloc:
+            errors.append(
+                ValidationError(
+                    "Could not find host/location for %(value)s ",
+                    code="required",
+                    params=dict(value=url),
+                )
             )
-        )
 
-    if errors:
-        raise ValidationError(errors)
+        if errors:
+            raise ValidationError(errors)
+
+    return decorator
+
+
+web3_url_validator = uri_parsable_scheme_validator(("http", "https", "ws", "wss", "ipc"))

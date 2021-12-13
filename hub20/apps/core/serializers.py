@@ -340,7 +340,7 @@ class CheckoutSerializer(PaymentOrderSerializer):
         currency = data["currency"]
         store = data["store"]
         if currency not in store.accepted_currencies.all():
-            raise serializers.ValidationError(f"{currency.code} is not accepted at {store.name}")
+            raise serializers.ValidationError(f"{currency.symbol} is not accepted at {store.name}")
 
         return data
 

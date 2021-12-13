@@ -62,7 +62,7 @@ def get_token_information(w3: Web3, address):
     contract = w3.eth.contract(abi=EIP20_ABI, address=to_checksum_address(address))
     return {
         "name": contract.functions.name().call(),
-        "code": contract.functions.symbol().call(),
+        "symbol": contract.functions.symbol().call(),
         "decimals": contract.functions.decimals().call(),
     }
 
@@ -82,7 +82,7 @@ class EthereumClient:
 
         w3 = make_web3(provider=token.chain.provider)
         chain_id = w3.eth.chain_id
-        message = f"Connected to network {chain_id}, token {token.code} is on {token.chain_id}"
+        message = f"Connected to network {chain_id}, token {token.symbol} is on {token.chain_id}"
         assert token.chain_id == chain_id, message
 
         transaction_params = {
