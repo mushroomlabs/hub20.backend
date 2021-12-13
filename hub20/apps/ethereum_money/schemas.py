@@ -276,7 +276,7 @@ class TokenList(BaseModel):
     version: TokenListVersionModel
     logoURI: str
     tokens: List[TokenInfo]
-    tags: Dict[str, TokenListTagDefinition]
+    tags: Optional[Dict[str, TokenListTagDefinition]]
     keywords: List[str]
 
 
