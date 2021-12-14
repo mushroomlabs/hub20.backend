@@ -36,21 +36,15 @@ class Command(BaseCommand):
                     ),
                 )
                 native_token_data = chain_data.nativeCurrency
-
                 models.NativeToken.objects.update_or_create(
                     chain=chain, defaults=native_token_data.dict()
                 )
 
-                has_provider_defined = models.Web3Provider.objects.filter(chain=chain).exists()
-                provides_rpc = len(chain_data.rpc) >= 1
-
-                if not has_provider_defined and provides_rpc:
+                for provider_url in chain_data.rpc:
                     models.Web3Provider.objects.get_or_create(
                         chain=chain,
-                        defaults=dict(
-                            url=chain_data.rpc[0],
-                            enabled=False,
-                        ),
+                        url=provider_url,
+                        defaults=dict(is_active=False),
                     )
 
                 blockchain_explorers = chain_data.explorers or []

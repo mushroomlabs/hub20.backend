@@ -7,6 +7,7 @@ from django.contrib.postgres.fields import ArrayField
 from django.core.cache import cache
 from django.db import models
 from django.db.models import Max, Q
+from django.db.transaction import atomic
 from django.utils import timezone
 from hexbytes import HexBytes
 from model_utils.managers import InheritanceManager, QueryManager
@@ -38,7 +39,11 @@ class Chain(models.Model):
     is_mainnet = models.BooleanField(default=True)
     highest_block = models.PositiveIntegerField()
     objects = models.Manager()
-    active = QueryManager(provider__enabled=True)
+    active = QueryManager(providers__is_active=True)
+
+    @property
+    def provider(self):
+        return self.providers.filter(is_active=True).first()
 
     @property
     def gas_price_estimate_cache_key(self):
@@ -46,7 +51,7 @@ class Chain(models.Model):
 
     @property
     def synced(self):
-        return self.provider.synced and self.provider.enabled
+        return self.provider.synced and self.provider.is_active
 
     def _get_gas_price_estimate(self):
         return cache.get(self.gas_price_estimate_cache_key, None)
@@ -67,6 +72,7 @@ class Block(models.Model):
     hash = HexField(max_length=64, primary_key=True)
     chain = models.ForeignKey(Chain, on_delete=models.CASCADE, related_name="blocks")
     number = models.PositiveIntegerField(db_index=True)
+    base_fee_per_gas = models.PositiveBigIntegerField(null=True)
     timestamp = models.DateTimeField()
     parent_hash = HexField(max_length=64)
     uncle_hashes = ArrayField(HexField(max_length=64))
@@ -249,14 +255,15 @@ class BaseEthereumAccount(models.Model):
 
 
 class Web3Provider(models.Model):
-    chain = models.OneToOneField(Chain, related_name="provider", on_delete=models.CASCADE)
+    chain = models.ForeignKey(Chain, related_name="providers", on_delete=models.CASCADE)
     url = Web3ProviderURLField()
-    enabled = models.BooleanField(default=True)
+    supports_eip1559 = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
     synced = models.BooleanField(default=False)
     connected = models.BooleanField(default=False)
 
     objects = models.Manager()
-    active = QueryManager(enabled=True)
+    active = QueryManager(is_active=True)
     available = QueryManager(synced=True, connected=True)
 
     @property
@@ -266,6 +273,12 @@ class Web3Provider(models.Model):
     @property
     def hostname(self):
         return urlparse(self.url).hostname
+
+    @atomic()
+    def activate(self):
+        self.chain.providers.exclude(id=self.id).update(is_active=False)
+        self.is_active = True
+        self.save()
 
     def __str__(self):
         return self.hostname

@@ -26,6 +26,7 @@ class Command(BaseCommand):
                         f"Node at {url} is connected to network {chain_id}, which we do not know"
                     )
                     continue
-                Web3Provider.objects.filter(chain_id=chain_id).update(enabled=True, url=url)
+                provider, _ = Web3Provider.objects.get_or_create(chain=chain, url=url)
+                provider.activate()
             except Exception as exc:
                 logger.info(f"Error when connecting to {url}: {exc}")

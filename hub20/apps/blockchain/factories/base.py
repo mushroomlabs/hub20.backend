@@ -131,7 +131,7 @@ class Web3ProviderFactory(factory.django.DjangoModelFactory):
     chain = factory.SubFactory(ChainFactory)
     url = factory.Sequence(lambda n: f"https://web3-{n:02}.example.com")
     connected = True
-    enabled = True
+    is_active = True
     synced = False
 
     class Meta:
