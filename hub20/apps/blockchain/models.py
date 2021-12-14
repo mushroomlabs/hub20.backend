@@ -104,6 +104,7 @@ class Block(models.Model):
                 "timestamp": timezone.make_aware(block_time),
                 "parent_hash": block_data.parentHash,
                 "uncle_hashes": block_data.uncles,
+                "base_fee_per_gas": getattr(block_data, "baseFeePerGas", None),
             },
         )
         return block
@@ -257,6 +258,9 @@ class BaseEthereumAccount(models.Model):
 class Web3Provider(models.Model):
     chain = models.ForeignKey(Chain, related_name="providers", on_delete=models.CASCADE)
     url = Web3ProviderURLField()
+    client_version = models.CharField(max_length=300, null=True)
+    requires_geth_poa_middleware = models.BooleanField(default=False)
+    supports_pending_filters = models.BooleanField(default=False)
     supports_eip1559 = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     synced = models.BooleanField(default=False)
