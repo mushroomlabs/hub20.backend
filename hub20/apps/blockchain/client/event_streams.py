@@ -64,7 +64,7 @@ async def node_sync_status():
 
             if provider.synced and not is_synced:
                 await sync_to_async(celery_pubsub.publish)(
-                    "node.sync.nok", provider_url=provider.url
+                    "node.sync.nok", chain_id=provider.chain_id, provider_url=provider.url
                 )
             elif is_synced and not provider.synced:
                 logger.debug(f"Node {provider.hostname} is back in sync")
