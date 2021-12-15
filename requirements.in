@@ -26,6 +26,7 @@ pycoingecko
 pydantic
 pycryptodome
 pyjwt
+qr3
 raiden_contracts
 uritemplate
 uvicorn

@@ -90,6 +90,10 @@ class Hub20CeleryConfig:
             "task": "hub20.apps.blockchain.tasks.check_chains_were_reorganized",
             "schedule": timedelta(seconds=10),
         },
+        "refresh-priority-fee-cache": {
+            "task": "hub20.apps.blockchain.tasks.refresh_max_priority_fee",
+            "schedule": timedelta(seconds=30),
+        },
     }
     task_always_eager = "HUB20_TEST" in os.environ
     task_eager_propagates = "HUB20_TEST" in os.environ

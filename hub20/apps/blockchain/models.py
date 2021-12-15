@@ -4,7 +4,6 @@ from typing import Optional
 from urllib.parse import urlparse
 
 from django.contrib.postgres.fields import ArrayField
-from django.core.cache import cache
 from django.db import models
 from django.db.models import Max, Q
 from django.db.transaction import atomic
@@ -46,20 +45,8 @@ class Chain(models.Model):
         return self.providers.filter(is_active=True).first()
 
     @property
-    def gas_price_estimate_cache_key(self):
-        return f"GAS_PRICE_ESTIMATE_{self.id}"
-
-    @property
     def synced(self):
         return self.provider.synced and self.provider.is_active
-
-    def _get_gas_price_estimate(self):
-        return cache.get(self.gas_price_estimate_cache_key, None)
-
-    def _set_gas_price_estimate(self, value):
-        return cache.set(self.gas_price_estimate_cache_key, value)
-
-    gas_price_estimate = property(_get_gas_price_estimate, _set_gas_price_estimate)
 
     def __str__(self):
         return f"{self.name} ({self.id})"

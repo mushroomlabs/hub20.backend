@@ -6,6 +6,7 @@ from hexbytes import HexBytes
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 
+from .analytics import estimate_gas_price
 from .constants import (
     SIGNATURE_R_MAX_VALUE,
     SIGNATURE_R_MIN_VALUE,
@@ -23,10 +24,13 @@ class ChainSerializer(serializers.ModelSerializer):
     url = serializers.HyperlinkedIdentityField(view_name="blockchain:chain-detail")
     height = serializers.IntegerField(source="highest_block", read_only=True)
     token = serializers.CharField(source="native_token.symbol", read_only=True)
-    gas_price_estimate = serializers.IntegerField(read_only=True)
+    gas_price_estimate = serializers.SerializerMethodField()
     explorers = serializers.SerializerMethodField()
     online = serializers.BooleanField(source="provider.connected")
     synced = serializers.BooleanField(source="provider.synced")
+
+    def get_gas_price_estimate(self, obj):
+        return estimate_gas_price(obj.id)
 
     def get_explorers(self, obj):
         return obj.explorers.values_list("url", flat=True)
