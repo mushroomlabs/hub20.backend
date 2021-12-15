@@ -6,6 +6,7 @@ from django.core.management.base import BaseCommand
 from django.db.models import QuerySet
 from web3 import Web3
 
+from hub20.apps.blockchain.app_settings import BLOCK_SCAN_RANGE
 from hub20.apps.blockchain.client import make_web3
 from hub20.apps.blockchain.models import BaseEthereumAccount, Chain, Transaction, Web3Provider
 from hub20.apps.core.models.accounting import (
@@ -30,9 +31,6 @@ from hub20.apps.raiden.models import Payment as RaidenPayment, Raiden
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
-
-
-BLOCK_SCAN_RANGE = 5000
 
 
 def index_token_events(w3: Web3, chain: Chain, accounts: QuerySet, tokens: QuerySet):

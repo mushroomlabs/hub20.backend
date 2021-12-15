@@ -268,7 +268,7 @@ class Web3Provider(models.Model):
 
     objects = models.Manager()
     active = QueryManager(is_active=True)
-    available = QueryManager(synced=True, connected=True)
+    available = QueryManager(synced=True, connected=True, is_active=True)
 
     @property
     def is_online(self):

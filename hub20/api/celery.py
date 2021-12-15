@@ -1,6 +1,7 @@
 import json
 import os
 import uuid
+from datetime import timedelta
 from decimal import Decimal
 
 from celery import Celery
@@ -9,6 +10,8 @@ from django.conf import settings
 from hexbytes import HexBytes
 from kombu.serialization import register
 from web3.datastructures import AttributeDict
+
+NODE_HEALTH_CHECK_INTERVAL = 15
 
 
 class Web3Encoder(json.JSONEncoder):
@@ -74,6 +77,18 @@ class Hub20CeleryConfig:
         "execute-transfers": {
             "task": "hub20.apps.core.tasks.execute_pending_transfers",
             "schedule": crontab(),
+        },
+        "check-providers-connected": {
+            "task": "hub20.apps.blockchain.tasks.check_providers_are_connected",
+            "schedule": timedelta(seconds=NODE_HEALTH_CHECK_INTERVAL),
+        },
+        "check-providers-synced": {
+            "task": "hub20.apps.blockchain.tasks.check_providers_are_synced",
+            "schedule": timedelta(seconds=NODE_HEALTH_CHECK_INTERVAL),
+        },
+        "check-chain-reorgs": {
+            "task": "hub20.apps.blockchain.tasks.check_chains_were_reorganized",
+            "schedule": timedelta(seconds=10),
         },
     }
     task_always_eager = "HUB20_TEST" in os.environ

@@ -6,6 +6,7 @@ from asgiref.sync import sync_to_async
 from django.core.cache import cache
 
 from hub20.apps.blockchain.client import BLOCK_CREATION_INTERVAL, make_web3
+from hub20.apps.blockchain.models import Web3Provider
 from hub20.apps.core.models import BlockchainPaymentRoute
 from hub20.apps.ethereum_money.abi import EIP20_ABI
 from hub20.apps.ethereum_money.models import EthereumToken
@@ -24,7 +25,6 @@ async def pending_token_transfers():
                 "deposit",
                 "deposit__currency",
                 "deposit__currency__chain",
-                "deposit__currency__chain__provider",
                 "account",
             )
         )
@@ -39,7 +39,15 @@ async def pending_token_transfers():
             if not token.is_ERC20:
                 continue
 
-            w3 = make_web3(provider=token.chain.provider)
+            provider = await sync_to_async(Web3Provider.active.filter(chain=token.chain).first)()
+
+            if not provider:
+                logger.warning(
+                    f"Route {route} is open but not provider available to check for payments"
+                )
+                continue
+
+            w3 = make_web3(provider=provider)
             contract = w3.eth.contract(abi=EIP20_ABI, address=token.address)
 
             try:
@@ -64,6 +72,6 @@ async def pending_token_transfers():
                     )
                     await sync_to_async(cache.set)(key, True, timeout=BLOCK_CREATION_INTERVAL * 2)
             except ValueError:
-                logger.warning(f"Can not get transfer logs from {token.chain.provider_hostname}")
+                logger.warning(f"Can not get transfer logs from {provider.hostname}")
         else:
             await asyncio.sleep(1)
