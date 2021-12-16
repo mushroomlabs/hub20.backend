@@ -1,8 +1,10 @@
+from raiden_contracts.contract_manager import gas_measurements
 from rest_framework import serializers
 from rest_framework_nested.relations import NestedHyperlinkedIdentityField
 from rest_framework_nested.serializers import NestedHyperlinkedModelSerializer
 
 from hub20.apps.blockchain.client import make_web3
+from hub20.apps.blockchain.models import Web3Provider
 from hub20.apps.blockchain.serializers import HexadecimalField
 from hub20.apps.ethereum_money.models import EthereumTokenAmount
 from hub20.apps.ethereum_money.serializers import (
@@ -18,7 +20,7 @@ from .client.node import RaidenClient
 
 
 class ChainField(serializers.PrimaryKeyRelatedField):
-    queryset = models.Chain.active.all().order_by("id")
+    queryset = models.Chain.objects.filter(tokens__tokennetwork__isnull=False).distinct()
 
 
 class TokenNetworkField(serializers.RelatedField):
@@ -44,7 +46,7 @@ class ServiceDepositSerializer(serializers.ModelSerializer):
         view_name="raiden-detail", queryset=models.Raiden.objects.all()
     )
     transaction = HexadecimalField(read_only=True, source="result.transaction.hash")
-    chain = ChainField(write_only=True)
+    chain = ChainField()
     token = EthereumTokenSerializer(source="currency", read_only=True)
     amount = TokenValueField()
     error = serializers.CharField(source="error.message", read_only=True)
@@ -61,7 +63,7 @@ class ServiceDepositSerializer(serializers.ModelSerializer):
         token = get_service_token(w3=w3)
         raiden = data["raiden"]
 
-        if chain not in raiden.chains:
+        if chain != raiden.chain:
             raise serializers.ValidationError(
                 f"{raiden} does not seem to be connected to chain {chain.id}"
             )
@@ -153,17 +155,52 @@ class ChannelWithdrawSerializer(ChannelManagementSerializer):
 
 class RaidenSerializer(serializers.ModelSerializer):
     url = serializers.HyperlinkedIdentityField(view_name="raiden-detail")
+    chain = serializers.HyperlinkedRelatedField(
+        view_name="blockchain:chain-detail", read_only=True
+    )
     channels = ChannelSerializer(many=True)
-    status = serializers.SerializerMethodField()
-
-    def get_status(self, obj):
-        client = RaidenClient(raiden_account=obj)
-        return client.get_status()
+    status = serializers.HyperlinkedIdentityField(view_name="raiden-status")
 
     class Meta:
         model = models.Raiden
-        fields = ("url", "address", "channels", "status")
-        read_only_fields = ("url", "address", "channels", "status")
+        fields = read_only_fields = ("url", "status", "chain", "address", "channels")
+
+
+class RaidenStatusSerializer(serializers.ModelSerializer):
+    url = serializers.HyperlinkedIdentityField(view_name="raiden-status")
+    raiden = serializers.HyperlinkedIdentityField(view_name="raiden-detail")
+    online = serializers.SerializerMethodField()
+    cost_estimates = serializers.SerializerMethodField()
+
+    def get_online(self, obj):
+        client = RaidenClient(raiden_account=obj)
+        return "ready" == client.get_status()
+
+    def get_cost_estimates(self, obj):
+        try:
+            provider = Web3Provider.active.get(chain_id=obj.chain.id)
+            w3 = make_web3(provider=provider)
+            gas_price = w3.eth.generate_gas_price()
+            gas_costs = gas_measurements()
+            actions = {
+                "udc-deposit": gas_costs["UserDeposit.deposit"],
+                "udc-topup": gas_costs["UserDeposit.deposit (increase balance)"],
+                "udc-withdraw": (
+                    gas_costs["UserDeposit.planWithdraw"] + gas_costs["UserDeposit.withdraw"]
+                ),
+                "channel-setup": gas_costs["TokenNetwork.openChannelWithDeposit"],
+                "channel-open": gas_costs["TokenNetwork.openChannel"],
+                "channel-deposit": gas_costs["TokenNetwork.setTotalDeposit"],
+                "channel-withdraw": gas_costs["TokenNetwork.setTotalWithdraw"],
+                "channel-close": gas_costs["TokenNetwork.closeChannel"],
+            }
+            return {k: v * gas_price for k, v in actions.items()}
+        except Web3Provider.DoesNotExist:
+            return None
+
+    class Meta:
+        model = models.Raiden
+        fields = read_only_fields = ("url", "raiden", "online", "cost_estimates")
 
 
 class JoinTokenNetworkOrderSerializer(serializers.ModelSerializer):

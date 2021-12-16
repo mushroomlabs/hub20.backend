@@ -22,15 +22,9 @@ logger = logging.getLogger(__name__)
 
 class ChainSerializer(serializers.ModelSerializer):
     url = serializers.HyperlinkedIdentityField(view_name="blockchain:chain-detail")
-    height = serializers.IntegerField(source="highest_block", read_only=True)
     token = serializers.CharField(source="native_token.symbol", read_only=True)
-    gas_price_estimate = serializers.SerializerMethodField()
     explorers = serializers.SerializerMethodField()
-    online = serializers.BooleanField(source="provider.connected")
-    synced = serializers.BooleanField(source="provider.synced")
-
-    def get_gas_price_estimate(self, obj):
-        return estimate_gas_price(obj.id)
+    status = serializers.HyperlinkedIdentityField(view_name="blockchain:chain-status")
 
     def get_explorers(self, obj):
         return obj.explorers.values_list("url", flat=True)
@@ -41,12 +35,32 @@ class ChainSerializer(serializers.ModelSerializer):
             "url",
             "id",
             "name",
-            "height",
             "token",
+            "explorers",
+            "status",
+        )
+
+
+class ChainStatusSerializer(serializers.ModelSerializer):
+    url = serializers.HyperlinkedIdentityField(view_name="blockchain:chain-status")
+    chain = serializers.HyperlinkedIdentityField(view_name="blockchain:chain-detail")
+    height = serializers.IntegerField(source="highest_block", read_only=True)
+    online = serializers.BooleanField(source="provider.connected")
+    synced = serializers.BooleanField(source="provider.synced")
+    gas_price_estimate = serializers.SerializerMethodField()
+
+    def get_gas_price_estimate(self, obj):
+        return estimate_gas_price(obj.id)
+
+    class Meta:
+        model = Chain
+        fields = read_only_fields = (
+            "url",
+            "chain",
+            "height",
             "online",
             "synced",
             "gas_price_estimate",
-            "explorers",
         )
 
 

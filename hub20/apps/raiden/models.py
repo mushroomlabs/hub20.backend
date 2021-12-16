@@ -123,6 +123,11 @@ class Raiden(BaseEthereumAccount):
         return Chain.objects.filter(tokens__tokennetwork__channel__raiden=self).distinct()
 
     @property
+    def chain(self):
+        assert self.chains.count() == 1, "Raiden seems to be connected to more than one chain"
+        return self.chains.first()
+
+    @property
     def payments(self):
         return Payment.objects.filter(channel__raiden=self)
 
@@ -189,7 +194,7 @@ class Channel(StatusModel):
         token = EthereumToken.ERC20tokens.filter(address=token_address).first()
 
         assert token is not None
-        assert token.chain in raiden.chains
+        assert token.chain == raiden.chain
 
         token_network, _ = TokenNetwork.objects.get_or_create(
             address=token_network_address, defaults={"token": token}
@@ -302,7 +307,7 @@ class ChannelWithdrawOrder(RaidenManagementOrder):
 
 
 class UserDepositContractOrder(RaidenManagementOrder, EthereumTokenValueModel):
-    pass
+    chain = models.ForeignKey(Chain, related_name="user_deposit_orders", on_delete=models.CASCADE)
 
 
 class RaidenManagementOrderResult(TimeStampedModel):
