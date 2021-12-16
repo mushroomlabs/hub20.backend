@@ -1,3 +1,4 @@
+from raiden_contracts.contract_manager import gas_measurements
 from rest_framework import serializers
 from rest_framework_nested.relations import NestedHyperlinkedIdentityField
 from rest_framework_nested.serializers import NestedHyperlinkedModelSerializer
@@ -14,11 +15,7 @@ from hub20.apps.ethereum_money.serializers import (
 from hub20.apps.ethereum_money.typing import TokenAmount
 
 from . import models
-from .client.blockchain import (
-    GAS_REQUIRED_FOR_DEPOSIT,
-    get_service_token,
-    get_service_token_contract,
-)
+from .client.blockchain import get_service_token, get_service_token_contract
 from .client.node import RaidenClient
 
 
@@ -173,24 +170,37 @@ class RaidenStatusSerializer(serializers.ModelSerializer):
     url = serializers.HyperlinkedIdentityField(view_name="raiden-status")
     raiden = serializers.HyperlinkedIdentityField(view_name="raiden-detail")
     online = serializers.SerializerMethodField()
-    deposit_cost_estimate = serializers.SerializerMethodField()
+    cost_estimates = serializers.SerializerMethodField()
 
     def get_online(self, obj):
         client = RaidenClient(raiden_account=obj)
         return "ready" == client.get_status()
 
-    def get_deposit_cost_estimate(self, obj):
+    def get_cost_estimates(self, obj):
         try:
             provider = Web3Provider.active.get(chain_id=obj.chain.id)
             w3 = make_web3(provider=provider)
             gas_price = w3.eth.generate_gas_price()
-            return GAS_REQUIRED_FOR_DEPOSIT * gas_price
+            gas_costs = gas_measurements()
+            actions = {
+                "udc-deposit": gas_costs["UserDeposit.deposit"],
+                "udc-topup": gas_costs["UserDeposit.deposit (increase balance)"],
+                "udc-withdraw": (
+                    gas_costs["UserDeposit.planWithdraw"] + gas_costs["UserDeposit.withdraw"]
+                ),
+                "channel-setup": gas_costs["TokenNetwork.openChannelWithDeposit"],
+                "channel-open": gas_costs["TokenNetwork.openChannel"],
+                "channel-deposit": gas_costs["TokenNetwork.setTotalDeposit"],
+                "channel-withdraw": gas_costs["TokenNetwork.setTotalWithdraw"],
+                "channel-close": gas_costs["TokenNetwork.closeChannel"],
+            }
+            return {k: v * gas_price for k, v in actions.items()}
         except Web3Provider.DoesNotExist:
             return None
 
     class Meta:
         model = models.Raiden
-        fields = read_only_fields = ("url", "raiden", "online", "deposit_cost_estimate")
+        fields = read_only_fields = ("url", "raiden", "online", "cost_estimates")
 
 
 class JoinTokenNetworkOrderSerializer(serializers.ModelSerializer):
