@@ -3,6 +3,7 @@ from rest_framework_nested.relations import NestedHyperlinkedIdentityField
 from rest_framework_nested.serializers import NestedHyperlinkedModelSerializer
 
 from hub20.apps.blockchain.client import make_web3
+from hub20.apps.blockchain.models import Web3Provider
 from hub20.apps.blockchain.serializers import HexadecimalField
 from hub20.apps.ethereum_money.models import EthereumTokenAmount
 from hub20.apps.ethereum_money.serializers import (
@@ -13,12 +14,16 @@ from hub20.apps.ethereum_money.serializers import (
 from hub20.apps.ethereum_money.typing import TokenAmount
 
 from . import models
-from .client.blockchain import get_service_token, get_service_token_contract
+from .client.blockchain import (
+    GAS_REQUIRED_FOR_DEPOSIT,
+    get_service_token,
+    get_service_token_contract,
+)
 from .client.node import RaidenClient
 
 
 class ChainField(serializers.PrimaryKeyRelatedField):
-    queryset = models.Chain.active.all().order_by("id")
+    queryset = models.Chain.objects.filter(tokens__tokennetwork__isnull=False).distinct()
 
 
 class TokenNetworkField(serializers.RelatedField):
@@ -44,7 +49,7 @@ class ServiceDepositSerializer(serializers.ModelSerializer):
         view_name="raiden-detail", queryset=models.Raiden.objects.all()
     )
     transaction = HexadecimalField(read_only=True, source="result.transaction.hash")
-    chain = ChainField(write_only=True)
+    chain = ChainField()
     token = EthereumTokenSerializer(source="currency", read_only=True)
     amount = TokenValueField()
     error = serializers.CharField(source="error.message", read_only=True)
@@ -61,7 +66,7 @@ class ServiceDepositSerializer(serializers.ModelSerializer):
         token = get_service_token(w3=w3)
         raiden = data["raiden"]
 
-        if chain not in raiden.chains:
+        if chain != raiden.chain:
             raise serializers.ValidationError(
                 f"{raiden} does not seem to be connected to chain {chain.id}"
             )
@@ -153,17 +158,39 @@ class ChannelWithdrawSerializer(ChannelManagementSerializer):
 
 class RaidenSerializer(serializers.ModelSerializer):
     url = serializers.HyperlinkedIdentityField(view_name="raiden-detail")
+    chain = serializers.HyperlinkedRelatedField(
+        view_name="blockchain:chain-detail", read_only=True
+    )
     channels = ChannelSerializer(many=True)
-    status = serializers.SerializerMethodField()
-
-    def get_status(self, obj):
-        client = RaidenClient(raiden_account=obj)
-        return client.get_status()
+    status = serializers.HyperlinkedIdentityField(view_name="raiden-status")
 
     class Meta:
         model = models.Raiden
-        fields = ("url", "address", "channels", "status")
-        read_only_fields = ("url", "address", "channels", "status")
+        fields = read_only_fields = ("url", "status", "chain", "address", "channels")
+
+
+class RaidenStatusSerializer(serializers.ModelSerializer):
+    url = serializers.HyperlinkedIdentityField(view_name="raiden-status")
+    raiden = serializers.HyperlinkedIdentityField(view_name="raiden-detail")
+    online = serializers.SerializerMethodField()
+    deposit_cost_estimate = serializers.SerializerMethodField()
+
+    def get_online(self, obj):
+        client = RaidenClient(raiden_account=obj)
+        return "ready" == client.get_status()
+
+    def get_deposit_cost_estimate(self, obj):
+        try:
+            provider = Web3Provider.active.get(chain_id=obj.chain.id)
+            w3 = make_web3(provider=provider)
+            gas_price = w3.eth.generate_gas_price()
+            return GAS_REQUIRED_FOR_DEPOSIT * gas_price
+        except Web3Provider.DoesNotExist:
+            return None
+
+    class Meta:
+        model = models.Raiden
+        fields = read_only_fields = ("url", "raiden", "online", "deposit_cost_estimate")
 
 
 class JoinTokenNetworkOrderSerializer(serializers.ModelSerializer):

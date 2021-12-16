@@ -43,6 +43,17 @@ class RaidenFactory(BaseWalletFactory):
     address = "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
     url = factory.Sequence(lambda n: "http://raiden:{0}".format(5000 + n))
 
+    @factory.post_generation
+    def channels(obj, create, extracted, **kw):
+        if not create:
+            return
+
+        if not extracted:
+            ChannelFactory(raiden=obj)
+        else:
+            for channel in extracted:
+                obj.channels.add(channel)
+
     class Meta:
         model = models.Raiden
         django_get_or_create = ("address",)
