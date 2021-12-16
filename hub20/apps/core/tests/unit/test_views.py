@@ -4,7 +4,10 @@ from rest_framework.test import APIClient
 
 from hub20.apps.blockchain.factories import FAKER
 from hub20.apps.core import factories
-from hub20.apps.core.factories import Erc20TokenBlockchainPaymentFactory
+from hub20.apps.core.factories import (
+    Erc20TokenBlockchainPaymentFactory,
+    Erc20TokenPaymentConfirmationFactory,
+)
 from hub20.apps.ethereum_money.factories import Erc20TokenAmountFactory, Erc20TokenFactory
 
 
@@ -83,6 +86,12 @@ class TokenBalanceViewTestCase(TestCase):
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
 
+        Erc20TokenPaymentConfirmationFactory(
+            payment__route__deposit__user=self.user,
+            payment__currency=self.token,
+            payment__amount=10,
+        )
+
     def test_balance_list_includes_token(self):
         response = self.client.get(reverse("balance-list"))
         self.assertEqual(response.status_code, 200)
@@ -104,7 +113,7 @@ class TransferTestCase(TestCase):
         self.token = Erc20TokenFactory()
         self.target_address = FAKER.ethereum_address()
 
-    def test_insufficient_balance_returns_error(self):
+    def test_no_balance_returns_error(self):
         response = self.client.post(
             reverse("transfer-list"),
             {
@@ -122,7 +131,35 @@ class TransferTestCase(TestCase):
         self.assertEqual(len(response.data["non_field_errors"]), 1)
 
         error_details = response.data["non_field_errors"][0]
-        self.assertEqual(error_details.title(), "Insufficient Balance")
+        self.assertEqual(error_details.code, "invalid")
+
+    def test_insufficient_balance_returns_error(self):
+        TRANSFER_AMOUNT = 10
+
+        Erc20TokenPaymentConfirmationFactory(
+            payment__route__deposit__user=self.user,
+            payment__currency=self.token,
+            payment__amount=TRANSFER_AMOUNT / 2,
+        )
+
+        response = self.client.post(
+            reverse("transfer-list"),
+            {
+                "address": self.target_address,
+                "amount": TRANSFER_AMOUNT,
+                "token": reverse(
+                    "ethereum_money:token-detail",
+                    kwargs=dict(address=self.token.address, chain_id=self.token.chain_id),
+                ),
+            },
+        )
+        self.assertEqual(response.status_code, 400)
+
+        self.assertTrue("non_field_errors" in response.data.keys())
+        self.assertEqual(len(response.data["non_field_errors"]), 1)
+
+        error_details = response.data["non_field_errors"][0]
+        self.assertEqual(error_details.code, "insufficient")
 
 
 class CheckoutViewTestCase(TestCase):

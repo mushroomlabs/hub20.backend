@@ -76,6 +76,10 @@ class DoubleEntryAccountModel(models.Model):
     def credits(self):
         return Credit.objects.filter(**{self.book_relation_attr: self})
 
+    @property
+    def balances(self):
+        return self.get_balances()
+
     def get_book(self, token: EthereumToken) -> Book:
         book, _ = self.books.get_or_create(token=token)
         return book
@@ -107,7 +111,9 @@ class DoubleEntryAccountModel(models.Model):
                 output_field=EthereumTokenAmountField(),
             ),
         )
-        return annotated_qs.annotate(balance=F("total_credit") - F("total_debit"))
+        return annotated_qs.annotate(balance=F("total_credit") - F("total_debit")).exclude(
+            total_credit=0, total_debit=0
+        )
 
     @classmethod
     def balance_sheet(cls):

@@ -12,6 +12,9 @@ router.register("checkout", views.CheckoutViewSet, basename="checkout")
 router.register("payments", views.PaymentViewSet, basename="payments")
 router.register("stores", views.StoreViewSet, basename="store")
 router.register("users", views.UserViewSet, basename="users")
+router.register(
+    "accounting/wallets", views.BalanceSheetWalletViewSet, basename="accounting-wallets"
+)
 
 
 urlpatterns = [
@@ -26,11 +29,6 @@ urlpatterns = [
     path("transfers", views.TransferListView.as_view(), name="transfer-list"),
     path("transfers/transfer/<int:pk>", views.TransferView.as_view(), name="transfer-detail"),
     path("accounting/report", views.AccountingReportView.as_view(), name="accounting-report"),
-    path(
-        "status/accounts",
-        views.EthereumAccountBalanceSheets.as_view(),
-        name="status-accounts",
-    ),
 ] + router.urls
 
 

@@ -13,7 +13,7 @@ class IndexView(APIView):
         return Response(
             {
                 "current_user_url": reverse_lazy("rest_user_details", request=request),
-                "network_status_url": reverse_lazy("chain-list", request=request),
+                "blockchains_url": reverse_lazy("blockchain:chain-list", request=request),
                 "accounting_report_url": reverse_lazy("accounting-report", request=request),
                 "tokens_url": reverse_lazy("ethereum_money:token-list", request=request),
                 "users_url": reverse_lazy("users-list", request=request),

@@ -163,8 +163,12 @@ class Transfer(TimeStampedModel, EthereumTokenValueModel):
             # The user has already been deducted from the transfer amount upon
             # creation. This check here just enforces that the transfer is not
             # doing double spend of reserved funds.
-            sender_account_balance = self.sender.account.get_balance(token=self.currency)
-            if sender_account_balance.balance < 0:
+            sender_balance = self.sender.account.get_balance_token_amount(token=self.currency)
+
+            if sender_balance is None:
+                raise TransferError("No balance available")
+
+            if sender_balance.amount < 0:
                 raise TransferError("Insufficient balance")
 
             executor = self.get_executor()

@@ -10,8 +10,8 @@ from hub20.apps.blockchain.serializers import EthereumAddressField, HexadecimalF
 from hub20.apps.ethereum_money.models import EthereumTokenAmount
 from hub20.apps.ethereum_money.serializers import (
     EthereumTokenSerializer,
-    HyperlinkedEthereumTokenSerializer,
     HyperlinkedRelatedTokenField,
+    HyperlinkedTokenIdentityField,
     TokenValueField,
 )
 
@@ -104,8 +104,11 @@ class TransferSerializer(serializers.ModelSerializer):
         transfer_amount = EthereumTokenAmount(currency=currency, amount=data["amount"])
         user_balance_amount = request.user.account.get_balance_token_amount(currency)
 
+        if not user_balance_amount:
+            raise serializers.ValidationError("No balance available", code="invalid")
+
         if user_balance_amount < transfer_amount:
-            raise serializers.ValidationError("Insufficient balance")
+            raise serializers.ValidationError("Insufficient balance", code="insufficient")
 
         return data
 
@@ -460,22 +463,25 @@ class DebitSerializer(BookEntrySerializer):
         fields = read_only_fields = BookEntrySerializer.Meta.fields
 
 
-class AccountingBookSerializer(HyperlinkedEthereumTokenSerializer):
+class AccountingBookSerializer(serializers.Serializer):
+    token = HyperlinkedTokenIdentityField(source="*")
     total_credit = TokenValueField(read_only=True)
     total_debit = TokenValueField(read_only=True)
     balance = TokenValueField(read_only=True)
 
+
+class WalletBalanceSheetSerializer(serializers.ModelSerializer):
+    url = serializers.SerializerMethodField()
+    address = EthereumAddressField(source="account.address", read_only=True)
+    balances = AccountingBookSerializer(many=True, read_only=True)
+
+    def get_url(self, obj):
+        return reverse(
+            "accounting-wallets-detail",
+            kwargs=dict(address=obj.account.address),
+            request=self.context["request"],
+        )
+
     class Meta:
-        model = EthereumTokenSerializer.Meta.model
-        fields = EthereumTokenSerializer.Meta.fields + (
-            "url",
-            "total_credit",
-            "total_debit",
-            "balance",
-        )
-        read_only_fields = EthereumTokenSerializer.Meta.fields + (
-            "url",
-            "total_credit",
-            "total_debit",
-            "balance",
-        )
+        model = models.WalletAccount
+        fields = read_only_fields = ("url", "address", "balances")

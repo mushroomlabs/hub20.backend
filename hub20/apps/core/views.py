@@ -260,8 +260,9 @@ class AccountingReportView(StatusView):
     permission_classes = (IsAdminUser,)
 
     def _get_serialized_book(self, accounting_model_class):
+        books = accounting_model_class.balance_sheet().exclude(total_credit=0, total_debit=0)
         return serializers.AccountingBookSerializer(
-            accounting_model_class.balance_sheet(), many=True, context={"request": self.request}
+            books, many=True, context={"request": self.request}
         ).data
 
     def get(self, request, **kw):
@@ -276,18 +277,14 @@ class AccountingReportView(StatusView):
         )
 
 
-class EthereumAccountBalanceSheets(StatusView):
+class BalanceSheetWalletViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
     permission_classes = (IsAdminUser,)
+    serializer_class = serializers.WalletBalanceSheetSerializer
+    lookup_url_kwarg = "address"
+    lookup_field = "account__address"
 
-    def _get_serialized_balances(self, account):
-        return serializers.AccountingBookSerializer(
-            account.get_balances(), many=True, context={"request": self.request}
-        ).data
+    def get_queryset(self) -> QuerySet:
+        return models.WalletAccount.objects.all()
 
-    def get(self, request, **kw):
-        return Response(
-            {
-                account.account.address: self._get_serialized_balances(account)
-                for account in models.WalletAccount.objects.all()
-            }
-        )
+    def get_object(self) -> models.WalletAccount:
+        return get_object_or_404(models.WalletAccount, account__address=self.kwargs.get("address"))
