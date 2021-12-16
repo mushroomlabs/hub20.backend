@@ -89,7 +89,7 @@ class PaymentOrderQuerySet(DepositQuerySet):
 
 class BlockchainRouteQuerySet(models.QuerySet):
     def with_provider(self) -> models.QuerySet:
-        return self.filter(chain__provider__enabled=True)
+        return self.filter(chain__providers__is_active=True)
 
     def with_expiration(self) -> models.QuerySet:
         return self.annotate(

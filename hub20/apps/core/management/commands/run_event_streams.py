@@ -14,10 +14,8 @@ logger = logging.getLogger(__name__)
 
 
 BLOCKCHAIN_STREAMS = [
-    blockchain_streams.process_new_block,
-    blockchain_streams.process_pending_transaction,
-    blockchain_streams.node_sync_status,
-    blockchain_streams.node_online_status,
+    blockchain_streams.process_mined_blocks,
+    blockchain_streams.process_pending_transactions,
 ]
 
 INTEGRATION_STREAMS = [pending_token_transfers]

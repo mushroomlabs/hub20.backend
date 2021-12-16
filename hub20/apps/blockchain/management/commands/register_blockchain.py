@@ -35,4 +35,7 @@ class Command(BaseCommand):
                     f"Provider reported chain #{w3.eth.chain_id}, expected {chain_id}. Skipping..."
                 )
             else:
-                Web3Provider.objects.create(chain_id=chain_id, url=provider_url, enabled=True)
+                provider, _ = Web3Provider.objects.get_or_create(
+                    chain_id=chain_id, url=provider_url
+                )
+                provider.activate()

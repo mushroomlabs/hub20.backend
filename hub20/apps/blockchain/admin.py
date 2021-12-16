@@ -15,7 +15,7 @@ class Web3URLField(forms.URLField):
 
 Web3ProviderForm = forms.modelform_factory(
     model=models.Web3Provider,
-    fields=["chain", "url", "enabled", "connected", "synced"],
+    fields=["chain", "url", "is_active", "connected", "synced"],
     field_classes={"url": Web3URLField},
 )
 
@@ -32,8 +32,8 @@ class ChainAdmin(admin.ModelAdmin):
 class Web3ProviderAdmin(admin.ModelAdmin):
     form = Web3ProviderForm
 
-    list_display = ["hostname", "chain", "enabled", "connected", "synced"]
-    list_filter = ["enabled", "connected", "synced"]
+    list_display = ["hostname", "chain", "is_active", "connected", "synced"]
+    list_filter = ["is_active", "connected", "synced"]
     readonly_fields = ["connected", "synced"]
     search_fields = ["url", "chain__name"]
 

@@ -10,15 +10,11 @@ from rest_framework import generics, status
 from rest_framework.mixins import CreateModelMixin, ListModelMixin, RetrieveModelMixin
 from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.reverse import reverse
 from rest_framework.serializers import Serializer
 from rest_framework.views import APIView
 from rest_framework.viewsets import GenericViewSet, ModelViewSet
 
-from hub20.apps.blockchain.models import Chain
-from hub20.apps.blockchain.serializers import ChainSerializer
 from hub20.apps.ethereum_money.models import EthereumToken
-from hub20.apps.raiden.client.blockchain import GAS_REQUIRED_FOR_DEPOSIT
 
 from . import models, serializers
 from .permissions import IsStoreOwnerOrAnonymousReadOnly
@@ -258,35 +254,6 @@ class UserViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
 
 class StatusView(APIView):
     permission_classes = (IsAuthenticated,)
-
-
-class NetworkStatusView(StatusView):
-    permission_classes = (AllowAny,)
-
-    def get_chain_status_data(self, chain):
-        gas_price = chain.gas_price_estimate
-
-        return {
-            "url": reverse("status-network-detail", request=self.request, kwargs={"pk": chain.id}),
-            "blockchain": ChainSerializer(chain).data,
-            "raiden": {
-                "deposit_max_gas_cost": gas_price and (gas_price * GAS_REQUIRED_FOR_DEPOSIT)
-            },
-        }
-
-
-class NetworkStatusListView(NetworkStatusView):
-    def get(self, request, **kw):
-        return Response(
-            [self.get_chain_status_data(chain) for chain in Chain.active.all().order_by("id")]
-        )
-
-
-class NetworkStatusDetailView(NetworkStatusView):
-    def get(self, request, **kw):
-        chain = get_object_or_404(Chain, provider__enabled=True, id=self.kwargs["pk"])
-
-        return Response(self.get_chain_status_data(chain))
 
 
 class AccountingReportView(StatusView):
