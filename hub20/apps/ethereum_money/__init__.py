@@ -8,7 +8,8 @@ def get_ethereum_account_model():
     Return the Ethereum Account model that is active in this project.
     """
 
-    account_setting = settings.ETHEREUM_ACCOUNT_MODEL
+    account_setting = getattr(settings, "ETHEREUM_ACCOUNT_MODEL", "ethereum_money.ColdWallet")
+
     try:
         return django_apps.get_model(account_setting, require_ready=False)
     except ValueError:
