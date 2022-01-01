@@ -34,10 +34,10 @@ THIRD_PARTY_APPS = [
     "django_filters",
     "djmoney",
     "drf_yasg",
+    "dj_rest_auth",
+    "dj_rest_auth.registration",
     "rest_framework",
     "rest_framework.authtoken",
-    "rest_auth",
-    "rest_auth.registration",
 ]
 
 PROJECT_APPS = [
@@ -165,7 +165,6 @@ EMAIL_TIMEOUT = os.getenv("HUB20_EMAIL_TIMEOUT", 5)
 LANGUAGE_CODE = "en-us"
 TIME_ZONE = "UTC"
 USE_I18N = True
-USE_L10N = True
 USE_TZ = True
 
 

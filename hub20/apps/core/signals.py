@@ -1,7 +1,7 @@
 from django.dispatch import Signal
 
-order_canceled = Signal(providing_args=["order", "request"])
-payment_received = Signal(providing_args=["payment"])
+order_canceled = Signal(["order", "request"])
+payment_received = Signal(["payment"])
 
 __all__ = [
     "order_canceled",

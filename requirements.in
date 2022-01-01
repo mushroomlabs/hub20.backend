@@ -1,16 +1,17 @@
 celery
 channels
 channels_redis
-django
+django>=4
 django-allauth
-django-celery-beat
+git+https://github.com/celery/django-celery-beat
+# django-celery-beat
+dj-rest-auth
 django-cors-headers
 django-filter
 django-ipware
 django-model-utils
 django-redis
 djangorestframework
-django-rest-auth
 django_smtp_ssl
 django-money
 drf-nested-routers
