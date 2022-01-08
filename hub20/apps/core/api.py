@@ -15,6 +15,7 @@ router.register("users", views.UserViewSet, basename="users")
 router.register(
     "accounting/wallets", views.BalanceSheetWalletViewSet, basename="accounting-wallets"
 )
+router.register("my/stores", views.UserStoreViewSet, basename="user-store")
 
 
 urlpatterns = [

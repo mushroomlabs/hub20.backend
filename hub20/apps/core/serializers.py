@@ -393,6 +393,8 @@ class StoreSerializer(serializers.ModelSerializer):
 
 
 class StoreEditorSerializer(StoreSerializer):
+    url = serializers.HyperlinkedIdentityField(view_name="user-store-detail")
+
     def create(self, validated_data):
         request = self.context.get("request")
         currencies = validated_data.pop("accepted_currencies", [])
