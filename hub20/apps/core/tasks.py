@@ -41,7 +41,7 @@ def send_session_event(session_key, event, **event_data):
     layer = get_channel_layer()
     channel_group_name = SessionEventsConsumer.get_group_name(session_key)
     event_data.update({"type": "notify_event", "event": event})
-    logger.info(f"Sending session event to {session_key}")
+    logger.info(f"Sending {event} to session {session_key}")
     async_to_sync(layer.group_send)(channel_group_name, event_data)
 
 
@@ -89,12 +89,12 @@ def notify_new_block(chain_id, block_data):
     session_keys = _get_open_session_keys()
     logger.info(f"Notifying {len(session_keys)} clients about block #{block_number}")
     for session_key in session_keys:
-        event_data = {
-            k: v
-            for k, v in block_data.items()
-            if k in ["gasUsed", "hash", "nonce", "number", "parentsHash", "size", "timestamp"]
-        }
-
+        event_data = dict(
+            chain_id=chain_id,
+            hash=block_data.hash.hex(),
+            number=block_number,
+            timestamp=block_data.timestamp,
+        )
         send_session_event(session_key, event=Events.BLOCKCHAIN_BLOCK_CREATED.value, **event_data)
 
 

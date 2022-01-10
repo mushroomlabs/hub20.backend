@@ -69,7 +69,7 @@ async def process_mined_blocks():
                 async for tx_data, receipt in generate_tx_data(
                     w3=w3, transaction_list=block_data["transactions"]
                 ):
-                    logger.debug(f"Sending notification for {tx_data.hash.hex()}")
+                    logger.debug(f"Notifying {tx_data.hash.hex()} (#{block_number} @{chain.name})")
                     await sync_to_async(celery_pubsub.publish)(
                         "blockchain.mined.transaction",
                         chain_id=provider.chain_id,
