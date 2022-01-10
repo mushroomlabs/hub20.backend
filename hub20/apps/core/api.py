@@ -1,6 +1,8 @@
 from django.urls import path
 from rest_framework.routers import SimpleRouter
 
+from hub20.apps.ethereum_money.views import UserTokenListViewSet
+
 from . import views
 from .consumers import CheckoutConsumer, SessionEventsConsumer
 
@@ -16,7 +18,7 @@ router.register(
     "accounting/wallets", views.BalanceSheetWalletViewSet, basename="accounting-wallets"
 )
 router.register("my/stores", views.UserStoreViewSet, basename="user-store")
-
+router.register("my/tokenlists", UserTokenListViewSet, basename="user-tokenlist")
 
 urlpatterns = [
     path("credits", views.AccountCreditEntryList.as_view(), name="credit-list"),

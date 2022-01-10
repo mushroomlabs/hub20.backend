@@ -2,20 +2,19 @@ from __future__ import annotations
 
 import logging
 
+from django.contrib.auth import get_user_model
 from django.db import models
 from django.db.models import Q, Sum
 from model_utils.managers import QueryManager
-from web3 import Web3
-from web3.contract import Contract
 
 from hub20.apps.blockchain.fields import EthereumAddressField
 from hub20.apps.blockchain.models import Chain
 
-from .abi import EIP20_ABI
 from .fields import EthereumTokenAmountField, TokenLogoURLField
 from .typing import TokenAmount, TokenAmount_T, Wei
 
 logger = logging.getLogger(__name__)
+User = get_user_model()
 
 
 class EthereumToken(models.Model):
@@ -43,12 +42,6 @@ class EthereumToken(models.Model):
 
         components.append(str(self.chain_id))
         return " - ".join(components)
-
-    def get_contract(self, w3: Web3) -> Contract:
-        if not self.is_ERC20:
-            raise ValueError("Not an ERC20 token")
-
-        return w3.eth.contract(abi=EIP20_ABI, address=self.address)
 
     def from_wei(self, wei_amount: Wei) -> EthereumTokenAmount:
         value = TokenAmount(wei_amount) / (10 ** self.decimals)
@@ -85,6 +78,24 @@ class WrappedToken(models.Model):
 
     class Meta:
         unique_together = ("wrapped", "wrapper")
+
+
+class UserTokenList(models.Model):
+    """
+    Eventually we will add methods that allow users to manage their
+    own [token lists](https://tokenlists.org)
+    """
+
+    created_by = models.ForeignKey(User, related_name="token_lists", on_delete=models.CASCADE)
+    name = models.CharField(max_length=64)
+    description = models.TextField(null=True)
+    tokens = models.ManyToManyField(EthereumToken)
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        unique_together = ("name", "created_by")
 
 
 class EthereumTokenValueModel(models.Model):
@@ -185,4 +196,6 @@ __all__ = [
     "EthereumToken",
     "EthereumTokenAmount",
     "EthereumTokenValueModel",
+    "TokenList",
+    "WrappedToken",
 ]

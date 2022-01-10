@@ -38,7 +38,7 @@ class HyperlinkedTokenIdentityField(serializers.HyperlinkedIdentityField):
 
 
 class EthereumTokenSerializer(serializers.ModelSerializer):
-    network_id = serializers.IntegerField(source="chain_id")
+    network_id = serializers.IntegerField(source="chain_id", read_only=True)
 
     class Meta:
         model = models.EthereumToken
@@ -64,3 +64,19 @@ class HyperlinkedEthereumTokenSerializer(EthereumTokenSerializer):
         model = models.EthereumToken
         fields = ("url",) + EthereumTokenSerializer.Meta.fields
         read_only_fields = ("url",) + EthereumTokenSerializer.Meta.read_only_fields
+
+
+class UserTokenListSerializer(serializers.ModelSerializer):
+    url = serializers.HyperlinkedIdentityField(view_name="user-tokenlist-detail")
+    tokens = HyperlinkedRelatedTokenField(many=True)
+
+    def create(self, validated_data):
+        request = self.context.get("request")
+        tokens = validated_data.pop("tokens", [])
+        token_list = models.UserTokenList.objects.create(created_by=request.user, **validated_data)
+        token_list.tokens.set(tokens)
+        return token_list
+
+    class Meta:
+        model = models.UserTokenList
+        fields = ("url", "name", "description", "tokens")

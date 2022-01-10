@@ -168,8 +168,11 @@ djangorestframework==3.13.1
     # via
     #   -r requirements.in
     #   dj-rest-auth
+    #   djangorestframework-link-header-pagination
     #   drf-nested-routers
     #   drf-yasg
+djangorestframework-link-header-pagination==0.1.1
+    # via -r requirements.in
 drf-nested-routers==0.93.4
     # via -r requirements.in
 drf-yasg==1.20.0

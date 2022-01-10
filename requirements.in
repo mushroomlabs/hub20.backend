@@ -12,6 +12,7 @@ django-ipware
 django-model-utils
 django-redis
 djangorestframework
+djangorestframework-link-header-pagination
 django_smtp_ssl
 django-money
 drf-nested-routers

@@ -30,7 +30,7 @@ class UserFilter(filters.FilterSet):
         q_first_name = Q(first_name__istartswith=value)
         q_last_name = Q(last_name__istartswith=value)
         q_email = Q(email__istartswith=value)
-        return self.Meta.model.objects.filter(q_username | q_first_name | q_last_name | q_email)
+        return queryset.filter(q_username | q_first_name | q_last_name | q_email)
 
     class Meta:
         model = User

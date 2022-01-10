@@ -10,7 +10,7 @@ class TokenViewTestCase(TestCase):
         self.token = factories.Erc20TokenFactory()
         self.client = APIClient()
 
-    def test_anonymous_user_can_see_store(self):
+    def test_anonymous_user_can_see_token_information(self):
         url = reverse(
             "ethereum_money:token-detail",
             kwargs={"address": self.token.address, "chain_id": self.token.chain_id},

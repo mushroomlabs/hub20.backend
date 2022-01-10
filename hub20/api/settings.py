@@ -30,12 +30,13 @@ THIRD_PARTY_APPS = [
     "allauth.socialaccount",
     "channels",
     "corsheaders",
+    "dj_rest_auth",
+    "dj_rest_auth.registration",
     "django_celery_beat",
     "django_filters",
     "djmoney",
+    "drf_link_header_pagination",
     "drf_yasg",
-    "dj_rest_auth",
-    "dj_rest_auth.registration",
     "rest_framework",
     "rest_framework.authtoken",
 ]
@@ -184,6 +185,8 @@ REST_FRAMEWORK = {
         "rest_framework.authentication.TokenAuthentication",
         "rest_framework.authentication.SessionAuthentication",
     ],
+    "DEFAULT_PAGINATION_CLASS": "drf_link_header_pagination.LinkHeaderPagination",
+    "PAGE_SIZE": 250,
 }
 
 # REST Auth
