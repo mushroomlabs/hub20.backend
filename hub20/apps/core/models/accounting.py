@@ -12,9 +12,8 @@ from django.db.models.query import QuerySet
 from model_utils.models import TimeStampedModel
 
 from hub20.apps.blockchain.fields import EthereumAddressField
-from hub20.apps.blockchain.models import Chain
+from hub20.apps.blockchain.models import BaseEthereumAccount, Chain
 from hub20.apps.ethereum_money.models import (
-    BaseEthereumAccount,
     EthereumToken,
     EthereumTokenAmount,
     EthereumTokenAmountField,

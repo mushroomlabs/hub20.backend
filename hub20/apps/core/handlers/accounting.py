@@ -23,16 +23,14 @@ from hub20.apps.core.models.transfers import (
     TransferExecution,
     TransferFailure,
 )
-from hub20.apps.ethereum_money import get_ethereum_account_model
 from hub20.apps.ethereum_money.models import EthereumToken
 from hub20.apps.ethereum_money.signals import incoming_transfer_mined, outgoing_transfer_mined
 from hub20.apps.raiden.models import Payment as RaidenPayment, Raiden
+from hub20.apps.wallet import get_wallet_model
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
-
-
-EthereumAccount = get_ethereum_account_model()
+Wallet = get_wallet_model()
 
 
 @receiver(post_save, sender=User)
@@ -55,7 +53,7 @@ def on_raiden_created_create_account(sender, **kw):
 
 @receiver(post_save, sender=BaseEthereumAccount)
 @receiver(post_save, sender=Raiden)
-@receiver(post_save, sender=EthereumAccount)
+@receiver(post_save, sender=Wallet)
 def on_wallet_created_create_account(sender, **kw):
     if kw["created"]:
         WalletAccount.objects.get_or_create(account=kw["instance"])

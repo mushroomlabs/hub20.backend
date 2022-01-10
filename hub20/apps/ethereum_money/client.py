@@ -9,9 +9,8 @@ from web3._utils.events import get_event_data
 from web3.exceptions import LogTopicError, MismatchedABI
 
 from hub20.apps.blockchain.client import make_web3
-from hub20.apps.blockchain.models import Chain
+from hub20.apps.blockchain.models import BaseEthereumAccount, Chain
 from hub20.apps.blockchain.typing import Address, EthereumAccount_T
-from hub20.apps.ethereum_money import get_ethereum_account_model
 
 from .abi import EIP20_ABI
 from .app_settings import TRANSFER_GAS_LIMIT
@@ -19,7 +18,6 @@ from .models import EthereumToken, EthereumTokenAmount
 from .typing import EthereumClient_T
 
 logger = logging.getLogger(__name__)
-EthereumAccount = get_ethereum_account_model()
 User = get_user_model()
 
 
@@ -132,7 +130,7 @@ class EthereumClient:
 
         ETH = transfer_fee.currency
 
-        accounts = EthereumAccount.objects.all().order_by("?")
+        accounts = BaseEthereumAccount.objects.all().order_by("?")
 
         if amount.is_native_token:
             amount += transfer_fee

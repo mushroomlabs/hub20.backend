@@ -32,8 +32,6 @@ from hub20.apps.core.tests.unit.mocks import (
     MockRaidenTransferExecutor,
     mock_fee_estimation,
 )
-from hub20.apps.ethereum_money import get_ethereum_account_model
-from hub20.apps.ethereum_money.factories import EthereumAccountFactory
 from hub20.apps.ethereum_money.tests.base import add_eth_to_account, add_token_to_account
 from hub20.apps.raiden.factories import (
     ChannelFactory,
@@ -41,8 +39,7 @@ from hub20.apps.raiden.factories import (
     RaidenFactory,
     TokenNetworkFactory,
 )
-
-EthereumAccount = get_ethereum_account_model()
+from hub20.apps.wallet.factories import EthereumAccountFactory
 
 
 @pytest.mark.django_db(transaction=True)

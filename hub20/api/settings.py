@@ -42,6 +42,7 @@ THIRD_PARTY_APPS = [
 
 PROJECT_APPS = [
     "hub20.apps.blockchain",
+    "hub20.apps.wallet",
     "hub20.apps.ethereum_money",
     "hub20.apps.raiden",
     "hub20.apps.core",
@@ -527,9 +528,7 @@ ACCOUNT_USERNAME_BLACKLIST = [
 
 # Web3 and Hub20 configuration
 WEB3_PROVIDER_URI = os.getenv("WEB3_PROVIDER_URI", "http://localhost:8545")
-ETHEREUM_ACCOUNT_MODEL = os.getenv(
-    "HUB20_ETHEREUM_ACCOUNT_MODEL", "ethereum_money.KeystoreAccount"
-)
+WALLET_MODEL = os.getenv("HUB20_WALLET_MODEL", "wallet.KeystoreAccount")
 
 ETHEREUM_HD_WALLET_MNEMONIC = os.getenv("HUB20_ETHEREUM_HD_WALLET_MNEMONIC")
 ETHEREUM_HD_WALLET_ROOT_KEY = os.getenv("HUB20_ETHEREUM_HD_WALLET_ROOT_KEY")

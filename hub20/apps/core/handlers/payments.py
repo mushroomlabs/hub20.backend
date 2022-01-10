@@ -25,14 +25,14 @@ from hub20.apps.core.models import (
 )
 from hub20.apps.core.settings import app_settings
 from hub20.apps.core.signals import payment_received
-from hub20.apps.ethereum_money import get_ethereum_account_model
 from hub20.apps.ethereum_money.models import EthereumToken
 from hub20.apps.ethereum_money.signals import incoming_transfer_broadcast, incoming_transfer_mined
 from hub20.apps.raiden.models import Payment as RaidenNodePayment, Raiden
 from hub20.apps.raiden.signals import raiden_payment_received
+from hub20.apps.wallet import get_wallet_model
 
 logger = logging.getLogger(__name__)
-EthereumAccount = get_ethereum_account_model()
+Wallet = get_wallet_model()
 
 
 def _get_user_id(session: Session) -> Optional[int]:
@@ -195,7 +195,7 @@ def on_order_created_set_blockchain_route(sender, **kw):
         )
         available_accounts = BaseEthereumAccount.objects.exclude(blockchain_routes__in=busy_routes)
 
-        account = available_accounts.order_by("?").first() or EthereumAccount.generate()
+        account = available_accounts.order_by("?").first() or Wallet.generate()
 
         BlockchainPaymentRoute.objects.create(
             account=account, deposit=deposit, chain=chain, payment_window=payment_window

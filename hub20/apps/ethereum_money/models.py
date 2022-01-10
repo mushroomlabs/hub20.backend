@@ -1,24 +1,18 @@
 from __future__ import annotations
 
 import logging
-import os
-from typing import Any, Optional
 
-import ethereum
 from django.db import models
-from django.db.models import Max, Q, Sum
-from hdwallet import HDWallet
-from hdwallet.symbols import ETH
+from django.db.models import Q, Sum
 from model_utils.managers import QueryManager
 from web3 import Web3
 from web3.contract import Contract
 
-from hub20.apps.blockchain.fields import EthereumAddressField, HexField
-from hub20.apps.blockchain.models import BaseEthereumAccount, Chain
+from hub20.apps.blockchain.fields import EthereumAddressField
+from hub20.apps.blockchain.models import Chain
 
 from .abi import EIP20_ABI
-from .app_settings import HD_WALLET_MNEMONIC, HD_WALLET_ROOT_KEY
-from .fields import TokenLogoURLField
+from .fields import EthereumTokenAmountField, TokenLogoURLField
 from .typing import TokenAmount, TokenAmount_T, Wei
 
 logger = logging.getLogger(__name__)
@@ -83,12 +77,14 @@ class EthereumToken(models.Model):
         unique_together = (("chain", "address"),)
 
 
-class EthereumTokenAmountField(models.DecimalField):
-    def __init__(self, *args: Any, **kw: Any) -> None:
-        kw.setdefault("decimal_places", 18)
-        kw.setdefault("max_digits", 32)
+class WrappedToken(models.Model):
+    wrapped = models.ForeignKey(
+        EthereumToken, related_name="wrapping_tokens", on_delete=models.CASCADE
+    )
+    wrapper = models.OneToOneField(EthereumToken, on_delete=models.CASCADE)
 
-        super().__init__(*args, **kw)
+    class Meta:
+        unique_together = ("wrapped", "wrapper")
 
 
 class EthereumTokenValueModel(models.Model):
@@ -105,63 +101,6 @@ class EthereumTokenValueModel(models.Model):
 
     class Meta:
         abstract = True
-
-
-class ColdWallet(BaseEthereumAccount):
-    @classmethod
-    def generate(cls):
-        raise TypeError("Cold wallets do not store private keys and can not be generated")
-
-
-class KeystoreAccount(BaseEthereumAccount):
-    private_key = HexField(max_length=64, unique=True)
-
-    @classmethod
-    def generate(cls):
-        private_key = os.urandom(32)
-        address = ethereum.utils.privtoaddr(private_key)
-        checksum_address = ethereum.utils.checksum_encode(address.hex())
-        return cls.objects.create(address=checksum_address, private_key=private_key.hex())
-
-
-class HierarchicalDeterministicWallet(BaseEthereumAccount):
-    BASE_PATH_FORMAT = "m/44'/60'/0'/0/{index}"
-
-    index = models.PositiveIntegerField(unique=True)
-
-    @property
-    def private_key(self):
-        wallet = self.__class__.get_wallet(index=self.index)
-        return wallet.private_key()
-
-    @property
-    def private_key_bytes(self) -> bytes:
-        return bytearray.fromhex(self.private_key)
-
-    @classmethod
-    def get_wallet(cls, index: int) -> HDWallet:
-        wallet = HDWallet(symbol=ETH)
-
-        if HD_WALLET_MNEMONIC:
-            wallet.from_mnemonic(mnemonic=HD_WALLET_MNEMONIC)
-        elif HD_WALLET_ROOT_KEY:
-            wallet.from_xprivate_key(xprivate_key=HD_WALLET_ROOT_KEY)
-        else:
-            raise ValueError("Can not generate new addresses for HD Wallets. No seed available")
-
-        wallet.from_path(cls.BASE_PATH_FORMAT.format(index=index))
-        return wallet
-
-    @classmethod
-    def generate(cls):
-        latest_generation = cls.get_latest_generation()
-        index = 0 if latest_generation is None else latest_generation + 1
-        wallet = HierarchicalDeterministicWallet.get_wallet(index)
-        return cls.objects.create(index=index, address=wallet.p2pkh_address())
-
-    @classmethod
-    def get_latest_generation(cls) -> Optional[int]:
-        return cls.objects.aggregate(generation=Max("index")).get("generation")
 
 
 class EthereumTokenAmount:
@@ -246,7 +185,4 @@ __all__ = [
     "EthereumToken",
     "EthereumTokenAmount",
     "EthereumTokenValueModel",
-    "ColdWallet",
-    "KeystoreAccount",
-    "HierarchicalDeterministicWallet",
 ]

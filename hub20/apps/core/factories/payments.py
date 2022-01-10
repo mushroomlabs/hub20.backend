@@ -7,11 +7,8 @@ from hub20.apps.blockchain.factories import (
     TransactionFactory,
 )
 from hub20.apps.core import models
-from hub20.apps.ethereum_money.factories import (
-    Erc20TokenFactory,
-    EthereumAccountFactory,
-    ETHFactory,
-)
+from hub20.apps.ethereum_money.factories import Erc20TokenFactory, ETHFactory
+from hub20.apps.wallet.factories import EthereumAccountFactory
 
 from .base import UserFactory
 

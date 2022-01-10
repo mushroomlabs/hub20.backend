@@ -1,9 +1,7 @@
 from rest_framework import serializers
 from rest_framework.reverse import reverse
 
-from hub20.apps.blockchain.serializers import EthereumAddressField
-
-from . import get_ethereum_account_model, models
+from . import models
 
 
 class TokenValueField(serializers.DecimalField):
@@ -66,11 +64,3 @@ class HyperlinkedEthereumTokenSerializer(EthereumTokenSerializer):
         model = models.EthereumToken
         fields = ("url",) + EthereumTokenSerializer.Meta.fields
         read_only_fields = ("url",) + EthereumTokenSerializer.Meta.read_only_fields
-
-
-class EthereumAccountSerializer(serializers.ModelSerializer):
-    address = EthereumAddressField()
-
-    class Meta:
-        model = get_ethereum_account_model()
-        fields = read_only_fields = ("address",)
