@@ -1,12 +1,13 @@
 from typing import Optional
 
 from django.contrib.auth import get_user_model
-from django.db.models import ProtectedError, Q
+from django.db.models import BooleanField, Case, ProtectedError, Value, When
 from django.db.models.query import QuerySet
 from django.http import Http404
 from django.shortcuts import get_object_or_404
-from django_filters import rest_framework as filters
+from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import generics, status
+from rest_framework.filters import OrderingFilter
 from rest_framework.mixins import CreateModelMixin, ListModelMixin, RetrieveModelMixin
 from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
@@ -17,24 +18,10 @@ from rest_framework.viewsets import GenericViewSet, ModelViewSet
 from hub20.apps.ethereum_money.models import EthereumToken
 
 from . import models, serializers
+from .filters import DepositFilter, UserFilter
 from .permissions import IsStoreOwner
 
 User = get_user_model()
-
-
-class UserFilter(filters.FilterSet):
-    search = filters.CharFilter(label="search", method="user_suggestion")
-
-    def user_suggestion(self, queryset, name, value):
-        q_username = Q(username__istartswith=value)
-        q_first_name = Q(first_name__istartswith=value)
-        q_last_name = Q(last_name__istartswith=value)
-        q_email = Q(email__istartswith=value)
-        return queryset.filter(q_username | q_first_name | q_last_name | q_email)
-
-    class Meta:
-        model = User
-        fields = ("search",)
 
 
 class ReadWriteSerializerMixin(generics.GenericAPIView):
@@ -91,6 +78,13 @@ class BaseDepositView:
 
 
 class DepositListView(BaseDepositView, generics.ListCreateAPIView):
+    filterset_class = DepositFilter
+    filter_backends = (
+        OrderingFilter,
+        DjangoFilterBackend,
+    )
+    ordering = "-created"
+
     def get_queryset(self) -> QuerySet:
         return self.request.user.deposit_set.all()
 
@@ -152,9 +146,17 @@ class TransferView(generics.RetrieveAPIView):
 class TokenBalanceListView(generics.ListAPIView):
     permission_classes = (IsAuthenticated,)
     serializer_class = serializers.HyperlinkedTokenBalanceSerializer
+    filter_backends = (OrderingFilter,)
+    ordering = ("chain_id", "-is_native", "symbol")
 
     def get_queryset(self) -> QuerySet:
-        return self.request.user.account.get_balances()
+        return self.request.user.account.get_balances().annotate(
+            is_native=Case(
+                When(address=EthereumToken.NULL_ADDRESS, then=Value(True)),
+                default=Value(False),
+                output_field=BooleanField(),
+            )
+        )
 
 
 class TokenBalanceView(generics.RetrieveAPIView):
@@ -235,8 +237,12 @@ class UserViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
     permission_classes = (IsAuthenticated,)
     serializer_class = serializers.UserSerializer
     filterset_class = UserFilter
-    filter_backends = (filters.DjangoFilterBackend,)
+    filter_backends = (
+        OrderingFilter,
+        DjangoFilterBackend,
+    )
     lookup_field = "username"
+    ordering = "username"
 
     def get_queryset(self) -> QuerySet:
         return User.objects.filter(is_active=True, is_superuser=False, is_staff=False)

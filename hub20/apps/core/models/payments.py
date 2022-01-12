@@ -46,6 +46,14 @@ class DepositQuerySet(models.QuerySet):
     def expired(self, block_number: Optional[int] = None, at: Optional[datetime.datetime] = None):
         return self.without_blockchain_route(block_number=block_number).without_raiden_route(at=at)
 
+    def open(self, block_number: Optional[int] = None, at: Optional[datetime.datetime] = None):
+        exists_blockchain_route = self.__class__.get_blockchain_window_query(
+            block_number=block_number
+        )
+        exists_raiden_route = self.__class__.get_raiden_window_query(at=at)
+
+        return self.filter(exists_blockchain_route | exists_raiden_route)
+
     def with_blockchain_route(self, block_number: Optional[int] = None):
         exists_route = self.__class__.get_blockchain_window_query(block_number=block_number)
         return self.filter(exists_route)
