@@ -11,12 +11,8 @@ class TokenValueField(serializers.DecimalField):
         super().__init__(*args, **kw)
 
 
-class HyperlinkedRelatedTokenField(serializers.HyperlinkedRelatedField):
-    view_name = "ethereum_money:token-detail"
+class HyperlinkedTokenMixin:
     queryset = models.EthereumToken.objects.all()
-
-    def get_attribute(self, instance):
-        return getattr(instance, self.source)
 
     def get_url(self, obj, view_name, request, format):
         url_kwargs = {"chain_id": obj.chain_id, "address": obj.address}
@@ -27,11 +23,14 @@ class HyperlinkedRelatedTokenField(serializers.HyperlinkedRelatedField):
         return self.queryset.get(**lookup_kwargs)
 
 
-class HyperlinkedTokenIdentityField(serializers.HyperlinkedIdentityField):
-    def __init__(self, *args, **kw):
-        kw.setdefault("view_name", "ethereum_money:token-detail")
-        super().__init__(*args, **kw)
+class HyperlinkedRelatedTokenField(HyperlinkedTokenMixin, serializers.HyperlinkedRelatedField):
+    view_name = "ethereum_money:token-detail"
 
+    def get_attribute(self, instance):
+        return getattr(instance, self.source)
+
+
+class HyperlinkedTokenIdentityField(serializers.HyperlinkedIdentityField):
     def get_url(self, obj, view_name, request, format):
         url_kwargs = {"chain_id": obj.chain_id, "address": obj.address}
         return reverse(view_name, kwargs=url_kwargs, request=request, format=format)
@@ -58,7 +57,7 @@ class EthereumTokenAmountSerializer(serializers.ModelSerializer):
 
 
 class HyperlinkedEthereumTokenSerializer(EthereumTokenSerializer):
-    url = HyperlinkedTokenIdentityField()
+    url = HyperlinkedTokenIdentityField(view_name="ethereum_money:token-detail")
 
     class Meta:
         model = models.EthereumToken

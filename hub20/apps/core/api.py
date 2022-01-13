@@ -24,7 +24,11 @@ urlpatterns = [
     path("credits", views.AccountCreditEntryList.as_view(), name="credit-list"),
     path("debits", views.AccountDebitEntryList.as_view(), name="debit-list"),
     path("balances", views.TokenBalanceListView.as_view(), name="balance-list"),
-    path("balance/<str:address>", views.TokenBalanceView.as_view(), name="balance-detail"),
+    path(
+        "balances/<int:chain_id>-<str:address>",
+        views.TokenBalanceView.as_view(),
+        name="balance-detail",
+    ),
     path("deposits", views.DepositListView.as_view(), name="deposit-list"),
     path("deposit/<uuid:pk>", views.DepositView.as_view(), name="deposit-detail"),
     path("payment/orders", views.PaymentOrderListView.as_view(), name="payment-order-list"),

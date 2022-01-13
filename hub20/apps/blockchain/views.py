@@ -1,6 +1,5 @@
 from rest_framework.decorators import action
 from rest_framework.mixins import ListModelMixin, RetrieveModelMixin
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
 
@@ -9,7 +8,6 @@ from .serializers import ChainSerializer, ChainStatusSerializer
 
 
 class ChainViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
-    permission_classes = (IsAuthenticated,)
     serializer_class = ChainSerializer
     queryset = Chain.active.all()
 

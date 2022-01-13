@@ -164,7 +164,9 @@ class TokenBalanceView(generics.RetrieveAPIView):
     serializer_class = serializers.HyperlinkedTokenBalanceSerializer
 
     def get_object(self) -> EthereumToken:
-        token = get_object_or_404(EthereumToken, address=self.kwargs["address"])
+        token = get_object_or_404(
+            EthereumToken, chain_id=self.kwargs["chain_id"], address=self.kwargs["address"]
+        )
         return self.request.user.account.get_balance(token)
 
 

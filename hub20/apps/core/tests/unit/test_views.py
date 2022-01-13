@@ -105,7 +105,10 @@ class TokenBalanceViewTestCase(TestCase):
 
     def test_balance_view(self):
         response = self.client.get(
-            reverse("balance-detail", kwargs={"address": self.token.address})
+            reverse(
+                "balance-detail",
+                kwargs={"chain_id": self.token.chain_id, "address": self.token.address},
+            )
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["address"], self.token.address)

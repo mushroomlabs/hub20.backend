@@ -12,6 +12,7 @@ from hub20.apps.ethereum_money.serializers import (
     EthereumTokenSerializer,
     HyperlinkedRelatedTokenField,
     HyperlinkedTokenIdentityField,
+    HyperlinkedTokenMixin,
     TokenValueField,
 )
 
@@ -26,6 +27,16 @@ class UserRelatedField(serializers.SlugRelatedField):
     def __init__(self, *args, **kw):
         kw.setdefault("slug_field", "username")
         super().__init__(*args, **kw)
+
+
+class HyperlinkedBalanceIdentityField(serializers.HyperlinkedIdentityField):
+    def __init__(self, *args, **kw):
+        kw.setdefault("view_name", "balance-detail")
+        super().__init__(*args, **kw)
+
+    def get_url(self, obj, view_name, request, format):
+        url_kwargs = {"chain_id": obj.chain_id, "address": obj.address}
+        return reverse(view_name, kwargs=url_kwargs, request=request, format=format)
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -45,15 +56,10 @@ class TokenBalanceSerializer(EthereumTokenSerializer):
         read_only_fields = EthereumTokenSerializer.Meta.read_only_fields + ("balance",)
 
 
-class HyperlinkedTokenBalanceSerializer(TokenBalanceSerializer):
-    url = serializers.SerializerMethodField()
+class HyperlinkedTokenBalanceSerializer(HyperlinkedTokenMixin, TokenBalanceSerializer):
+    url = HyperlinkedTokenIdentityField(view_name="balance-detail")
 
-    def get_url(self, obj):
-        return reverse(
-            "balance-detail",
-            kwargs={"address": obj.address},
-            request=self.context.get("request"),
-        )
+    view_name = "balance-detail"
 
     class Meta:
         model = TokenBalanceSerializer.Meta.model
@@ -466,7 +472,7 @@ class DebitSerializer(BookEntrySerializer):
 
 
 class AccountingBookSerializer(serializers.Serializer):
-    token = HyperlinkedTokenIdentityField(source="*")
+    token = HyperlinkedTokenIdentityField(view_name="ethereum_money:token-detail", source="*")
     total_credit = TokenValueField(read_only=True)
     total_debit = TokenValueField(read_only=True)
     balance = TokenValueField(read_only=True)
