@@ -3,7 +3,7 @@ from typing import Any, Optional
 from django.contrib import admin
 from django.http import HttpRequest
 
-from . import models
+from . import forms, models
 
 
 class ReadOnlyModelAdmin(admin.ModelAdmin):
@@ -18,8 +18,15 @@ class ReadOnlyModelAdmin(admin.ModelAdmin):
 
 
 @admin.register(models.Raiden)
-class RaidenAdmin(ReadOnlyModelAdmin):
-    list_display = ("address",)
+class RaidenAdmin(admin.ModelAdmin):
+    form = forms.RaidenForm
+    list_display = ("url", "address", "web3_provider", "chain")
+    fields = (
+        "url",
+        "web3_provider",
+        "address",
+    )
+    readonly_fields = ("address",)
 
     def has_add_permission(self, request: HttpRequest, obj: Optional[Any] = None) -> bool:
         return request.user.is_superuser

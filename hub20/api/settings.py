@@ -148,9 +148,6 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 
-# Raiden
-HUB20_RAIDEN_SERVERS = [s for s in os.getenv("HUB20_RAIDEN_SERVERS", "").split(",") if s]
-
 # Email
 DEFAULT_FROM_EMAIL = os.getenv("HUB20_EMAIL_MAILER_ADDRESS")
 EMAIL_BACKEND = os.getenv("HUB20_EMAIL_BACKEND")
@@ -529,8 +526,7 @@ ACCOUNT_USERNAME_BLACKLIST = [
     "yourdomain",
 ]
 
-# Web3 and Hub20 configuration
-WEB3_PROVIDER_URI = os.getenv("WEB3_PROVIDER_URI", "http://localhost:8545")
+# Wallet model configuration
 WALLET_MODEL = os.getenv("HUB20_WALLET_MODEL", "wallet.KeystoreAccount")
 
 ETHEREUM_HD_WALLET_MNEMONIC = os.getenv("HUB20_ETHEREUM_HD_WALLET_MNEMONIC")

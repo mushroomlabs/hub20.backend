@@ -13,8 +13,9 @@ from model_utils.managers import InheritanceManager, QueryManager
 from model_utils.models import StatusModel, TimeStampedModel
 
 from hub20.apps.blockchain.fields import EthereumAddressField, HexField, Uint256Field
-from hub20.apps.blockchain.models import BaseEthereumAccount, Chain, Transaction
+from hub20.apps.blockchain.models import BaseEthereumAccount, Chain, Transaction, Web3Provider
 from hub20.apps.blockchain.typing import Address
+from hub20.apps.blockchain.validators import uri_parsable_scheme_validator
 from hub20.apps.ethereum_money.models import (
     EthereumToken,
     EthereumTokenAmount,
@@ -24,6 +25,12 @@ from hub20.apps.ethereum_money.models import (
 
 CHANNEL_STATUSES = Choices("opened", "settling", "settled", "unusable", "closed", "closing")
 User = get_user_model()
+
+raiden_url_validator = uri_parsable_scheme_validator(("http", "https"))
+
+
+class RaidenURLField(models.URLField):
+    default_validators = [raiden_url_validator]
 
 
 class TokenNetwork(models.Model):
@@ -102,7 +109,8 @@ class TokenNetworkChannelEvent(models.Model):
 
 
 class Raiden(BaseEthereumAccount):
-    url = models.URLField(unique=True)
+    url = RaidenURLField(unique=True)
+    web3_provider = models.ForeignKey(Web3Provider, null=True, on_delete=models.SET_NULL)
 
     @property
     def private_key(self):
@@ -119,13 +127,8 @@ class Raiden(BaseEthereumAccount):
         return self.channels.filter(status=Channel.STATUS.opened)
 
     @property
-    def chains(self):
-        return Chain.objects.filter(tokens__tokennetwork__channel__raiden=self).distinct()
-
-    @property
-    def chain(self):
-        assert self.chains.count() == 1, "Raiden seems to be connected to more than one chain"
-        return self.chains.first()
+    def chain(self) -> Optional[Chain]:
+        return self.web3_provider and self.web3_provider.chain
 
     @property
     def payments(self):

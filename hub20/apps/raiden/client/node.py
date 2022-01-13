@@ -160,16 +160,16 @@ class RaidenClient:
             return None
 
         try:
-            identifier = int(identifier)
+            numeric_identifier = int(identifier)
         except ValueError:
-            identifier = int(identifier.encode().hex(), 16)
+            numeric_identifier = int(identifier.encode().hex(), 16)
 
-        return identifier % Payment.MAX_IDENTIFIER_ID
+        return numeric_identifier % Payment.MAX_IDENTIFIER_ID
 
     def transfer(
         self, amount: EthereumTokenAmount, address: Address, identifier: Optional[int] = None, **kw
     ) -> Optional[str]:
-        url = f"{self.raiden_root_endpoint}/payments/{amount.currency.address}/{address}"
+        url = f"{self.raiden_root_endpoint}/payments/{amount.currency.address}/{str(address)}"
 
         payload = dict(amount=amount.as_wei)
 
@@ -231,7 +231,7 @@ class RaidenClient:
 def raiden_periodic_response_handler(period=2):
     def decorator(handler):
         async def wrapper(*args, **kw):
-            raiden_accounts = await sync_to_async(list)(Raiden.objects.all())
+            raiden_accounts = await sync_to_async(list)(Raiden.objects.exclude(web3_provider=None))
             raiden_clients = [RaidenClient(raiden_account=raiden) for raiden in raiden_accounts]
 
             while True:

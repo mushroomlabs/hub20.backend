@@ -13,6 +13,7 @@ from raiden_contracts.contract_manager import (
     contracts_precompiled_path,
     get_contracts_deployment_info,
 )
+from raiden_contracts.utils.type_aliases import ChainID
 from web3 import Web3
 
 from hub20.apps.blockchain.client import make_web3, send_transaction
@@ -34,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 def _get_contract_data(chain_id: int, contract_name: str):
     try:
-        contract_data = get_contracts_deployment_info(chain_id)
+        contract_data = get_contracts_deployment_info(ChainID(chain_id))
         assert contract_data is not None
         return contract_data["contracts"][contract_name]
     except (KeyError, AssertionError):
@@ -173,10 +174,13 @@ def get_service_deposit_balance(w3: Web3, raiden: Raiden) -> EthereumTokenAmount
 
 
 def get_token_networks():
-    for provider in Web3Provider.available.all():
+    for provider in Web3Provider.available.exclude(raiden__isnull=True):
         w3: Web3 = make_web3(provider=provider)
 
-        token_registry_contract = get_token_network_registry_contract(w3=w3)
+        try:
+            token_registry_contract = get_token_network_registry_contract(w3=w3)
+        except AssertionError:
+            continue
         get_token_network_address = token_registry_contract.functions.token_to_token_networks
 
         for token in EthereumToken.ERC20tokens.filter(chain_id=provider.chain_id):
