@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.test import TestCase
 from django.urls import reverse
 from rest_framework.test import APIClient
@@ -111,7 +113,7 @@ class TokenBalanceViewTestCase(TestCase):
             )
         )
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data["address"], self.token.address)
+        self.assertEqual(Decimal(response.data["amount"]), 10)
 
 
 class TransferTestCase(TestCase):

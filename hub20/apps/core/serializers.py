@@ -48,12 +48,15 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 class TokenBalanceSerializer(EthereumTokenSerializer):
-    balance = TokenValueField(read_only=True)
+    token = HyperlinkedTokenIdentityField(view_name="ethereum_money:token-detail")
+    amount = TokenValueField(read_only=True, source="balance")
 
     class Meta:
         model = EthereumTokenSerializer.Meta.model
-        fields = EthereumTokenSerializer.Meta.fields + ("balance",)
-        read_only_fields = EthereumTokenSerializer.Meta.read_only_fields + ("balance",)
+        fields = read_only_fields = (
+            "token",
+            "amount",
+        )
 
 
 class HyperlinkedTokenBalanceSerializer(HyperlinkedTokenMixin, TokenBalanceSerializer):
