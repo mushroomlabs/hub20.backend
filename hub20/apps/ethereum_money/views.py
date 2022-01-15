@@ -1,11 +1,13 @@
-from django.db.models import Q
+from django.db.models import BooleanField, Case, Q, Value, When
 from django.db.models.query import QuerySet
 from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django_filters import rest_framework as filters
 from eth_utils import is_address
+from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.mixins import ListModelMixin, RetrieveModelMixin
+from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet, ModelViewSet
 
 from . import models, serializers
@@ -46,10 +48,16 @@ class TokenViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
     page_size = 50
     search_fields = ("name", "=symbol", "chain__name")
     ordering_fields = ("symbol", "name", "chain_id")
-    ordering = ("chain_id", "symbol")
+    ordering = ("-is_native", "chain_id", "symbol")
 
     def get_queryset(self) -> QuerySet:
-        return models.EthereumToken.objects.all()
+        return models.EthereumToken.objects.annotate(
+            is_native=Case(
+                When(address=models.EthereumToken.NULL_ADDRESS, then=Value(True)),
+                default=Value(False),
+                output_field=BooleanField(),
+            )
+        )
 
     def get_object(self):
         address = self.kwargs["address"]
@@ -59,6 +67,23 @@ class TokenViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
         return get_object_or_404(
             models.EthereumToken, chain_id=self.kwargs["chain_id"], address=address
         )
+
+    @action(detail=True)
+    def wrappers(self, request, **kwargs):
+        """
+        Returns list of tokens that are wrap a native token into
+        ERC20 or bridge them to another chain
+        """
+        token = self.get_object()
+        wrapper_tokens = models.EthereumToken.objects.filter(wrappedtoken__wrapped=token)
+
+        page = self.paginate_queryset(wrapper_tokens)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(wrapper_tokens, many=True)
+        return Response(serializer.data)
 
 
 class UserTokenListViewSet(ModelViewSet):

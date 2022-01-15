@@ -7,6 +7,7 @@ from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import generics, status
+from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter
 from rest_framework.mixins import CreateModelMixin, ListModelMixin, RetrieveModelMixin
 from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
@@ -15,7 +16,10 @@ from rest_framework.serializers import Serializer
 from rest_framework.views import APIView
 from rest_framework.viewsets import GenericViewSet, ModelViewSet
 
+from hub20.apps.blockchain.client import make_web3
+from hub20.apps.ethereum_money.client import get_estimate_fee
 from hub20.apps.ethereum_money.models import EthereumToken
+from hub20.apps.ethereum_money.views import TokenViewSet
 
 from . import models, serializers
 from .filters import DepositFilter, UserFilter
@@ -122,6 +126,23 @@ class PaymentOrderView(BasePaymentOrderView, generics.RetrieveDestroyAPIView):
                 "Order has either been paid or has open routes and can not be canceled",
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+
+class TokenBrowserViewSet(TokenViewSet):
+    @action(detail=True)
+    def transfer_cost(self, request, **kwargs):
+        """
+        Returns estimated cost in Wei (estimated gas * gas price) to execute a transfer
+
+        Returns 404 if not connected to the blockchain or if token not in database
+        """
+        token = self.get_object()
+        try:
+            w3 = make_web3(provider=token.chain.provider)
+            transfer_cost = get_estimate_fee(w3=w3, token=token)
+            return Response(transfer_cost.as_wei)
+        except AttributeError:
+            raise Http404
 
 
 class TransferListView(generics.ListCreateAPIView):

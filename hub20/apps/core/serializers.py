@@ -48,7 +48,7 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 class TokenBalanceSerializer(EthereumTokenSerializer):
-    token = HyperlinkedTokenIdentityField(view_name="ethereum_money:token-detail")
+    token = HyperlinkedTokenIdentityField(view_name="token-detail")
     amount = TokenValueField(read_only=True, source="balance")
 
     class Meta:
@@ -475,7 +475,7 @@ class DebitSerializer(BookEntrySerializer):
 
 
 class AccountingBookSerializer(serializers.Serializer):
-    token = HyperlinkedTokenIdentityField(view_name="ethereum_money:token-detail", source="*")
+    token = HyperlinkedTokenIdentityField(view_name="token-detail", source="*")
     total_credit = TokenValueField(read_only=True)
     total_debit = TokenValueField(read_only=True)
     balance = TokenValueField(read_only=True)

@@ -40,6 +40,22 @@ def encode_transfer_data(recipient_address, amount: EthereumTokenAmount):
     return f"0x{encoded_data.hex()}"
 
 
+def get_transfer_gas_estimate(w3: Web3, token: EthereumToken):
+    if token.is_ERC20:
+        contract = w3.eth.contract(abi=EIP20_ABI, address=token.address)
+        return contract.functions.transfer(token.address, 0).estimateGas()
+    else:
+        return 21000
+
+
+def get_estimate_fee(w3: Web3, token: EthereumToken) -> EthereumTokenAmount:
+    native_token = EthereumToken.make_native(chain=token.chain)
+
+    gas_price = w3.eth.generateGasPrice()
+    gas_estimate = get_transfer_gas_estimate(w3=w3, token=token)
+    return native_token.from_wei(gas_estimate * gas_price)
+
+
 def get_max_fee(w3: Web3) -> EthereumTokenAmount:
     chain = Chain.active.get(id=w3.eth.chain_id)
     native_token = EthereumToken.make_native(chain=chain)

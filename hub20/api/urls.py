@@ -17,7 +17,6 @@ from drf_yasg.views import get_schema_view
 from rest_framework.permissions import AllowAny
 
 from hub20.apps.core.api import urlpatterns as core_urlpatterns
-from hub20.apps.ethereum_money.api import token_router
 
 from .views import IndexView
 
@@ -41,11 +40,8 @@ urlpatterns = [
     path("register/", include("dj_rest_auth.registration.urls")),
     path("networks/blockchains/", include("hub20.apps.blockchain.api", namespace="blockchain")),
     path("networks/raiden/", include("hub20.apps.raiden.api")),
-    path("", include((token_router.urls, "ethereum_money"), namespace="ethereum_money")),
     path("", IndexView.as_view(), name="index"),
 ]
-
-# urlpatterns.extend(token_router.urls)
 
 urlpatterns.extend(core_urlpatterns)
 

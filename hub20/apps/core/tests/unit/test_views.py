@@ -131,7 +131,7 @@ class TransferTestCase(TestCase):
                 "address": self.target_address,
                 "amount": 10,
                 "token": reverse(
-                    "ethereum_money:token-detail",
+                    "token-detail",
                     kwargs=dict(address=self.token.address, chain_id=self.token.chain_id),
                 ),
             },
@@ -159,7 +159,7 @@ class TransferTestCase(TestCase):
                 "address": self.target_address,
                 "amount": TRANSFER_AMOUNT,
                 "token": reverse(
-                    "ethereum_money:token-detail",
+                    "token-detail",
                     kwargs=dict(address=self.token.address, chain_id=self.token.chain_id),
                 ),
             },
@@ -185,7 +185,7 @@ class CheckoutViewTestCase(TestCase):
         post_data = {
             "amount": amount.amount,
             "token": reverse(
-                "ethereum_money:token-detail",
+                "token-detail",
                 kwargs=dict(address=amount.currency.address, chain_id=amount.currency.chain_id),
             ),
             "store": self.store.id,

@@ -12,7 +12,7 @@ class TokenViewTestCase(TestCase):
 
     def test_anonymous_user_can_see_token_information(self):
         url = reverse(
-            "ethereum_money:token-detail",
+            "token-detail",
             kwargs={"address": self.token.address, "chain_id": self.token.chain_id},
         )
         response = self.client.get(url)

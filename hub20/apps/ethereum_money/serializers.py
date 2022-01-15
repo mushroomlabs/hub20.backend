@@ -24,7 +24,7 @@ class HyperlinkedTokenMixin:
 
 
 class HyperlinkedRelatedTokenField(HyperlinkedTokenMixin, serializers.HyperlinkedRelatedField):
-    view_name = "ethereum_money:token-detail"
+    view_name = "token-detail"
 
     def get_attribute(self, instance):
         return getattr(instance, self.source)
@@ -57,7 +57,7 @@ class EthereumTokenAmountSerializer(serializers.ModelSerializer):
 
 
 class HyperlinkedEthereumTokenSerializer(EthereumTokenSerializer):
-    url = HyperlinkedTokenIdentityField(view_name="ethereum_money:token-detail")
+    url = HyperlinkedTokenIdentityField(view_name="token-detail")
 
     class Meta:
         model = models.EthereumToken
