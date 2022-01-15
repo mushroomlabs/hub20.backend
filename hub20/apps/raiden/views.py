@@ -6,8 +6,6 @@ from rest_framework.response import Response
 
 from . import models, serializers
 
-# from hub20.apps.blockchain.models import Web3Provider
-
 
 class BaseRaidenViewMixin:
     permission_classes = (IsAdminUser,)
@@ -29,16 +27,16 @@ class RaidenViewSet(
 class ChannelViewMixin(BaseRaidenViewMixin):
     serializer_class = serializers.ChannelSerializer
 
+
+class ChannelViewSet(
+    ChannelViewMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet
+):
     def get_queryset(self, *args, **kw):
         return models.Channel.objects.filter(raiden_id=self.kwargs["raiden_pk"])
 
     def get_object(self):
         return self.get_queryset().filter(pk=self.kwargs["pk"]).first()
 
-
-class ChannelViewSet(
-    ChannelViewMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet
-):
     @action(
         detail=True,
         methods=["POST"],
