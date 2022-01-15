@@ -62,6 +62,7 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
+APPEND_SLASHES = False
 ROOT_URLCONF = os.getenv("HUB20_URLCONF_MODULE", "hub20.api.urls")
 ASGI_APPLICATION = "hub20.api.asgi.application"
 SERVE_OPENAPI_URLS = "HUB20_SERVE_OPENAPI_URLS" in os.environ or DEBUG

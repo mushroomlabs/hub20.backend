@@ -4,9 +4,9 @@ from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django_filters import rest_framework as filters
 from eth_utils import is_address
-from rest_framework import generics
 from rest_framework.filters import OrderingFilter, SearchFilter
-from rest_framework.viewsets import ModelViewSet
+from rest_framework.mixins import ListModelMixin, RetrieveModelMixin
+from rest_framework.viewsets import GenericViewSet, ModelViewSet
 
 from . import models, serializers
 from .permissions import IsTokenListOwner
@@ -35,7 +35,7 @@ class TokenFilter(filters.FilterSet):
         fields = ("chain_id", "symbol", "address", "listed", "native")
 
 
-class TokenListView(generics.ListAPIView):
+class TokenViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
     serializer_class = serializers.HyperlinkedEthereumTokenSerializer
     filterset_class = TokenFilter
     filter_backends = (
@@ -51,18 +51,14 @@ class TokenListView(generics.ListAPIView):
     def get_queryset(self) -> QuerySet:
         return models.EthereumToken.objects.all()
 
-
-class TokenView(generics.RetrieveAPIView):
-    serializer_class = serializers.HyperlinkedEthereumTokenSerializer
-
-    def get_object(self) -> models.EthereumToken:
-        address = self.kwargs.get("address")
-        chain_id = self.kwargs.get("chain_id")
-
+    def get_object(self):
+        address = self.kwargs["address"]
         if not is_address(address):
             raise Http404(f"{address} is not a valid token address")
 
-        return get_object_or_404(models.EthereumToken, address=address, chain_id=chain_id)
+        return get_object_or_404(
+            models.EthereumToken, chain_id=self.kwargs["chain_id"], address=address
+        )
 
 
 class UserTokenListViewSet(ModelViewSet):
