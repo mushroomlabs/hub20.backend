@@ -24,8 +24,22 @@ from hub20.apps.raiden.models import Raiden
 logger = logging.getLogger(__name__)
 
 
-class TokenTransactionMixin:
-    pass
+class DoubleEntryAccountModelQuerySet(models.QuerySet):
+    def grouped_by_token_balances(self):
+        credit = Coalesce(Sum("books__credits__amount"), 0, output_field=models.DecimalField())
+        debit = Coalesce(Sum("books__debits__amount"), 0, output_field=models.DecimalField())
+
+        return (
+            self.exclude(books__token=None)
+            .annotate(token_id=F("books__token"))
+            .annotate(total_credit=credit, total_debit=debit)
+            .annotate(balance=F("total_credit") - F("total_debit"))
+        )
+
+    def with_funds(self, token_amount: EthereumTokenAmount):
+        return self.grouped_by_token_balances().filter(
+            balance__gte=token_amount.amount, token_id=token_amount.currency.id
+        )
 
 
 class Book(models.Model):
@@ -66,6 +80,7 @@ class Debit(BookEntry):
 class DoubleEntryAccountModel(models.Model):
     book_relation_attr = None
     token_balance_relation_attr = None
+    objects = DoubleEntryAccountModelQuerySet.as_manager()
 
     @property
     def debits(self):
