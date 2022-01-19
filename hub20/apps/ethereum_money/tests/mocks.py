@@ -51,7 +51,7 @@ class EtherTransferDataMock(TransactionDataMock):
     value = factory.LazyAttribute(lambda obj: obj.amount.as_wei)
 
     class Params:
-        recipient = factory.Faker("hex64")
+        recipient = factory.Faker("ethereum_address")
         amount = factory.SubFactory(EtherAmountFactory)
 
 
@@ -70,7 +70,7 @@ class EtherTransferReceiptMock(TransactionReceiptDataMock):
     value = factory.LazyAttribute(lambda obj: obj.amount.as_wei)
 
     class Params:
-        recipient = factory.Faker("hex64")
+        recipient = factory.Faker("ethereum_address")
         amount = factory.SubFactory(Erc20TokenAmountFactory)
 
 

@@ -5,7 +5,7 @@ from django.core.management.base import BaseCommand
 from web3.exceptions import TransactionNotFound
 
 from hub20.apps.blockchain.client import make_web3
-from hub20.apps.blockchain.models import Chain, Transaction
+from hub20.apps.blockchain.models import Chain, Transaction, TransactionDataRecord
 
 logger = logging.getLogger(__name__)
 
@@ -38,10 +38,10 @@ class Command(BaseCommand):
                 tx_data = w3.eth.get_transaction(tx_hash)
                 tx_receipt = w3.eth.get_transaction_receipt(tx_hash)
                 block_data = w3.eth.get_block(tx_data.blockHash)
+                TransactionDataRecord.make(chain_id=chain_id, tx_data=tx_data)
                 Transaction.make(
                     chain_id=chain_id,
                     block_data=block_data,
-                    tx_data=tx_data,
                     tx_receipt=tx_receipt,
                 )
             except binascii.Error:

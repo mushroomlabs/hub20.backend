@@ -73,9 +73,7 @@ class TokenNetworkChannel(models.Model):
 
     @property
     def events(self):
-        return self.tokennetworkchannelevent_set.order_by(
-            "transaction__block__number", "transaction__index"
-        )
+        return self.tokennetworkchannelevent_set.order_by("transaction__block__number")
 
 
 class TokenNetworkChannelStatus(StatusModel):

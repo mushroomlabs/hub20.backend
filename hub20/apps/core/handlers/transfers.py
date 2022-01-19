@@ -21,7 +21,7 @@ def on_blockchain_transfer_mined_record_execution(sender, **kw):
         amount=amount.amount,
         currency=amount.currency,
         address=address,
-        receipt__identifier=transaction.hash_hex,
+        receipt__identifier=transaction.hash.hex(),
     ).first()
 
     if transfer:

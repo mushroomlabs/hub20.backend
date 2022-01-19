@@ -36,7 +36,6 @@ def check_token_network_channel_events(
             chain_id=chain_id,
             block_data=block_data,
             tx_receipt=transaction_receipt,
-            tx_data=transaction_data,
         )
         for event in channel_events:
             participants = (event.args.participant1, event.args.participant2)
@@ -62,7 +61,6 @@ def check_order_results(chain_id, block_data, transaction_data, transaction_rece
     tx = Transaction.make(
         chain_id=chain_id,
         block_data=block_data,
-        tx_data=transaction_data,
         tx_receipt=transaction_receipt,
     )
 
