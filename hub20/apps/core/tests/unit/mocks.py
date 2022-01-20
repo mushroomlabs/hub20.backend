@@ -27,7 +27,7 @@ class MockBlockchainTransferExecutor(BlockchainTransferExecutor):
             amount=transfer.as_token_amount,
         )
         TransferReceipt.objects.create(
-            transfer=transfer, network=PAYMENT_NETWORKS.blockchain, identifier=tx.hash.hex()
+            transfer=transfer, network=PAYMENT_NETWORKS.blockchain, identifier=tx.hash
         )
 
         outgoing_transfer_mined.send(

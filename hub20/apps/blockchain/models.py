@@ -6,17 +6,15 @@ from urllib.parse import urlparse
 
 from django.contrib.postgres.fields import ArrayField, HStoreField
 from django.db import models
-from django.db.models import F, Max, Q
+from django.db.models import Max
 from django.db.transaction import atomic
 from django.utils import timezone
-from hexbytes import HexBytes
 from model_utils.managers import InheritanceManager, QueryManager
 from web3 import Web3
 from web3.datastructures import AttributeDict
 
 from .app_settings import START_BLOCK_NUMBER
-from .fields import EthereumAddressField, HexField, Uint256Field, Web3ProviderURLField
-from .typing import Address
+from .fields import EthereumAddressField, HexField, Web3ProviderURLField
 
 logger = logging.getLogger(__name__)
 
@@ -269,6 +267,22 @@ class Explorer(models.Model):
         unique_together = ("url", "chain")
 
 
+class EventIndexer(models.Model):
+    chain = models.ForeignKey(Chain, related_name="indexers", on_delete=models.CASCADE)
+    name = models.CharField(max_length=200)
+    last_block = models.PositiveBigIntegerField(default=1)
+
+    @classmethod
+    def make(cls, chain_id: int, name: str):
+        indexer, _ = cls.objects.get_or_create(chain_id=chain_id, name=name)
+        return indexer
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["chain", "name"], name="unique_name_per_chain"),
+        ]
+
+
 __all__ = [
     "Block",
     "Chain",
@@ -279,4 +293,5 @@ __all__ = [
     "NativeToken",
     "Web3Provider",
     "Explorer",
+    "EventIndexer",
 ]

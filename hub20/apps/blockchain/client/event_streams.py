@@ -63,20 +63,11 @@ async def process_mined_blocks():
                 block_number = block_data.number
                 logger.info(f"Processing block #{block_number} on {provider}")
                 await sync_to_async(celery_pubsub.publish)(
-                    "blockchain.mined.block", chain_id=w3.eth.chain_id, block_data=block_data
+                    "blockchain.mined.block",
+                    chain_id=w3.eth.chain_id,
+                    block_data=block_data,
+                    provider_url=provider.url,
                 )
-                logger.debug(f"Processing {len(block_data['transactions'])} transactions")
-                async for tx_data, receipt in generate_tx_data(
-                    w3=w3, transaction_list=block_data["transactions"]
-                ):
-                    logger.debug(f"Notifying {tx_data.hash.hex()} (#{block_number} @{chain.name})")
-                    await sync_to_async(celery_pubsub.publish)(
-                        "blockchain.mined.transaction",
-                        chain_id=provider.chain_id,
-                        block_data=block_data,
-                        transaction_data=tx_data,
-                        transaction_receipt=receipt,
-                    )
                 chain.highest_block = block_number
                 logger.debug(f"Updating chain height to {block_number}")
             await sync_to_async(chain.save)()

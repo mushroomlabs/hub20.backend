@@ -24,9 +24,9 @@ class Command(BaseCommand):
         w3 = make_web3(provider=chain.provider)
 
         txs = options["transactions"]
-        already_recorded = Transaction.objects.filter(chain_id=chain_id, hash__in=txs).values_list(
-            "hash", flat=True
-        )
+        already_recorded = Transaction.objects.filter(
+            block__chain_id=chain_id, hash__in=txs
+        ).values_list("hash", flat=True)
 
         if already_recorded:
             logger.info(f"Transactions {', '.join(already_recorded)} already recorded")

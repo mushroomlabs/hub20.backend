@@ -19,6 +19,8 @@ def _make_web3_mock():
     w3.net.peer_count = random.randint(1, 5)
     w3.eth = MagicMock()
     w3.eth.chain_id = TEST_CHAIN_ID
+    w3.provider = MagicMock()
+    w3.provider.endpoint_uri = "ipc://dev/null"
 
     w3.isConnected = lambda: True
     return w3

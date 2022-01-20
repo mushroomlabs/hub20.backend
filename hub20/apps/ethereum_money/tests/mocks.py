@@ -85,9 +85,7 @@ class Erc20TransferReceiptMock(TransactionReceiptDataMock):
 
 class Erc20LogFilterMock(Web3DataMock):
     args = factory.LazyAttribute(
-        lambda obj: Web3Model(
-            _from=obj.recipient, _to=obj.amount.currency.address, _value=obj.amount.as_wei
-        )
+        lambda obj: Web3Model(_from=obj.sender, _to=obj.recipient, _value=obj.amount.as_wei)
     )
     event = "Transfer"
     logIndex = 0
@@ -99,4 +97,5 @@ class Erc20LogFilterMock(Web3DataMock):
 
     class Params:
         recipient = factory.Faker("ethereum_address")
+        sender = factory.Faker("ethereum_address")
         amount = factory.SubFactory(Erc20TokenAmountFactory)

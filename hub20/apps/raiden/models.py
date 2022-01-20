@@ -198,11 +198,8 @@ class Channel(StatusModel):
         assert token.chain == raiden.chain
 
         token_network, _ = TokenNetwork.objects.get_or_create(
-            address=token_network_address, defaults={"token": token}
+            address=token_network_address, token=token
         )
-
-        if token_network is None:
-            token_network = TokenNetwork.objects.create(address=token_network_address, token=token)
 
         assert token_network.token.address == token_address
 

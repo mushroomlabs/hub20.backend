@@ -154,7 +154,7 @@ def on_incoming_transfer_broadcast_send_notification_to_open_checkouts(sender, *
             event=Events.BLOCKCHAIN_DEPOSIT_BROADCAST.value,
             amount=str(payment_amount.amount),
             token=payment_amount.currency.address,
-            transaction=tx_data.hash.hex(),
+            transaction=tx_data.hash,
         )
 
 

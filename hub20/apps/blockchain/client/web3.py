@@ -1,9 +1,12 @@
 import logging
-from typing import Optional, Tuple
+from typing import Dict, Optional, Tuple
 from urllib.parse import urlparse
 
+from eth_abi.codec import ABICodec
 from pydantic import BaseModel
 from web3 import Web3
+from web3._utils.events import get_event_data
+from web3._utils.filters import construct_event_filter_params
 from web3.exceptions import ExtraDataLengthError
 from web3.middleware import geth_poa_middleware
 from web3.providers import HTTPProvider, IPCProvider, WebsocketProvider
@@ -42,7 +45,6 @@ def historical_trend_price_strategy(w3: Web3, *args, **kw):
 def get_web3(provider_url: str) -> Web3:
     endpoint = urlparse(provider_url)
 
-    logger.debug(f"Instantiating new Web3 for {endpoint.hostname}")
     provider_class = {
         "http": HTTPProvider,
         "https": HTTPProvider,
@@ -98,6 +100,27 @@ def inspect_web3(w3: Web3) -> Web3ProviderConfiguration:
         supports_pending_filters=pending_filters,
         requires_geth_poa_middleware=requires_geth_poa_middleware,
     )
+
+
+def get_event_logs(w3: Web3, event, argument_filters: Dict, from_block: int, to_block: int):
+    """
+    Taken and adapted from `https://web3py.readthedocs.io/en/stable/examples.html`
+
+    """
+    abi = event._get_event_abi()
+    codec: ABICodec = w3.codec
+
+    data_filter_set, event_filter_params = construct_event_filter_params(
+        abi,
+        codec,
+        address=argument_filters.get("address"),
+        argument_filters=argument_filters,
+        fromBlock=from_block,
+        toBlock=to_block,
+    )
+
+    logger.debug("Querying eth_getLogs with the following parameters: %s", event_filter_params)
+    return [get_event_data(codec, abi, log) for log in w3.eth.get_logs(event_filter_params)]
 
 
 def send_transaction(
