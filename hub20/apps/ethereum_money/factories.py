@@ -8,7 +8,7 @@ from hub20.apps.blockchain.factories import (
     TransactionFactory,
 )
 from hub20.apps.ethereum_money.client import encode_transfer_data
-from hub20.apps.ethereum_money.models import EthereumToken, EthereumTokenAmount
+from hub20.apps.ethereum_money.models import EthereumToken, EthereumTokenAmount, TokenList
 
 factory.Faker.add_provider(EthereumProvider)
 
@@ -88,6 +88,23 @@ class Erc20TransferFactory(TransactionFactory):
         to_address = factory.LazyAttribute(lambda obj: obj.amount.currency.address)
 
 
+class TokenListFactory(factory.django.DjangoModelFactory):
+    name = factory.Sequence(lambda n: f"Token List #{n:02}")
+    description = factory.Sequence(lambda n: f"Description for token list #{n:02}")
+
+    @factory.post_generation
+    def tokens(self, create, tokens, **kw):
+        if not create:
+            return
+
+        if tokens:
+            for token in tokens:
+                self.tokens.add(token)
+
+    class Meta:
+        model = TokenList
+
+
 __all__ = [
     "ETHFactory",
     "Erc20TokenFactory",
@@ -96,4 +113,5 @@ __all__ = [
     "Erc20TokenAmountFactory",
     "EtherAmountFactory",
     "Erc20TransferFactory",
+    "TokenListFactory",
 ]

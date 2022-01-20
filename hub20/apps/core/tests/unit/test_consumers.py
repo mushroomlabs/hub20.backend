@@ -95,7 +95,7 @@ def erc20_blockchain_payment(erc20_payment_request):
 @pytest.fixture
 def checkout():
     checkout = CheckoutFactory()
-    checkout.store.accepted_currencies.add(checkout.currency)
+    checkout.store.accepted_token_list.tokens.add(checkout.currency)
     return checkout
 
 
