@@ -54,16 +54,16 @@ class BlockchainPaymentTestCase(BaseTestCase):
         self.chain = self.blockchain_route.chain
 
     def test_transaction_sets_payment_as_received(self):
-        add_token_to_account(self.blockchain_route.account, self.order.as_token_amount, self.chain)
+        add_token_to_account(self.blockchain_route.account, self.order.as_token_amount)
         self.assertTrue(self.order.is_paid)
         self.assertFalse(self.order.is_confirmed)
 
     def test_transaction_creates_blockchain_payment(self):
-        add_token_to_account(self.blockchain_route.account, self.order.as_token_amount, self.chain)
+        add_token_to_account(self.blockchain_route.account, self.order.as_token_amount)
         self.assertEqual(self.order.payments.count(), 1)
 
     def test_can_not_add_same_transaction_twice(self):
-        add_token_to_account(self.blockchain_route.account, self.order.as_token_amount, self.chain)
+        add_token_to_account(self.blockchain_route.account, self.order.as_token_amount)
         self.assertEqual(self.order.payments.count(), 1)
         payment = self.order.payments.select_subclasses().first()
         with self.assertRaises(IntegrityError):
@@ -75,9 +75,7 @@ class BlockchainPaymentTestCase(BaseTestCase):
             )
 
     def test_user_balance_is_updated_on_completed_payment(self):
-        tx = add_token_to_account(
-            self.blockchain_route.account, self.order.as_token_amount, self.chain
-        )
+        tx = add_token_to_account(self.blockchain_route.account, self.order.as_token_amount)
 
         block_number = tx.block.number + app_settings.Payment.minimum_confirmations
         block_data = BlockMock(number=block_number)
@@ -149,6 +147,7 @@ class TransferTestCase(BaseTestCase):
         self.deposit = Erc20TokenPaymentConfirmationFactory(
             payment__route__deposit__user=self.sender,
         )
+
         self.credit = self.deposit.payment.as_token_amount
         self.wallet = EthereumAccountFactory()
         self.fee_amount = mock_fee_estimation()
@@ -204,8 +203,8 @@ class InternalTransferTestCase(TransferTestCase):
 class ExternalTransferTestCase(TransferTestCase):
     def setUp(self):
         super().setUp()
-        add_token_to_account(self.wallet, self.credit, self.chain)
-        add_eth_to_account(self.wallet, self.fee_amount, self.chain)
+        add_token_to_account(self.wallet, self.credit)
+        add_eth_to_account(self.wallet, self.fee_amount)
 
         self.transfer = ExternalTransferFactory(
             sender=self.sender, currency=self.credit.currency, amount=self.credit.amount

@@ -4,11 +4,11 @@ from django.test import TestCase
 from hub20.apps.core.factories import Erc20TokenPaymentOrderFactory, TransferFactory
 from hub20.apps.core.models import (
     BlockchainPaymentRoute,
+    PaymentConfirmation,
     PaymentOrder,
     RaidenPaymentRoute,
     Transfer,
     TransferExecution,
-    PaymentConfirmation,
 )
 from hub20.apps.ethereum_money.tests.base import add_token_to_account
 from hub20.apps.raiden.factories import ChannelFactory
@@ -41,29 +41,29 @@ class PaymentOrderManagerTestCase(BaseTestCase):
     def test_order_with_partial_payment_is_open(self):
         route = BlockchainPaymentRoute.objects.filter(deposit=self.order).first()
         partial_payment_amount = self.order.as_token_amount * 0.5
-        tx = add_token_to_account(route.account, partial_payment_amount, route.chain)
+        tx = add_token_to_account(route.account, partial_payment_amount)
         PaymentConfirmation.objects.create(payment=tx.blockchainpayment)
         self.assertTrue(BlockchainPaymentRoute.objects.open().exists())
 
     def test_order_with_unconfirmed_payment_is_open(self):
         route = BlockchainPaymentRoute.objects.filter(deposit=self.order).first()
-        add_token_to_account(route.account, self.order.as_token_amount, route.chain)
+        add_token_to_account(route.account, self.order.as_token_amount)
         self.assertTrue(BlockchainPaymentRoute.objects.open().exists())
 
     def test_order_with_multiple_payments_is_not_open(self):
         route = BlockchainPaymentRoute.objects.filter(deposit=self.order).first()
         partial_payment_amount = self.order.as_token_amount * 0.5
-        first_tx = add_token_to_account(route.account, partial_payment_amount, route.chain)
+        first_tx = add_token_to_account(route.account, partial_payment_amount)
         PaymentConfirmation.objects.create(payment=first_tx.blockchainpayment)
         self.assertTrue(BlockchainPaymentRoute.objects.open().exists())
 
-        second_tx = add_token_to_account(route.account, partial_payment_amount, route.chain)
+        second_tx = add_token_to_account(route.account, partial_payment_amount)
         PaymentConfirmation.objects.create(payment=second_tx.blockchainpayment)
         self.assertFalse(BlockchainPaymentRoute.objects.open().exists())
 
     def test_order_with_confirmed_payment_is_not_open(self):
         route = BlockchainPaymentRoute.objects.filter(deposit=self.order).first()
-        tx = add_token_to_account(route.account, self.order.as_token_amount, route.chain)
+        tx = add_token_to_account(route.account, self.order.as_token_amount)
         PaymentConfirmation.objects.create(payment=tx.blockchainpayment)
         self.assertFalse(BlockchainPaymentRoute.objects.open().exists())
 

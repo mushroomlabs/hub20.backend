@@ -83,7 +83,7 @@ def call_checkout_webhook(checkout_id):
 
 
 @shared_task
-def notify_new_block(chain_id, block_data):
+def notify_new_block(chain_id, block_data, provider_url):
 
     block_number = block_data["number"]
     session_keys = _get_open_session_keys()

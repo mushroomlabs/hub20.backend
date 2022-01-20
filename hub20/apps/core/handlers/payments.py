@@ -6,7 +6,13 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.utils import timezone
 
-from hub20.apps.blockchain.models import BaseEthereumAccount, Block, Chain, Transaction
+from hub20.apps.blockchain.models import (
+    BaseEthereumAccount,
+    Block,
+    Chain,
+    Transaction,
+    TransactionDataRecord,
+)
 from hub20.apps.blockchain.signals import block_sealed
 from hub20.apps.core import tasks
 from hub20.apps.core.choices import PAYMENT_NETWORKS
@@ -25,7 +31,6 @@ from hub20.apps.core.models import (
 )
 from hub20.apps.core.settings import app_settings
 from hub20.apps.core.signals import payment_received
-from hub20.apps.ethereum_money.models import EthereumToken
 from hub20.apps.ethereum_money.signals import incoming_transfer_broadcast, incoming_transfer_mined
 from hub20.apps.raiden.models import Payment as RaidenNodePayment, Raiden
 from hub20.apps.raiden.signals import raiden_payment_received
@@ -106,11 +111,11 @@ def on_incoming_transfer_mined_check_blockchain_payments(sender, **kw):
     payment_received.send(sender=BlockchainPayment, payment=payment)
 
 
-@receiver(incoming_transfer_broadcast, sender=EthereumToken)
+@receiver(incoming_transfer_broadcast, sender=TransactionDataRecord)
 def on_incoming_transfer_broadcast_send_notification_to_active_sessions(sender, **kw):
     recipient = kw["account"]
     payment_amount = kw["amount"]
-    tx_hash = kw["transaction_hash"]
+    tx_data = kw["transaction_data"]
 
     route = BlockchainPaymentRoute.objects.open().filter(account=recipient).first()
 
@@ -126,15 +131,15 @@ def on_incoming_transfer_broadcast_send_notification_to_active_sessions(sender, 
             deposit_id=str(deposit.id),
             amount=str(payment_amount.amount),
             token=payment_amount.currency.address,
-            transaction=tx_hash.hex(),
+            transaction=tx_data.hash.hex(),
         )
 
 
-@receiver(incoming_transfer_broadcast, sender=EthereumToken)
+@receiver(incoming_transfer_broadcast, sender=TransactionDataRecord)
 def on_incoming_transfer_broadcast_send_notification_to_open_checkouts(sender, **kw):
     recipient = kw["account"]
     payment_amount = kw["amount"]
-    tx_hash = kw["transaction_hash"]
+    tx_data = kw["transaction_data"]
 
     route = BlockchainPaymentRoute.objects.open().filter(account=recipient).first()
 
@@ -149,7 +154,7 @@ def on_incoming_transfer_broadcast_send_notification_to_open_checkouts(sender, *
             event=Events.BLOCKCHAIN_DEPOSIT_BROADCAST.value,
             amount=str(payment_amount.amount),
             token=payment_amount.currency.address,
-            transaction=tx_hash.hex(),
+            transaction=tx_data.hash,
         )
 
 
@@ -266,7 +271,7 @@ def on_blockchain_payment_received_send_notification(sender, **kw):
     payment_data = dict(
         amount=str(payment.amount),
         token=payment.currency.address,
-        transaction=payment.transaction.hash_hex,
+        transaction=payment.transaction.hash,
         block_number=payment.transaction.block.number,
     )
 

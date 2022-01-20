@@ -4,10 +4,10 @@ from factory import fuzzy
 from hub20.apps.blockchain.factories import (
     EthereumProvider,
     SyncedChainFactory,
+    TransactionDataFactory,
     TransactionFactory,
-    TransactionLogFactory,
 )
-from hub20.apps.blockchain.models import Transaction
+from hub20.apps.ethereum_money.client import encode_transfer_data
 from hub20.apps.ethereum_money.models import EthereumToken, EthereumTokenAmount
 
 factory.Faker.add_provider(EthereumProvider)
@@ -63,11 +63,29 @@ class EtherAmountFactory(factory.Factory):
         model = EthereumTokenAmount
 
 
-class Erc20TransferFactory(TransactionFactory):
-    log = factory.RelatedFactory(TransactionLogFactory, "transaction")
+class Erc20TransactionDataFactory(TransactionDataFactory):
+    data = factory.LazyAttribute(
+        lambda obj: {
+            "from": obj.from_address,
+            "to": obj.to_address,
+            "status": obj.status,
+            "blockNumber": obj.block_number,
+            "blockHash": obj.block_hash,
+            "gasUsed": obj.gas_used,
+            "logs": [encode_transfer_data(obj.to_address, obj.amount)],
+        }
+    )
 
-    class Meta:
-        model = Transaction
+    class Params:
+        gas_used = factory.fuzzy.FuzzyInteger(50000, 200000)
+        amount = factory.SubFactory(Erc20TokenAmountFactory)
+
+
+class Erc20TransferFactory(TransactionFactory):
+    class Params:
+        recipient = factory.Faker("ethereum_address")
+        amount = factory.SubFactory(Erc20TokenAmountFactory)
+        to_address = factory.LazyAttribute(lambda obj: obj.amount.currency.address)
 
 
 __all__ = [

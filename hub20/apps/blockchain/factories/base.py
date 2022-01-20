@@ -12,7 +12,7 @@ from ..models import (
     Chain,
     NativeToken,
     Transaction,
-    TransactionLog,
+    TransactionDataRecord,
     Web3Provider,
 )
 from .providers import EthereumProvider
@@ -91,30 +91,65 @@ class BlockFactory(factory.django.DjangoModelFactory):
         model = Block
 
 
+class TransactionDataFactory(factory.django.DjangoModelFactory):
+    hash = factory.Faker("hex64")
+    chain = factory.SubFactory(SyncedChainFactory)
+    from_address = factory.Faker("ethereum_address")
+    to_address = factory.Faker("ethereum_address")
+
+    data = factory.LazyAttribute(
+        lambda obj: {
+            "from": obj.from_address,
+            "to": obj.to_address,
+            "chainId": hex(obj.chain.id),
+            "gasUsed": obj.gas_used,
+            "gasPrice": obj.gas_price,
+            "blockNumber": obj.block_number,
+            "blockHash": obj.block_hash,
+            "value": obj.value,
+            "nonce": obj.nonce,
+        }
+    )
+
+    class Meta:
+        model = TransactionDataRecord
+        django_get_or_create = ("chain",)
+
+    class Params:
+        value = 0
+        nonce = factory.Sequence(lambda n: n)
+        status = 1
+        gas_used = 21000
+        gas_price = factory.fuzzy.FuzzyInteger(1e9, 100e9)
+        block_number = None
+        block_hash = None
+
+
 class TransactionFactory(factory.django.DjangoModelFactory):
-    chain = factory.LazyAttribute(lambda obj: obj.block.chain)
     block = factory.SubFactory(BlockFactory)
     hash = factory.Faker("hex64")
     from_address = factory.Faker("ethereum_address")
     to_address = factory.Faker("ethereum_address")
-    gas_used = 21000
-    gas_price = factory.fuzzy.FuzzyInteger(1e10, 2e12)
-    nonce = factory.Sequence(lambda n: n)
-    index = factory.Faker("uint256")
-    value = factory.fuzzy.FuzzyInteger(1e15, 1e21)
+
+    receipt = factory.LazyAttribute(
+        lambda obj: {
+            "from": obj.from_address,
+            "to": obj.to_address,
+            "status": obj.status,
+            "blockNumber": obj.block.number,
+            "blockHash": obj.block.hash,
+            "gasUsed": obj.gas_used,
+            "effectiveGasPrice": obj.gas_price,
+        }
+    )
 
     class Meta:
         model = Transaction
 
-
-class TransactionLogFactory(factory.django.DjangoModelFactory):
-    transaction = factory.SubFactory(TransactionFactory)
-    index = factory.Sequence(lambda n: n)
-    topics = ["0x0", "0x0", "0x0"]
-    data = "0x0"
-
-    class Meta:
-        model = TransactionLog
+    class Params:
+        status = 1
+        gas_used = factory.fuzzy.FuzzyInteger(21000, 200000)
+        gas_price = factory.fuzzy.FuzzyInteger(1e9, 100e9)
 
 
 class NativeTokenFactory(factory.django.DjangoModelFactory):
@@ -135,6 +170,7 @@ class Web3ProviderFactory(factory.django.DjangoModelFactory):
     synced = False
 
     class Meta:
+
         model = Web3Provider
         django_get_or_create = ("chain",)
 

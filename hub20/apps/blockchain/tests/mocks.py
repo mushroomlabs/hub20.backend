@@ -19,6 +19,8 @@ def _make_web3_mock():
     w3.net.peer_count = random.randint(1, 5)
     w3.eth = MagicMock()
     w3.eth.chain_id = TEST_CHAIN_ID
+    w3.provider = MagicMock()
+    w3.provider.endpoint_uri = "ipc://dev/null"
 
     w3.isConnected = lambda: True
     return w3
@@ -42,16 +44,17 @@ class TransactionMock(Web3DataMock):
     to = factory.Faker("ethereum_address")
     transactionIndex = 0
     gas = 21000
+    gasPrice = factory.fuzzy.FuzzyInteger(1e9, 1e14)
 
     class Meta:
         rename = {"from_address": "from"}
 
 
 class TransactionDataMock(TransactionMock):
-    gasPrice = factory.fuzzy.FuzzyInteger(1e9, 1e14)
     input = "0x0"
     nonce = factory.Sequence(lambda n: n)
     value = 0
+    chainId = hex(TEST_CHAIN_ID)
 
 
 class TransactionReceiptDataMock(TransactionMock):
@@ -60,7 +63,12 @@ class TransactionReceiptDataMock(TransactionMock):
     status = 1
 
     class Meta:
-        rename = {"from_address": "from", "hash": "transactionHash", "gas": "gasUsed"}
+        rename = {
+            "from_address": "from",
+            "hash": "transactionHash",
+            "gas": "gasUsed",
+            "gasPrice": "effectiveGasPrice",
+        }
 
 
 class BlockMock(Web3DataMock):

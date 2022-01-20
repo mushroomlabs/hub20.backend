@@ -73,9 +73,7 @@ class TokenNetworkChannel(models.Model):
 
     @property
     def events(self):
-        return self.tokennetworkchannelevent_set.order_by(
-            "transaction__block__number", "transaction__index"
-        )
+        return self.tokennetworkchannelevent_set.order_by("transaction__block__number")
 
 
 class TokenNetworkChannelStatus(StatusModel):
@@ -200,11 +198,8 @@ class Channel(StatusModel):
         assert token.chain == raiden.chain
 
         token_network, _ = TokenNetwork.objects.get_or_create(
-            address=token_network_address, defaults={"token": token}
+            address=token_network_address, token=token
         )
-
-        if token_network is None:
-            token_network = TokenNetwork.objects.create(address=token_network_address, token=token)
 
         assert token_network.token.address == token_address
 
