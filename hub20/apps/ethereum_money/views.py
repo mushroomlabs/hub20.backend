@@ -7,11 +7,13 @@ from eth_utils import is_address
 from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.mixins import ListModelMixin, RetrieveModelMixin
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.viewsets import GenericViewSet, ModelViewSet
+from rest_framework.reverse import reverse
+from rest_framework.views import APIView
+from rest_framework.viewsets import GenericViewSet
 
 from . import models, serializers
-from .permissions import IsTokenListOwner
 
 
 class TokenFilter(filters.FilterSet):
@@ -25,7 +27,7 @@ class TokenFilter(filters.FilterSet):
         return queryset.filter(q_name | q_symbol | q_chain_name)
 
     def filter_listed(self, queryset, name, value):
-        return queryset.exclude(usertokenlist__isnull=value)
+        return queryset.exclude(lists__isnull=value)
 
     def filter_native(self, queryset, name, value):
         filtered_qs = queryset.filter if value else queryset.exclude
@@ -51,7 +53,7 @@ class TokenViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
     ordering = ("-is_native", "chain_id", "symbol")
 
     def get_queryset(self) -> QuerySet:
-        return models.EthereumToken.objects.annotate(
+        return models.EthereumToken.objects.filter(chain__providers__is_active=True).annotate(
             is_native=Case(
                 When(address=models.EthereumToken.NULL_ADDRESS, then=Value(True)),
                 default=Value(False),
@@ -86,14 +88,26 @@ class TokenViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
         return Response(serializer.data)
 
 
-class UserTokenListViewSet(ModelViewSet):
-    permission_classes = (IsTokenListOwner,)
+class TokenListViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
+    """
+    Token lists (https://tokenlists.org) is community-led effort to
+    curate lists of ERC20 tokens. Hub Operators can create their own
+    token lists, and its users can choose freely which ones to use.
+    """
+
+    permission_classes = (IsAuthenticated,)
+    serializer_class = serializers.TokenListSerializer
+    queryset = models.TokenList.objects.all()
+
+
+class UserTokenListView(APIView):
+    permission_classes = (IsAuthenticated,)
     serializer_class = serializers.UserTokenListSerializer
 
-    def get_queryset(self) -> QuerySet:
-        return self.request.user.token_lists.all()
-
-    def get_object(self, *args, **kw):
-        token_list = get_object_or_404(models.UserTokenList, id=self.kwargs["pk"])
-        self.check_object_permissions(self.request, token_list)
-        return token_list
+    def get(self, request):
+        return Response(
+            [
+                reverse("tokenlist-detail", kwargs={"pk": tl.pk}, request=request)
+                for tl in request.user.token_lists.all()
+            ]
+        )

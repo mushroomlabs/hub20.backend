@@ -2,6 +2,7 @@ from django import forms
 from django.contrib import admin
 
 from . import models
+from .forms import TokenListForm
 from .validators import token_logo_uri_validator
 
 
@@ -24,3 +25,9 @@ class TokenAdmin(admin.ModelAdmin):
     list_display = ["symbol", "name", "address", "chain", "is_listed"]
     list_filter = ["is_listed", "chain"]
     readonly_fields = ["chain", "symbol", "name", "address", "decimals"]
+
+
+@admin.register(models.TokenList)
+class TokenListAdmin(admin.ModelAdmin):
+    form = TokenListForm
+    list_display = ["name", "description"]

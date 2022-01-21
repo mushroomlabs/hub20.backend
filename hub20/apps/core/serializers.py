@@ -393,12 +393,26 @@ class StoreSerializer(serializers.ModelSerializer):
     url = serializers.HyperlinkedIdentityField(view_name="store-detail")
     site_url = serializers.URLField(source="url")
     public_key = serializers.CharField(source="rsa.public_key_pem", read_only=True)
+
+    class Meta:
+        model = models.Store
+        fields = ("id", "url", "name", "site_url", "public_key")
+        read_only_fields = ("id", "public_key")
+
+
+class StoreViewerSerializer(StoreSerializer):
     accepted_currencies = HyperlinkedRelatedTokenField(many=True)
 
     class Meta:
         model = models.Store
-        fields = ("id", "url", "name", "site_url", "public_key", "accepted_currencies")
-        read_only_fields = ("id", "public_key")
+        fields = read_only_fields = (
+            "id",
+            "url",
+            "name",
+            "site_url",
+            "public_key",
+            "accepted_currencies",
+        )
 
 
 class StoreEditorSerializer(StoreSerializer):
@@ -406,14 +420,14 @@ class StoreEditorSerializer(StoreSerializer):
 
     def create(self, validated_data):
         request = self.context.get("request")
-        currencies = validated_data.pop("accepted_currencies", [])
-        store = models.Store.objects.create(owner=request.user, **validated_data)
-        store.accepted_currencies.set(currencies)
-        return store
+        return models.Store.objects.create(owner=request.user, **validated_data)
 
     class Meta:
         model = models.Store
-        fields = StoreSerializer.Meta.fields + ("checkout_webhook_url",)
+        fields = StoreSerializer.Meta.fields + (
+            "accepted_token_list",
+            "checkout_webhook_url",
+        )
         read_only_fields = StoreSerializer.Meta.read_only_fields
 
 

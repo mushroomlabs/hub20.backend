@@ -12,7 +12,7 @@ class TokenValueField(serializers.DecimalField):
 
 
 class HyperlinkedTokenMixin:
-    queryset = models.EthereumToken.objects.all()
+    queryset = models.EthereumToken.objects.filter(chain__providers__is_active=True)
 
     def get_url(self, obj, view_name, request, format):
         url_kwargs = {"chain_id": obj.chain_id, "address": obj.address}
@@ -65,17 +65,20 @@ class HyperlinkedEthereumTokenSerializer(EthereumTokenSerializer):
         read_only_fields = ("url",) + EthereumTokenSerializer.Meta.read_only_fields
 
 
-class UserTokenListSerializer(serializers.ModelSerializer):
-    url = serializers.HyperlinkedIdentityField(view_name="user-tokenlist-detail")
+class TokenListSerializer(serializers.ModelSerializer):
+    url = serializers.HyperlinkedIdentityField(view_name="tokenlist-detail")
     tokens = HyperlinkedRelatedTokenField(many=True)
+
+    class Meta:
+        model = models.TokenList
+        fields = ("url", "name", "description", "tokens")
+
+
+class UserTokenListSerializer(serializers.Serializer):
+    token_lists = serializers.HyperlinkedRelatedField(
+        queryset=models.TokenList.objects.all(), view_name="tokenlist-detail", many=True
+    )
 
     def create(self, validated_data):
         request = self.context.get("request")
-        tokens = validated_data.pop("tokens", [])
-        token_list = models.UserTokenList.objects.create(created_by=request.user, **validated_data)
-        token_list.tokens.set(tokens)
-        return token_list
-
-    class Meta:
-        model = models.UserTokenList
-        fields = ("url", "name", "description", "tokens")
+        return self.Meta.model.objects.create(user=request.user, **validated_data)

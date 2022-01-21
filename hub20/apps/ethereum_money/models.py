@@ -82,8 +82,9 @@ class WrappedToken(models.Model):
 
 class TokenList(models.Model):
     """
-    Eventually we will add methods that allow users to manage their
-    own [token lists](https://tokenlists.org)
+    A model to manage [token lists](https://tokenlists.org). At
+    first, only admins can manage/import/export them, but we might add
+    the functionality for users to manage their own
     """
 
     name = models.CharField(max_length=64)
@@ -95,6 +96,11 @@ class TokenList(models.Model):
 
 
 class UserTokenList(models.Model):
+    """
+    TokenLists that the user wants to use (e.g, as a preset
+    selection of tokens for the payment gateway
+    """
+
     user = models.ForeignKey(User, related_name="token_lists", on_delete=models.CASCADE)
     token_list = models.ForeignKey(
         TokenList, related_name="user_managed", on_delete=models.CASCADE
