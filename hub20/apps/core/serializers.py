@@ -7,7 +7,7 @@ from rest_framework import serializers
 from rest_framework.reverse import reverse
 
 from hub20.apps.blockchain.serializers import EthereumAddressField, HexadecimalField
-from hub20.apps.ethereum_money.models import EthereumTokenAmount
+from hub20.apps.ethereum_money.models import EthereumTokenAmount, TokenList
 from hub20.apps.ethereum_money.serializers import (
     EthereumTokenSerializer,
     HyperlinkedRelatedTokenField,
@@ -417,6 +417,9 @@ class StoreViewerSerializer(StoreSerializer):
 
 class StoreEditorSerializer(StoreSerializer):
     url = serializers.HyperlinkedIdentityField(view_name="user-store-detail")
+    accepted_token_list = serializers.HyperlinkedRelatedField(
+        queryset=TokenList.objects.all(), view_name="tokenlist-detail"
+    )
 
     def create(self, validated_data):
         request = self.context.get("request")
