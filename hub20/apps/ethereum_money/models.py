@@ -71,6 +71,19 @@ class EthereumToken(models.Model):
 
 
 class WrappedToken(models.Model):
+    """
+    Tokens that have are minted and burned dependent on how much
+    of a primary token is locked are called 'wrapper tokens'. This can
+    happen in-chain (e.g, W-ETH wrapping ETH), or cross-chain
+    "bridged" tokens (e.g, WBTC wrapping BTC, Binance BAT wrapping
+    ERC20 BAT, Arbitrum DAI wrapping Ethereum DAI, etc)a
+
+    The idea of this table is to provide a way for operators and users
+    to optionally accept payments and transfers of a wrapped token
+    instead of the 'original' one.
+
+    """
+
     wrapped = models.ForeignKey(
         EthereumToken, related_name="wrapping_tokens", on_delete=models.CASCADE
     )

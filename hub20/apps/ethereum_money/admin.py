@@ -2,7 +2,7 @@ from django import forms
 from django.contrib import admin
 
 from . import models
-from .forms import TokenListForm
+from .forms import TokenListForm, WrappedTokenForm
 from .validators import token_logo_uri_validator
 
 
@@ -31,3 +31,10 @@ class TokenAdmin(admin.ModelAdmin):
 class TokenListAdmin(admin.ModelAdmin):
     form = TokenListForm
     list_display = ["name", "description"]
+
+
+@admin.register(models.WrappedToken)
+class WrappedTokenAdmin(admin.ModelAdmin):
+    form = WrappedTokenForm
+
+    list_display = ("wrapped", "wrapper")
