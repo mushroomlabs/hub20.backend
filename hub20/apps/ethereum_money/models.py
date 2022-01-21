@@ -80,22 +80,34 @@ class WrappedToken(models.Model):
         unique_together = ("wrapped", "wrapper")
 
 
-class UserTokenList(models.Model):
+class TokenList(models.Model):
     """
-    Eventually we will add methods that allow users to manage their
-    own [token lists](https://tokenlists.org)
+    A model to manage [token lists](https://tokenlists.org). At
+    first, only admins can manage/import/export them, but we might add
+    the functionality for users to manage their own
     """
 
-    created_by = models.ForeignKey(User, related_name="token_lists", on_delete=models.CASCADE)
     name = models.CharField(max_length=64)
     description = models.TextField(null=True)
-    tokens = models.ManyToManyField(EthereumToken)
+    tokens = models.ManyToManyField(EthereumToken, related_name="lists")
 
     def __str__(self):
         return self.name
 
+
+class UserTokenList(models.Model):
+    """
+    TokenLists that the user wants to use (e.g, as a preset
+    selection of tokens for the payment gateway
+    """
+
+    user = models.ForeignKey(User, related_name="token_lists", on_delete=models.CASCADE)
+    token_list = models.ForeignKey(
+        TokenList, related_name="user_managed", on_delete=models.CASCADE
+    )
+
     class Meta:
-        unique_together = ("name", "created_by")
+        unique_together = ("user", "token_list")
 
 
 class EthereumTokenValueModel(models.Model):
@@ -196,6 +208,6 @@ __all__ = [
     "EthereumToken",
     "EthereumTokenAmount",
     "EthereumTokenValueModel",
-    "TokenList",
+    "UserTokenList",
     "WrappedToken",
 ]

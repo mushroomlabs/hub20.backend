@@ -13,4 +13,8 @@ class TokenRouter(SimpleRouter):
 token_router = TokenRouter(trailing_slash=False)
 token_router.register(r"tokens", views.TokenViewSet, basename="token")
 
-urlpatterns = token_router.urls
+
+router = SimpleRouter(trailing_slash=False)
+router.register(r"tokenlists", views.TokenListViewSet, basename="tokenlist")
+
+urlpatterns = token_router.urls + router.urls

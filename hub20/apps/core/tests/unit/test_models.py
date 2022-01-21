@@ -88,7 +88,7 @@ class BlockchainPaymentTestCase(BaseTestCase):
 class CheckoutTestCase(BaseTestCase):
     def setUp(self):
         self.checkout = CheckoutFactory()
-        self.checkout.store.accepted_currencies.add(self.checkout.currency)
+        self.checkout.store.accepted_token_list.tokens.add(self.checkout.currency)
 
     def test_checkout_user_and_store_owner_are_the_same(self):
         self.assertEqual(self.checkout.store.owner, self.checkout.user)
@@ -96,7 +96,7 @@ class CheckoutTestCase(BaseTestCase):
     def test_checkout_currency_must_be_accepted_by_store(self):
         self.checkout.clean()
 
-        self.checkout.store.accepted_currencies.clear()
+        self.checkout.store.accepted_token_list.tokens.clear()
         with self.assertRaises(ValidationError):
             self.checkout.clean()
 

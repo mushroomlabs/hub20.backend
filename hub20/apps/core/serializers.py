@@ -7,7 +7,7 @@ from rest_framework import serializers
 from rest_framework.reverse import reverse
 
 from hub20.apps.blockchain.serializers import EthereumAddressField, HexadecimalField
-from hub20.apps.ethereum_money.models import EthereumTokenAmount
+from hub20.apps.ethereum_money.models import EthereumTokenAmount, TokenList
 from hub20.apps.ethereum_money.serializers import (
     EthereumTokenSerializer,
     HyperlinkedRelatedTokenField,
@@ -393,27 +393,44 @@ class StoreSerializer(serializers.ModelSerializer):
     url = serializers.HyperlinkedIdentityField(view_name="store-detail")
     site_url = serializers.URLField(source="url")
     public_key = serializers.CharField(source="rsa.public_key_pem", read_only=True)
+
+    class Meta:
+        model = models.Store
+        fields = ("id", "url", "name", "site_url", "public_key")
+        read_only_fields = ("id", "public_key")
+
+
+class StoreViewerSerializer(StoreSerializer):
     accepted_currencies = HyperlinkedRelatedTokenField(many=True)
 
     class Meta:
         model = models.Store
-        fields = ("id", "url", "name", "site_url", "public_key", "accepted_currencies")
-        read_only_fields = ("id", "public_key")
+        fields = read_only_fields = (
+            "id",
+            "url",
+            "name",
+            "site_url",
+            "public_key",
+            "accepted_currencies",
+        )
 
 
 class StoreEditorSerializer(StoreSerializer):
     url = serializers.HyperlinkedIdentityField(view_name="user-store-detail")
+    accepted_token_list = serializers.HyperlinkedRelatedField(
+        queryset=TokenList.objects.all(), view_name="tokenlist-detail"
+    )
 
     def create(self, validated_data):
         request = self.context.get("request")
-        currencies = validated_data.pop("accepted_currencies", [])
-        store = models.Store.objects.create(owner=request.user, **validated_data)
-        store.accepted_currencies.set(currencies)
-        return store
+        return models.Store.objects.create(owner=request.user, **validated_data)
 
     class Meta:
         model = models.Store
-        fields = StoreSerializer.Meta.fields + ("checkout_webhook_url",)
+        fields = StoreSerializer.Meta.fields + (
+            "accepted_token_list",
+            "checkout_webhook_url",
+        )
         read_only_fields = StoreSerializer.Meta.read_only_fields
 
 

@@ -232,9 +232,10 @@ class PaymentViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
             return None
 
 
-class StoreViewSet(GenericViewSet, RetrieveModelMixin):
+class StoreViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
     permission_classes = (AllowAny,)
-    serializer_class = serializers.StoreSerializer
+    serializer_class = serializers.StoreViewerSerializer
+    queryset = models.Store.objects.all()
 
     def get_object(self, *args, **kw):
         return get_object_or_404(models.Store, id=self.kwargs["pk"])

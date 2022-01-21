@@ -176,7 +176,7 @@ class TransferTestCase(TestCase):
 class CheckoutViewTestCase(TestCase):
     def setUp(self):
         self.token = Erc20TokenFactory()
-        self.store = factories.StoreFactory(accepted_currencies=[self.token])
+        self.store = factories.StoreFactory(accepted_token_list__tokens=[self.token])
 
     def test_can_create_checkout_via_api(self):
         amount = Erc20TokenAmountFactory(currency=self.token)
