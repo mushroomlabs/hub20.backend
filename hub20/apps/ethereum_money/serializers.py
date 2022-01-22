@@ -65,6 +65,22 @@ class HyperlinkedEthereumTokenSerializer(EthereumTokenSerializer):
         read_only_fields = ("url",) + EthereumTokenSerializer.Meta.read_only_fields
 
 
+class TokenInfoSerializer(serializers.ModelSerializer):
+    wrapped_by = HyperlinkedTokenIdentityField(view_name="token-detail", read_only=True, many=True)
+    wraps = HyperlinkedRelatedTokenField()
+
+    class Meta:
+        model = models.EthereumToken
+        fields = read_only_fields = (
+            "name",
+            "symbol",
+            "wrapped_by",
+            "wraps",
+            "is_stable",
+            "tracks_currency",
+        )
+
+
 class TokenListSerializer(serializers.ModelSerializer):
     url = serializers.HyperlinkedIdentityField(view_name="tokenlist-detail")
     tokens = HyperlinkedRelatedTokenField(many=True)

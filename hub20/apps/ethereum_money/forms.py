@@ -20,3 +20,11 @@ class WrappedTokenForm(forms.ModelForm):
     class Meta:
         model = models.WrappedToken
         fields = ("wrapped", "wrapper")
+
+
+class StableTokenPairForm(forms.ModelForm):
+    token = forms.ModelChoiceField(queryset=TOKEN_FILTER_QS)
+
+    class Meta:
+        model = models.StableTokenPair
+        fields = ("token", "currency", "algorithmic_peg")

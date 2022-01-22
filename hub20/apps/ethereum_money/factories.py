@@ -8,7 +8,13 @@ from hub20.apps.blockchain.factories import (
     TransactionFactory,
 )
 from hub20.apps.ethereum_money.client import encode_transfer_data
-from hub20.apps.ethereum_money.models import EthereumToken, EthereumTokenAmount, TokenList
+from hub20.apps.ethereum_money.models import (
+    EthereumToken,
+    EthereumTokenAmount,
+    StableTokenPair,
+    TokenList,
+    WrappedToken,
+)
 
 factory.Faker.add_provider(EthereumProvider)
 
@@ -19,8 +25,8 @@ class EthereumCurrencyFactory(factory.django.DjangoModelFactory):
 
 
 class ETHFactory(EthereumCurrencyFactory):
-    name = fuzzy.FuzzyChoice(choices=["Ethereum"])
-    symbol = fuzzy.FuzzyChoice(choices=["ETH"])
+    name = "Ether"
+    symbol = "ETH"
     address = EthereumToken.NULL_ADDRESS
 
     class Meta:
@@ -35,6 +41,30 @@ class Erc20TokenFactory(EthereumCurrencyFactory):
 
     class Meta:
         model = EthereumToken
+
+
+class WrappedEtherFactory(factory.django.DjangoModelFactory):
+    wrapper = factory.SubFactory(Erc20TokenFactory)
+    wrapped = factory.SubFactory(ETHFactory)
+
+    class Meta:
+        model = WrappedToken
+
+
+class WrappedTokenFactory(factory.django.DjangoModelFactory):
+    wrapper = factory.SubFactory(Erc20TokenFactory)
+    wrapped = factory.SubFactory(Erc20TokenFactory)
+
+    class Meta:
+        model = WrappedToken
+
+
+class StableTokenFactory(factory.django.DjangoModelFactory):
+    token = factory.SubFactory(Erc20TokenFactory)
+    currency = factory.Iterator(["USD", "EUR", "GBP"])
+
+    class Meta:
+        model = StableTokenPair
 
 
 class EthereumTokenValueModelFactory(factory.django.DjangoModelFactory):
@@ -114,4 +144,7 @@ __all__ = [
     "EtherAmountFactory",
     "Erc20TransferFactory",
     "TokenListFactory",
+    "WrappedEtherFactory",
+    "WrappedTokenFactory",
+    "StableTokenFactory",
 ]

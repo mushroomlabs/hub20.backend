@@ -19,6 +19,8 @@ from . import models, serializers
 class TokenFilter(filters.FilterSet):
     listed = filters.BooleanFilter(label="listed", method="filter_listed")
     native = filters.BooleanFilter(label="native", method="filter_native")
+    stable_tokens = filters.BooleanFilter(label="stable", method="filter_stable_tokens")
+    fiat = filters.CharFilter(label="fiat", method="filter_fiat")
 
     def token_search(self, queryset, name, value):
         q_name = Q(name__istartswith=value)
@@ -33,10 +35,16 @@ class TokenFilter(filters.FilterSet):
         filtered_qs = queryset.filter if value else queryset.exclude
         return filtered_qs(address=models.EthereumToken.NULL_ADDRESS)
 
+    def filter_stable_tokens(self, queryset, name, value):
+        return queryset.exclude(stable_pair__token__isnull=value)
+
+    def filter_fiat(self, queryset, name, value):
+        return queryset.filter(stable_pair__currency__iexact=value)
+
     class Meta:
         model = models.EthereumToken
         ordering_fields = ("symbol", "chain_id")
-        fields = ("chain_id", "symbol", "address", "listed", "native")
+        fields = ("chain_id", "symbol", "address", "listed", "native", "stable_tokens", "fiat")
 
 
 class TokenViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
@@ -71,20 +79,14 @@ class TokenViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
         )
 
     @action(detail=True)
-    def wrappers(self, request, **kwargs):
+    def info(self, request, **kwargs):
         """
-        Returns list of tokens that are wrap a native token into
-        ERC20 or bridge them to another chain
+        Returns extra information that the hub operator has provided about this token.
+
+
         """
         token = self.get_object()
-        wrapper_tokens = models.EthereumToken.objects.filter(wrappedtoken__wrapped=token)
-
-        page = self.paginate_queryset(wrapper_tokens)
-        if page is not None:
-            serializer = self.get_serializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
-
-        serializer = self.get_serializer(wrapper_tokens, many=True)
+        serializer = serializers.TokenInfoSerializer(instance=token, context=dict(request=request))
         return Response(serializer.data)
 
 

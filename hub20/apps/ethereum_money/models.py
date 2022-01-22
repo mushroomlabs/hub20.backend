@@ -10,6 +10,7 @@ from model_utils.managers import QueryManager
 from hub20.apps.blockchain.fields import EthereumAddressField
 from hub20.apps.blockchain.models import Chain
 
+from . import choices
 from .fields import EthereumTokenAmountField, TokenLogoURLField
 from .typing import TokenAmount, TokenAmount_T, Wei
 
@@ -34,6 +35,24 @@ class EthereumToken(models.Model):
     @property
     def is_ERC20(self) -> bool:
         return self.address != self.NULL_ADDRESS
+
+    @property
+    def wrapped_by(self):
+        return self.__class__.objects.filter(id__in=self.wrapping_tokens.values("wrapper"))
+
+    @property
+    def wraps(self):
+        wrapping = getattr(self, "wrappedtoken", None)
+        return wrapping and wrapping.wrapper
+
+    @property
+    def is_stable(self):
+        return hasattr(self, "stable_pair")
+
+    @property
+    def tracks_currency(self):
+        pairing = getattr(self, "stable_pair", None)
+        return pairing and pairing.currency
 
     def __str__(self) -> str:
         components = [self.symbol]
@@ -91,6 +110,22 @@ class WrappedToken(models.Model):
 
     class Meta:
         unique_together = ("wrapped", "wrapper")
+
+
+class StableTokenPair(models.Model):
+    """
+    A stabletoken is a token whose value is supposed to be pegged to a
+    'real' fiat currency. These value pegs can be 'soft' or 'hard',
+    (e.g, both USDC and DAI are pegged to the USD, but DAI's price is
+    determined algorithmically and therefore can oscillate, while USDC
+    is supposed to always be worth one USD
+    """
+
+    token = models.OneToOneField(
+        EthereumToken, related_name="stable_pair", on_delete=models.CASCADE
+    )
+    algorithmic_peg = models.BooleanField(default=True)
+    currency = models.CharField(max_length=3, choices=choices.CURRENCIES)
 
 
 class TokenList(models.Model):
