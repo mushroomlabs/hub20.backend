@@ -257,6 +257,14 @@ class UserStoreViewSet(ModelViewSet):
         return store
 
 
+class UserPreferencesView(generics.RetrieveUpdateAPIView):
+    permission_classes = (IsAuthenticated,)
+    serializer_class = serializers.UserPreferencesSerializer
+
+    def get_object(self) -> QuerySet:
+        return self.request.user.preferences
+
+
 class UserViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
     permission_classes = (IsAuthenticated,)
     serializer_class = serializers.UserSerializer

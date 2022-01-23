@@ -15,6 +15,7 @@ djangorestframework
 djangorestframework-link-header-pagination
 django_smtp_ssl
 django-money
+django-taggit
 drf-nested-routers
 drf-yasg
 ethereum

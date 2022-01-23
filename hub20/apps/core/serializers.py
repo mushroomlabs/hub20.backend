@@ -7,7 +7,7 @@ from rest_framework import serializers
 from rest_framework.reverse import reverse
 
 from hub20.apps.blockchain.serializers import EthereumAddressField, HexadecimalField
-from hub20.apps.ethereum_money.models import EthereumTokenAmount, TokenList
+from hub20.apps.ethereum_money.models import EthereumToken, EthereumTokenAmount
 from hub20.apps.ethereum_money.serializers import (
     EthereumTokenSerializer,
     HyperlinkedRelatedTokenField,
@@ -27,6 +27,15 @@ class UserRelatedField(serializers.SlugRelatedField):
     def __init__(self, *args, **kw):
         kw.setdefault("slug_field", "username")
         super().__init__(*args, **kw)
+
+
+class StoreAcceptedTokenList(serializers.HyperlinkedRelatedField):
+    view_name = "user-tokenlist-detail"
+
+    def get_queryset(self):
+        request = self.context.get("request")
+
+        return request.user.token_lists.all()
 
 
 class HyperlinkedBalanceIdentityField(serializers.HyperlinkedIdentityField):
@@ -417,9 +426,7 @@ class StoreViewerSerializer(StoreSerializer):
 
 class StoreEditorSerializer(StoreSerializer):
     url = serializers.HyperlinkedIdentityField(view_name="user-store-detail")
-    accepted_token_list = serializers.HyperlinkedRelatedField(
-        queryset=TokenList.objects.all(), view_name="tokenlist-detail"
-    )
+    accepted_token_list = StoreAcceptedTokenList()
 
     def create(self, validated_data):
         request = self.context.get("request")
@@ -489,6 +496,18 @@ class DebitSerializer(BookEntrySerializer):
     class Meta:
         model = models.Debit
         fields = read_only_fields = BookEntrySerializer.Meta.fields
+
+
+class UserPreferencesSerializer(serializers.ModelSerializer):
+    tokens = HyperlinkedRelatedTokenField(
+        view_name="token-detail",
+        queryset=EthereumToken.tradeable.all(),
+        many=True,
+    )
+
+    class Meta:
+        model = models.UserPreferences
+        fields = ("tokens",)
 
 
 class AccountingBookSerializer(serializers.Serializer):

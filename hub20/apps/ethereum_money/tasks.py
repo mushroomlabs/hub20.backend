@@ -15,9 +15,15 @@ from hub20.apps.blockchain.models import (
 )
 
 from . import signals
-from .models import EthereumToken
+from .models import EthereumToken, TokenList
 
 logger = logging.getLogger(__name__)
+
+
+@shared_task
+def import_token_list(url, description=None):
+    token_list_data = TokenList.fetch(url)
+    TokenList.make(url, token_list_data, description=description)
 
 
 @shared_task

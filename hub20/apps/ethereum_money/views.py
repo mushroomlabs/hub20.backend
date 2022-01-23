@@ -4,19 +4,21 @@ from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django_filters import rest_framework as filters
 from eth_utils import is_address
+from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter, SearchFilter
-from rest_framework.mixins import ListModelMixin, RetrieveModelMixin
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.mixins import CreateModelMixin, ListModelMixin, RetrieveModelMixin
+from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.reverse import reverse
-from rest_framework.views import APIView
-from rest_framework.viewsets import GenericViewSet
+from rest_framework.viewsets import GenericViewSet, ModelViewSet
 
-from . import models, serializers
+from hub20.apps.blockchain.models import Chain
+
+from . import models, serializers, tasks
 
 
 class TokenFilter(filters.FilterSet):
+    chain_id = filters.ModelChoiceFilter(queryset=Chain.active.all())
     listed = filters.BooleanFilter(label="listed", method="filter_listed")
     native = filters.BooleanFilter(label="native", method="filter_native")
     stable_tokens = filters.BooleanFilter(label="stable", method="filter_stable_tokens")
@@ -29,7 +31,7 @@ class TokenFilter(filters.FilterSet):
         return queryset.filter(q_name | q_symbol | q_chain_name)
 
     def filter_listed(self, queryset, name, value):
-        return queryset.exclude(lists__isnull=value)
+        return queryset.exclude(ethereum_money_tokenlist_tokenlists__isnull=value)
 
     def filter_native(self, queryset, name, value):
         filtered_qs = queryset.filter if value else queryset.exclude
@@ -47,7 +49,7 @@ class TokenFilter(filters.FilterSet):
         fields = ("chain_id", "symbol", "address", "listed", "native", "stable_tokens", "fiat")
 
 
-class TokenViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
+class TokenViewSet(GenericViewSet, ListModelMixin, CreateModelMixin, RetrieveModelMixin):
     serializer_class = serializers.HyperlinkedEthereumTokenSerializer
     filterset_class = TokenFilter
     filter_backends = (
@@ -61,7 +63,7 @@ class TokenViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
     ordering = ("-is_native", "chain_id", "symbol")
 
     def get_queryset(self) -> QuerySet:
-        return models.EthereumToken.objects.filter(chain__providers__is_active=True).annotate(
+        return models.EthereumToken.tradeable.annotate(
             is_native=Case(
                 When(address=models.EthereumToken.NULL_ADDRESS, then=Value(True)),
                 default=Value(False),
@@ -101,15 +103,60 @@ class TokenListViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
     serializer_class = serializers.TokenListSerializer
     queryset = models.TokenList.objects.all()
 
+    def get_serializer_class(self):
+        if self.action == "_import":
+            return serializers.TokenListImportSerializer
 
-class UserTokenListView(APIView):
+        return serializers.TokenListSerializer
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="import",
+        name="Import from URL",
+        permission_classes=(IsAdminUser,),
+    )
+    def _import(self, request, **kwargs):
+        """
+        Fetches, validates and imports the token list from the
+        provided URL. This process is executed on the background
+        """
+        serializer = self.get_serializer(data=request.data)
+
+        if serializer.is_valid():
+            tasks.import_token_list.delay(
+                url=serializer.validated_data["url"],
+                description=serializer.validated_data["description"],
+            )
+            return Response(serializer.data)
+        else:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class UserTokenListViewSet(ModelViewSet):
+
     permission_classes = (IsAuthenticated,)
     serializer_class = serializers.UserTokenListSerializer
 
-    def get(self, request):
-        return Response(
-            [
-                reverse("tokenlist-detail", kwargs={"pk": tl.pk}, request=request)
-                for tl in request.user.token_lists.all()
-            ]
-        )
+    def get_queryset(self):
+        return self.request.user.token_lists.all()
+
+    def get_serializer_class(self):
+        if self.action == "clone":
+            return serializers.UserTokenListCloneSerializer
+        return serializers.UserTokenListSerializer
+
+    @action(detail=False, methods=["post"])
+    def clone(self, request, **kwargs):
+        """
+        Clone a token list from the site's base, allowing users to
+        create their own token lists
+        """
+        serializer = self.get_serializer(data=request.data)
+
+        if serializer.is_valid():
+            serializer.save()
+            headers = self.get_success_headers(serializer.data)
+            return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        else:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

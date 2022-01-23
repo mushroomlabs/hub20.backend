@@ -2,7 +2,7 @@ from django.urls import path
 from rest_framework.routers import SimpleRouter
 
 from hub20.apps.ethereum_money.api import TokenRouter
-from hub20.apps.ethereum_money.views import TokenListViewSet, UserTokenListView
+from hub20.apps.ethereum_money.views import TokenListViewSet, UserTokenListViewSet
 
 from . import views
 from .consumers import CheckoutConsumer, SessionEventsConsumer
@@ -23,6 +23,7 @@ router.register(
     "accounting/wallets", views.BalanceSheetWalletViewSet, basename="accounting-wallets"
 )
 router.register("my/stores", views.UserStoreViewSet, basename="user-store")
+router.register("my/tokenlists", UserTokenListViewSet, basename="user-tokenlist")
 
 urlpatterns = (
     [
@@ -45,7 +46,7 @@ urlpatterns = (
         path("transfers", views.TransferListView.as_view(), name="transfer-list"),
         path("transfers/transfer/<int:pk>", views.TransferView.as_view(), name="transfer-detail"),
         path("accounting/report", views.AccountingReportView.as_view(), name="accounting-report"),
-        path("my/tokenlists", UserTokenListView.as_view(), name="user-tokenlist-list"),
+        path("my/settings", views.UserPreferencesView.as_view(), name="user-preferences"),
     ]
     + router.urls
     + token_router.urls

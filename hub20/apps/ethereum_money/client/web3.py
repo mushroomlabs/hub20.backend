@@ -9,6 +9,7 @@ from web3._utils.events import get_event_data
 from web3.exceptions import LogTopicError, MismatchedABI
 
 from hub20.apps.blockchain.client import make_web3
+from hub20.apps.blockchain.factories.base import FAKER
 from hub20.apps.blockchain.models import BaseEthereumAccount, Chain
 from hub20.apps.blockchain.typing import Address, EthereumAccount_T
 from hub20.apps.ethereum_money.abi import EIP20_ABI
@@ -42,7 +43,9 @@ def encode_transfer_data(recipient_address, amount: EthereumTokenAmount):
 def get_transfer_gas_estimate(w3: Web3, token: EthereumToken):
     if token.is_ERC20:
         contract = w3.eth.contract(abi=EIP20_ABI, address=token.address)
-        return contract.functions.transfer(token.address, 0).estimateGas()
+        return contract.functions.transfer(FAKER.ethereum_address(), 0).estimateGas(
+            {"from": FAKER.ethereum_address()}
+        )
     else:
         return 21000
 

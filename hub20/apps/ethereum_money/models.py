@@ -1,17 +1,22 @@
 from __future__ import annotations
 
+import json
 import logging
 
+import requests
 from django.contrib.auth import get_user_model
 from django.db import models
 from django.db.models import Q, Sum
 from model_utils.managers import QueryManager
+from model_utils.models import TimeStampedModel
+from taggit.managers import TaggableManager
 
 from hub20.apps.blockchain.fields import EthereumAddressField
 from hub20.apps.blockchain.models import Chain
 
 from . import choices
-from .fields import EthereumTokenAmountField, TokenLogoURLField
+from .fields import EthereumTokenAmountField, TokenlistStandardURLField
+from .schemas import TokenList as TokenListDataModel, validate_token_list
 from .typing import TokenAmount, TokenAmount_T, Wei
 
 logger = logging.getLogger(__name__)
@@ -25,12 +30,13 @@ class EthereumToken(models.Model):
     symbol = models.CharField(max_length=20)
     name = models.CharField(max_length=500)
     decimals = models.PositiveIntegerField(default=18)
-    logoURI = TokenLogoURLField(null=True)
+    logoURI = TokenlistStandardURLField(max_length=512, null=True, blank=True)
     is_listed = models.BooleanField(default=False)
 
     objects = models.Manager()
     native = QueryManager(address=NULL_ADDRESS)
     ERC20tokens = QueryManager(~Q(address=NULL_ADDRESS))
+    tradeable = QueryManager(chain__providers__is_active=True)
 
     @property
     def is_ERC20(self) -> bool:
@@ -128,34 +134,95 @@ class StableTokenPair(models.Model):
     currency = models.CharField(max_length=3, choices=choices.CURRENCIES)
 
 
-class TokenList(models.Model):
-    """
-    A model to manage [token lists](https://tokenlists.org). At
-    first, only admins can manage/import/export them, but we might add
-    the functionality for users to manage their own
-    """
-
+class AbstractTokenListModel(models.Model):
     name = models.CharField(max_length=64)
     description = models.TextField(null=True)
-    tokens = models.ManyToManyField(EthereumToken, related_name="lists")
+    tokens = models.ManyToManyField(
+        EthereumToken, related_name="%(app_label)s_%(class)s_tokenlists"
+    )
+    keywords = TaggableManager()
 
     def __str__(self):
         return self.name
 
+    @classmethod
+    def fetch(cls, url) -> TokenListDataModel:
+        response = requests.get(url)
 
-class UserTokenList(models.Model):
+        try:
+            response.raise_for_status()
+        except requests.exceptions.HTTPError:
+            raise ValueError(f"Failed to fetch {url}")
+
+        try:
+            token_list_data = response.json()
+        except json.decoder.JSONDecodeError:
+            raise ValueError(f"Could not decode json response from {url}")
+
+        validate_token_list(token_list_data)
+
+        return TokenListDataModel(**token_list_data)
+
+    class Meta:
+        abstract = True
+
+
+class TokenList(AbstractTokenListModel):
     """
-    TokenLists that the user wants to use (e.g, as a preset
-    selection of tokens for the payment gateway
+    A model to manage [token lists](https://tokenlists.org). Only
+    admins can manage/import/export them.
+    """
+
+    url = TokenlistStandardURLField()
+    version = models.CharField(max_length=32)
+
+    class Meta:
+        unique_together = ("url", "version")
+
+    @classmethod
+    def make(cls, url, token_list_data: TokenListDataModel, description=None):
+
+        token_list, _ = cls.objects.get_or_create(
+            url=url,
+            version=token_list_data.version.as_string,
+            defaults=dict(name=token_list_data.name),
+        )
+        token_list.description = description
+        token_list.keywords.add(*token_list_data.keywords)
+        token_list.save()
+
+        for token_entry in token_list_data.tokens:
+            token, _ = EthereumToken.objects.get_or_create(
+                chain_id=token_entry.chainId,
+                address=token_entry.address,
+                defaults=dict(
+                    name=token_entry.name,
+                    decimals=token_entry.decimals,
+                    symbol=token_entry.symbol,
+                    logoURI=token_entry.logoURI,
+                ),
+            )
+            token_list.tokens.add(token)
+        return token_list
+
+
+class UserTokenList(AbstractTokenListModel, TimeStampedModel):
+    """
+    A model to manage [token lists](https://tokenlists.org). Only
+    admins can manage/import/export them.
     """
 
     user = models.ForeignKey(User, related_name="token_lists", on_delete=models.CASCADE)
-    token_list = models.ForeignKey(
-        TokenList, related_name="user_managed", on_delete=models.CASCADE
-    )
 
-    class Meta:
-        unique_together = ("user", "token_list")
+    @classmethod
+    def clone(cls, user, token_list: TokenList):
+        user_token_list = user.token_lists.create(
+            name=token_list.name,
+            description=token_list.description,
+        )
+        user_token_list.tokens.set(token_list.tokens.all())
+        user_token_list.keywords.set(token_list.keywords.all())
+        return user_token_list
 
 
 class EthereumTokenValueModel(models.Model):
@@ -256,6 +323,8 @@ __all__ = [
     "EthereumToken",
     "EthereumTokenAmount",
     "EthereumTokenValueModel",
+    "StableTokenPair",
+    "TokenList",
     "UserTokenList",
     "WrappedToken",
 ]

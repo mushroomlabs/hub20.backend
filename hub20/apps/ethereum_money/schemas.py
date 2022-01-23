@@ -254,6 +254,10 @@ class TokenListVersionModel(BaseModel):
     minor: int
     patch: int
 
+    @property
+    def as_string(self):
+        return f"{self.major}.{self.minor}.{self.patch}"
+
 
 class TokenListTagDefinition(BaseModel):
     name: Optional[str]

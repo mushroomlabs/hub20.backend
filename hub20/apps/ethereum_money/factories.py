@@ -13,6 +13,7 @@ from hub20.apps.ethereum_money.models import (
     EthereumTokenAmount,
     StableTokenPair,
     TokenList,
+    UserTokenList,
     WrappedToken,
 )
 
@@ -118,7 +119,7 @@ class Erc20TransferFactory(TransactionFactory):
         to_address = factory.LazyAttribute(lambda obj: obj.amount.currency.address)
 
 
-class TokenListFactory(factory.django.DjangoModelFactory):
+class BaseTokenListFactory(factory.django.DjangoModelFactory):
     name = factory.Sequence(lambda n: f"Token List #{n:02}")
     description = factory.Sequence(lambda n: f"Description for token list #{n:02}")
 
@@ -131,8 +132,17 @@ class TokenListFactory(factory.django.DjangoModelFactory):
             for token in tokens:
                 self.tokens.add(token)
 
+
+class TokenListFactory(BaseTokenListFactory):
+    url = factory.Sequence(lambda n: f"http://tokenlist{n:02}.example.com")
+
     class Meta:
         model = TokenList
+
+
+class UserTokenListFactory(BaseTokenListFactory):
+    class Meta:
+        model = UserTokenList
 
 
 __all__ = [
@@ -147,4 +157,5 @@ __all__ = [
     "WrappedEtherFactory",
     "WrappedTokenFactory",
     "StableTokenFactory",
+    "UserTokenListFactory",
 ]

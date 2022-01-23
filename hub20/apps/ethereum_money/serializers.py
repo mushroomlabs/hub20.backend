@@ -1,7 +1,13 @@
 from rest_framework import serializers
 from rest_framework.reverse import reverse
+from taggit.serializers import TaggitSerializer, TagListSerializerField
+
+from hub20.apps.blockchain.client import make_web3
+from hub20.apps.blockchain.models import Chain, Web3Provider
+from hub20.apps.blockchain.serializers import EthereumAddressField
 
 from . import models
+from .client import get_token_information, get_transfer_gas_estimate
 
 
 class TokenValueField(serializers.DecimalField):
@@ -12,7 +18,8 @@ class TokenValueField(serializers.DecimalField):
 
 
 class HyperlinkedTokenMixin:
-    queryset = models.EthereumToken.objects.filter(chain__providers__is_active=True)
+    def get_queryset(self):
+        return models.EthereumToken.tradeable.all()
 
     def get_url(self, obj, view_name, request, format):
         url_kwargs = {"chain_id": obj.chain_id, "address": obj.address}
@@ -20,7 +27,8 @@ class HyperlinkedTokenMixin:
 
     def get_object(self, view_name, view_args, view_kwargs):
         lookup_kwargs = {"chain_id": view_kwargs["chain_id"], "address": view_kwargs["address"]}
-        return self.queryset.get(**lookup_kwargs)
+        queryset = self.get_queryset()
+        return queryset.get(**lookup_kwargs)
 
 
 class HyperlinkedRelatedTokenField(HyperlinkedTokenMixin, serializers.HyperlinkedRelatedField):
@@ -37,15 +45,54 @@ class HyperlinkedTokenIdentityField(serializers.HyperlinkedIdentityField):
 
 
 class EthereumTokenSerializer(serializers.ModelSerializer):
-    network_id = serializers.IntegerField(source="chain_id", read_only=True)
+    address = EthereumAddressField()
+    chain_id = serializers.PrimaryKeyRelatedField(queryset=Chain.active.all())
+
+    def validate(self, data):
+        chain = data.pop("chain_id")
+        address = data.pop("address")
+
+        if chain.tokens.filter(address=address).exists():
+            raise serializers.ValidationError(f"Token {address} already registered")
+
+        provider = Web3Provider.available.filter(chain_id=chain.id).first()
+        if not provider:
+            raise serializers.ValidationError(f"Could not query {chain.id} for token information")
+
+        w3 = make_web3(provider=provider)
+        try:
+            token_data = get_token_information(w3, address=address)
+        except Exception:
+            raise serializers.ValidationError(
+                f"Could not get token information for address {address}"
+            )
+
+        data.update(token_data)
+        data.update({"chain": chain, "address": address})
+
+        try:
+            token = models.EthereumToken(**data)
+            get_transfer_gas_estimate(w3=w3, token=token)
+        except Exception:
+            raise serializers.ValidationError(
+                f"Could not verify {address} as a tradeable ERC20 token"
+            )
+
+        return data
 
     class Meta:
         model = models.EthereumToken
-        fields = read_only_fields = (
+        fields = (
             "symbol",
             "name",
             "address",
-            "network_id",
+            "chain_id",
+            "decimals",
+            "logoURI",
+        )
+        read_only_fields = (
+            "symbol",
+            "name",
             "decimals",
             "logoURI",
         )
@@ -81,20 +128,74 @@ class TokenInfoSerializer(serializers.ModelSerializer):
         )
 
 
-class TokenListSerializer(serializers.ModelSerializer):
-    url = serializers.HyperlinkedIdentityField(view_name="tokenlist-detail")
+class BaseTokenListSerializer(serializers.ModelSerializer):
     tokens = HyperlinkedRelatedTokenField(many=True)
+
+
+class TokenListSerializer(TaggitSerializer, BaseTokenListSerializer):
+    url = serializers.HyperlinkedIdentityField(view_name="tokenlist-detail")
+    source = serializers.URLField(source="url")
+    keywords = TagListSerializerField(read_only=True)
 
     class Meta:
         model = models.TokenList
-        fields = ("url", "name", "description", "tokens")
+        fields = read_only_fields = (
+            "url",
+            "version",
+            "source",
+            "name",
+            "description",
+            "tokens",
+            "keywords",
+        )
 
 
-class UserTokenListSerializer(serializers.Serializer):
-    token_lists = serializers.HyperlinkedRelatedField(
-        queryset=models.TokenList.objects.all(), view_name="tokenlist-detail", many=True
-    )
+class UserTokenListSerializer(BaseTokenListSerializer):
+    url = serializers.HyperlinkedIdentityField(view_name="user-tokenlist-detail")
+    keywords = TagListSerializerField()
 
     def create(self, validated_data):
         request = self.context.get("request")
-        return self.Meta.model.objects.create(user=request.user, **validated_data)
+        tokens = validated_data.pop("tokens")
+        user_token_list = request.user.token_lists.create(**validated_data)
+        user_token_list.tokens.set(tokens)
+        return user_token_list
+
+    class Meta:
+        model = models.UserTokenList
+        fields = ("url", "name", "description", "tokens", "keywords")
+
+
+class TokenListImportSerializer(serializers.ModelSerializer):
+    url = serializers.URLField()
+
+    def validate(self, data):
+        url = data["url"]
+        try:
+            token_list_data = models.TokenList.fetch(url)
+        except ValueError as exc:
+            raise serializers.ValidationError(exc)
+
+        data.update({"token_list_data": token_list_data})
+        return data
+
+    class Meta:
+        model = models.TokenList
+        fields = ("url", "description")
+
+
+class UserTokenListCloneSerializer(UserTokenListSerializer):
+    token_list = serializers.HyperlinkedRelatedField(
+        view_name="tokenlist-detail", queryset=models.TokenList.objects.all(), write_only=True
+    )
+
+    def create(self, validated_data):
+        request = self.context["request"]
+        return models.UserTokenList.clone(
+            user=request.user, token_list=validated_data["token_list"]
+        )
+
+    class Meta:
+        model = models.UserTokenList
+        fields = UserTokenListSerializer.Meta.fields + ("token_list",)
+        read_only_fields = ("url", "name", "description", "tokens", "keywords")

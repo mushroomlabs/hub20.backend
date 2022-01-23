@@ -1,7 +1,7 @@
 import logging
 
 from django.utils.translation import gettext_lazy as _
-from ethereum.utils import checksum_encode
+from ethereum.utils import checksum_encode, normalize_address
 from hexbytes import HexBytes
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
@@ -82,20 +82,15 @@ class EthereumAddressField(serializers.Field):
         return obj
 
     def to_internal_value(self, data):
-        # Check if address is valid
         try:
-            if checksum_encode(data) != data:
-                raise ValueError
-            elif int(data, 16) == 0 and not self.allow_zero_address:
+            if int(data, 16) == 0 and not self.allow_zero_address:
                 raise ValidationError("0x0 address is not allowed")
             elif int(data, 16) == 1 and not self.allow_sentinel_address:
                 raise ValidationError("0x1 address is not allowed")
-        except ValueError:
-            raise ValidationError("Address %s is not checksumed" % data)
+
+            return checksum_encode(normalize_address(int(data, 16)))
         except Exception:
             raise ValidationError("Address %s is not valid" % data)
-
-        return data
 
 
 class HexadecimalField(serializers.Field):

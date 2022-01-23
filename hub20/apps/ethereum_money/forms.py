@@ -1,8 +1,20 @@
 from django import forms
 
-from . import models
+from . import models, validators
 
-TOKEN_FILTER_QS = models.EthereumToken.objects.filter(chain__providers__is_active=True)
+TOKEN_FILTER_QS = models.EthereumToken.tradeable.all()
+
+
+class TokenlistStandardURLField(forms.URLField):
+    default_validators = [validators.tokenlist_uri_validator]
+
+
+class TokenForm(forms.ModelForm):
+    logoURI = TokenlistStandardURLField(required=False)
+
+    class Meta:
+        model = models.EthereumToken
+        fields = ("chain", "address", "symbol", "name", "decimals", "logoURI", "is_listed")
 
 
 class TokenListForm(forms.ModelForm):

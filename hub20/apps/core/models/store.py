@@ -8,7 +8,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 
-from hub20.apps.ethereum_money.models import EthereumToken, TokenList
+from hub20.apps.ethereum_money.models import EthereumToken, UserTokenList
 
 from .payments import PaymentOrder
 
@@ -20,7 +20,7 @@ class Store(models.Model):
     url = models.URLField(help_text="URL for your store public site or information page")
     checkout_webhook_url = models.URLField(null=True, help_text="URL to receive checkout updates")
     accepted_token_list = models.ForeignKey(
-        TokenList,
+        UserTokenList,
         null=True,
         help_text="The list of tokens that will be accepted for payment",
         on_delete=models.SET_NULL,
@@ -30,7 +30,7 @@ class Store(models.Model):
     def accepted_currencies(self):
         if self.accepted_token_list:
             return self.accepted_token_list.tokens.all()
-        return EthereumToken.objects.filter(chain__providers__is_active=True)
+        return EthereumToken.tradeable.all()
 
     def issue_jwt(self, **data):
         data.update(
