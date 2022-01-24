@@ -9,7 +9,12 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import generics, status
 from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter
-from rest_framework.mixins import CreateModelMixin, ListModelMixin, RetrieveModelMixin
+from rest_framework.mixins import (
+    CreateModelMixin,
+    DestroyModelMixin,
+    ListModelMixin,
+    RetrieveModelMixin,
+)
 from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.serializers import Serializer
@@ -19,7 +24,7 @@ from rest_framework.viewsets import GenericViewSet, ModelViewSet
 from hub20.apps.blockchain.client import make_web3
 from hub20.apps.ethereum_money.client import get_estimate_fee
 from hub20.apps.ethereum_money.models import EthereumToken
-from hub20.apps.ethereum_money.views import TokenViewSet
+from hub20.apps.ethereum_money.views import BaseTokenViewSet, TokenViewSet
 
 from . import models, serializers
 from .filters import DepositFilter, UserFilter
@@ -255,6 +260,20 @@ class UserStoreViewSet(ModelViewSet):
         store = get_object_or_404(models.Store, id=self.kwargs["pk"])
         self.check_object_permissions(self.request, store)
         return store
+
+
+class UserTokenViewSet(BaseTokenViewSet, DestroyModelMixin):
+    permission_classes = (IsAuthenticated,)
+    serializer_class = serializers.UserTokenSerializer
+
+    def get_queryset(self) -> QuerySet:
+        qs = super().get_queryset()
+        return qs.filter(userpreferences__user=self.request.user)
+
+    def destroy(self, *args, **kw):
+        token = self.get_object()
+        self.request.user.preferences.tokens.remove(token)
+        return Response(status.HTTP_204_NO_CONTENT)
 
 
 class UserPreferencesView(generics.RetrieveUpdateAPIView):

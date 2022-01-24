@@ -11,6 +11,7 @@ app_name = "hub20"
 
 token_router = TokenRouter(trailing_slash=False)
 token_router.register(r"tokens", views.TokenBrowserViewSet, basename="token")
+token_router.register(r"my/tokens", views.UserTokenViewSet, basename="user-token")
 
 
 router = SimpleRouter(trailing_slash=False)

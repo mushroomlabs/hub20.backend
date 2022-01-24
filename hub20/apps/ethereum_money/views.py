@@ -49,7 +49,7 @@ class TokenFilter(filters.FilterSet):
         fields = ("chain_id", "symbol", "address", "listed", "native", "stable_tokens", "fiat")
 
 
-class TokenViewSet(GenericViewSet, ListModelMixin, CreateModelMixin, RetrieveModelMixin):
+class BaseTokenViewSet(GenericViewSet, ListModelMixin, CreateModelMixin, RetrieveModelMixin):
     serializer_class = serializers.HyperlinkedEthereumTokenSerializer
     filterset_class = TokenFilter
     filter_backends = (
@@ -80,15 +80,20 @@ class TokenViewSet(GenericViewSet, ListModelMixin, CreateModelMixin, RetrieveMod
             models.EthereumToken, chain_id=self.kwargs["chain_id"], address=address
         )
 
+
+class TokenViewSet(BaseTokenViewSet):
+    def get_serializer_class(self):
+        if self.action == "info":
+            return serializers.TokenInfoSerializer
+        return self.serializer_class
+
     @action(detail=True)
     def info(self, request, **kwargs):
         """
         Returns extra information that the hub operator has provided about this token.
-
-
         """
         token = self.get_object()
-        serializer = serializers.TokenInfoSerializer(instance=token, context=dict(request=request))
+        serializer = self.get_serializer(instance=token)
         return Response(serializer.data)
 
 

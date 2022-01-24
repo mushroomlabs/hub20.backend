@@ -441,6 +441,32 @@ class StoreEditorSerializer(StoreSerializer):
         read_only_fields = StoreSerializer.Meta.read_only_fields
 
 
+class UserTokenSerializer(EthereumTokenSerializer):
+    url = HyperlinkedTokenIdentityField(view_name="user-token-detail")
+    address = EthereumAddressField(read_only=True)
+    chain_id = serializers.PrimaryKeyRelatedField(read_only=True)
+    token = HyperlinkedRelatedTokenField(view_name="token-detail", write_only=True)
+
+    def validate(self, data):
+        token = data["token"]
+        if not EthereumToken.tradeable.filter(id=token.id).exists():
+            raise serializers.ValidationError(
+                f"Token {token.symbol} on chain #{token.chain_id} is not listed for trade"
+            )
+        return data
+
+    def create(self, validated_data):
+        request = self.context["request"]
+        token = validated_data["token"]
+        request.user.preferences.tokens.add(token)
+        return token
+
+    class Meta:
+        model = EthereumTokenSerializer.Meta.model
+        fields = ("url", "token") + EthereumTokenSerializer.Meta.fields
+        read_only_fields = EthereumTokenSerializer.Meta.fields
+
+
 class BookEntrySerializer(serializers.ModelSerializer):
     amount = serializers.CharField(source="as_token_amount")
     reference_type = serializers.CharField(source="reference_type.model")
