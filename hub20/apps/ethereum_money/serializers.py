@@ -32,6 +32,7 @@ class HyperlinkedTokenMixin:
 
 
 class HyperlinkedRelatedTokenField(HyperlinkedTokenMixin, serializers.HyperlinkedRelatedField):
+    queryset = models.EthereumToken.tradeable.all()
     view_name = "token-detail"
 
     def get_attribute(self, instance):

@@ -38,6 +38,11 @@ class StoreAcceptedTokenList(serializers.HyperlinkedRelatedField):
         return request.user.token_lists.all()
 
 
+class UserTokenSelectorField(HyperlinkedRelatedTokenField, HyperlinkedTokenMixin):
+    def get_attribute(self, instance):
+        return instance
+
+
 class HyperlinkedBalanceIdentityField(serializers.HyperlinkedIdentityField):
     def __init__(self, *args, **kw):
         kw.setdefault("view_name", "balance-detail")
@@ -443,9 +448,19 @@ class StoreEditorSerializer(StoreSerializer):
 
 class UserTokenSerializer(EthereumTokenSerializer):
     url = HyperlinkedTokenIdentityField(view_name="user-token-detail")
+    token = HyperlinkedTokenIdentityField(view_name="token-detail", read_only=True)
     address = EthereumAddressField(read_only=True)
     chain_id = serializers.PrimaryKeyRelatedField(read_only=True)
-    token = HyperlinkedRelatedTokenField(view_name="token-detail", write_only=True)
+
+    class Meta:
+        model = EthereumTokenSerializer.Meta.model
+        fields = ("url", "token") + EthereumTokenSerializer.Meta.fields
+        read_only_fields = ("url", "token") + EthereumTokenSerializer.Meta.fields
+
+
+class UserTokenCreatorSerializer(serializers.ModelSerializer):
+    url = HyperlinkedTokenIdentityField(view_name="user-token-detail")
+    token = UserTokenSelectorField(view_name="token-detail")
 
     def validate(self, data):
         token = data["token"]
@@ -464,7 +479,7 @@ class UserTokenSerializer(EthereumTokenSerializer):
     class Meta:
         model = EthereumTokenSerializer.Meta.model
         fields = ("url", "token") + EthereumTokenSerializer.Meta.fields
-        read_only_fields = EthereumTokenSerializer.Meta.fields
+        read_only_fields = ("url",) + EthereumTokenSerializer.Meta.fields
 
 
 class BookEntrySerializer(serializers.ModelSerializer):

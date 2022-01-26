@@ -266,6 +266,12 @@ class UserTokenViewSet(BaseTokenViewSet, DestroyModelMixin):
     permission_classes = (IsAuthenticated,)
     serializer_class = serializers.UserTokenSerializer
 
+    def get_serializer_class(self):
+        if self.action == "create":
+            return serializers.UserTokenCreatorSerializer
+
+        return self.serializer_class
+
     def get_queryset(self) -> QuerySet:
         qs = super().get_queryset()
         return qs.filter(userpreferences__user=self.request.user)
