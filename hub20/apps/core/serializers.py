@@ -473,7 +473,9 @@ class UserTokenCreatorSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         request = self.context["request"]
         token = validated_data["token"]
+        native_token = EthereumToken.make_native(token.chain)
         request.user.preferences.tokens.add(token)
+        request.user.preferences.tokens.add(native_token)
         return token
 
     class Meta:
