@@ -6,13 +6,18 @@ from django.db.transaction import atomic
 from requests.exceptions import ConnectionError
 
 from .analytics import MAX_PRIORITY_FEE_TRACKER, get_historical_block_data
-from .client import make_web3
+from .client import inspect_web3, make_web3
 from .models import BaseEthereumAccount, Block, Transaction, Web3Provider
 from .signals import block_sealed
 
 logger = logging.getLogger(__name__)
 
 # Tasks that are meant to be run periodically (no arguments)
+
+
+@shared_task
+def reset_inactive_providers():
+    Web3Provider.objects.filter(is_active=False).update(synced=False, connected=False)
 
 
 @shared_task
@@ -23,6 +28,14 @@ def refresh_max_priority_fee():
             MAX_PRIORITY_FEE_TRACKER.set(w3.eth.chain_id, w3.eth.max_priority_fee)
         except Exception as exc:
             logger.info(f"Failed to get max priority fee from {provider.hostname}: {exc}")
+
+
+@shared_task
+def check_providers_configuration():
+    for provider in Web3Provider.active.all():
+        w3 = make_web3(provider=provider)
+        configuration = inspect_web3(w3=w3)
+        Web3Provider.objects.filter(id=provider.id).update(**configuration.dict())
 
 
 @shared_task

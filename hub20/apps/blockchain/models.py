@@ -183,20 +183,6 @@ class Transaction(AbstractTransactionRecord):
         return tx
 
 
-#         try:
-#             assert int(tx_data.chainId, 16) == chain_id, "chain id mismatch"
-#             assert block_data.hash == tx_receipt.blockHash, "block / receipt blockHash mismatch"
-#             assert tx_data.blockHash == tx_receipt.blockHash, "tx data/receipt block hash mismatch"
-#             assert tx_data.blockHash == HexBytes(block_data.hash), "Block hash mismatch"
-#             assert tx_data.hash == tx_receipt.transactionHash, "Tx hash mismatch"
-#             assert tx_data["from"] == tx_receipt["from"], "Sender address mismatch"
-#             assert tx_data["to"] == tx_receipt["to"], "Recipient address mismatch"
-#             assert tx_data.transactionIndex == tx_receipt.transactionIndex, "Tx index mismatch"
-#         except AssertionError as exc:
-#             logger.warning(f"Transaction will not be recorded: {exc}")
-#             raise ValueError("Mismatched tx data / receipt records") from exc
-
-
 class AbstractTokenInfo(models.Model):
     name = models.CharField(max_length=500)
     symbol = models.CharField(max_length=16)

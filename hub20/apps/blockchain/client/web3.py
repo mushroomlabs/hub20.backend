@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class Web3ProviderConfiguration(BaseModel):
-    client_version: str
+    client_version: Optional[str]
     supports_eip1559: bool
     supports_pending_filters: bool
     requires_geth_poa_middleware: bool
@@ -72,7 +72,7 @@ def make_web3(provider: Web3Provider) -> Web3:
 
 def inspect_web3(w3: Web3) -> Web3ProviderConfiguration:
     try:
-        version = w3.clientVersion
+        version: Optional[str] = w3.clientVersion
     except ValueError:
         version = None
 

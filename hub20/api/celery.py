@@ -90,6 +90,10 @@ class Hub20CeleryConfig:
             "task": "hub20.apps.blockchain.tasks.check_chains_were_reorganized",
             "schedule": timedelta(seconds=10),
         },
+        "reset-inactive-providers": {
+            "task": "hub20.apps.blockchain.tasks.reset_inactive_providers",
+            "schedule": crontab(minute="*/5"),
+        },
         "refresh-priority-fee-cache": {
             "task": "hub20.apps.blockchain.tasks.refresh_max_priority_fee",
             "schedule": timedelta(seconds=30),

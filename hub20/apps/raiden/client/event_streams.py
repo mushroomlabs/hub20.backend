@@ -17,14 +17,16 @@ logger = logging.getLogger(__name__)
 
 
 def get_providers_on_raiden_networks():
-    return Web3Provider.available.filter(chain__tokennetwork__isnull=False).select_related("chain")
+    return Web3Provider.available.filter(chain__tokens__tokennetwork__isnull=False).select_related(
+        "chain"
+    )
 
 
 async def process_channel_events():
     indexer_name = "raiden:token_network_channels"
 
     while True:
-        providers = await sync_to_async(get_providers_on_raiden_networks)()
+        providers = await sync_to_async(list)(get_providers_on_raiden_networks())
         for provider in providers:
             event_indexer = await sync_to_async(EventIndexer.make)(provider.chain_id, indexer_name)
 

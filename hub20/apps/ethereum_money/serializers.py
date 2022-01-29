@@ -142,6 +142,7 @@ class TokenListSerializer(TaggitSerializer, BaseTokenListSerializer):
         model = models.TokenList
         fields = read_only_fields = (
             "url",
+            "id",
             "version",
             "source",
             "name",
@@ -164,7 +165,8 @@ class UserTokenListSerializer(BaseTokenListSerializer):
 
     class Meta:
         model = models.UserTokenList
-        fields = ("url", "name", "description", "tokens", "keywords")
+        fields = ("url", "id", "name", "description", "tokens", "keywords")
+        read_only_fields = ("url", "id")
 
 
 class TokenListImportSerializer(serializers.ModelSerializer):

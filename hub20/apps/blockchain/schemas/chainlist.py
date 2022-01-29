@@ -21,7 +21,7 @@ class BlockchainExplorer(BaseModel):
 class Chain(BaseModel):
     name: str
     chain: str
-    network: str
+    network: Optional[str]
     icon: Optional[str]
     rpc: List[RPCProviderURL]
     faucets: List[FaucetURL]

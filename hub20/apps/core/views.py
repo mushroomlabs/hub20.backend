@@ -134,6 +134,12 @@ class PaymentOrderView(BasePaymentOrderView, generics.RetrieveDestroyAPIView):
 
 
 class TokenBrowserViewSet(TokenViewSet):
+    def get_serializer_class(self):
+        if self.action == "balance":
+            return serializers.HyperlinkedTokenBalanceSerializer
+
+        return super().get_serializer_class()
+
     @action(detail=True)
     def transfer_cost(self, request, **kwargs):
         """
@@ -146,6 +152,21 @@ class TokenBrowserViewSet(TokenViewSet):
             w3 = make_web3(provider=token.chain.provider)
             transfer_cost = get_estimate_fee(w3=w3, token=token)
             return Response(transfer_cost.as_wei)
+        except AttributeError:
+            raise Http404
+        except TypeError:
+            return Response(status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+    @action(detail=True, permission_classes=(IsAuthenticated,))
+    def balance(self, request, **kwargs):
+        """
+        Returns user balance for that token
+        """
+        try:
+            token = self.get_object()
+            balance = self.request.user.account.get_balance(token)
+            serializer = self.get_serializer(instance=balance)
+            return Response(serializer.data)
         except AttributeError:
             raise Http404
 

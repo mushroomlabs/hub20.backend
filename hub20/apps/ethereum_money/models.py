@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 
 import requests
 from django.contrib.auth import get_user_model
@@ -78,7 +79,10 @@ class EthereumToken(models.Model):
             chain=chain,
             address=cls.NULL_ADDRESS,
             defaults=dict(
-                is_listed=True, name=chain.native_token.name, decimals=chain.native_token.decimals
+                is_listed=True,
+                name=chain.native_token.name,
+                decimals=chain.native_token.decimals,
+                symbol=chain.native_token.symbol,
             ),
         )
         return token
@@ -135,6 +139,7 @@ class StableTokenPair(models.Model):
 
 
 class AbstractTokenListModel(models.Model):
+    id = models.UUIDField(default=uuid.uuid4, primary_key=True)
     name = models.CharField(max_length=64)
     description = models.TextField(null=True)
     tokens = models.ManyToManyField(
