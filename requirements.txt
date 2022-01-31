@@ -58,7 +58,7 @@ celery==5.2.3
     #   -r requirements.in
     #   celery-pubsub
     #   django-celery-beat
-celery-pubsub @ git+https://github.com/mushroomlabs/celery-pubsub.git
+celery-pubsub==1.0.0
     # via -r requirements.in
 certifi==2021.10.8
     # via

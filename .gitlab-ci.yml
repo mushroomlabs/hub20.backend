@@ -23,6 +23,7 @@ cache:
 
 stages:
   - test
+  - build
   - release
 
 test:
@@ -40,12 +41,45 @@ test:
   script:
     - export
     - pip install -e .
-    - django-admin makemigrations
     - pytest
 
   only:
     - develop
     - branches
+
+
+build_python_package:
+  image: python:3.8
+  stage: build
+
+  script:
+    - python setup.py build sdist
+
+  artifacts:
+    paths:
+      - dist/
+
+  only:
+    - tags
+    - develop
+    - master
+
+
+publish_python_package:
+  image: python:3.8
+  stage: release
+
+  variables:
+    TWINE_NON_INTERACTIVE: 1
+    TWINE_USERNAME: "__token__"
+    TWINE_PASSWORD: "$PYPI_TOKEN"
+
+  script:
+    - pip install twine
+    - twine upload dist/*
+
+  only:
+    - tags
 
 
 build_docker_image:
