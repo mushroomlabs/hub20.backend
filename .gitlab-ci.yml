@@ -75,7 +75,7 @@ publish_python_package:
     TWINE_PASSWORD: "$PYPI_TOKEN"
 
   script:
-    - pip install twine
+    - pip install twine -u "$TWINE_USERNAME" -p "$TWINE_PASSWORD" 
     - twine upload dist/*
 
   only:
