@@ -64,14 +64,9 @@ publish_python_package:
   image: python:3.8
   stage: release
 
-  variables:
-    TWINE_NON_INTERACTIVE: 1
-    TWINE_USERNAME: "__token__"
-    TWINE_PASSWORD: "$PYPI_TOKEN"
-
   script:
     - pip install twine
-    - twine upload dist/* -u "$TWINE_USERNAME" -p "$TWINE_PASSWORD"
+    - twine upload dist/* --non-interactive
 
   only:
     - master
