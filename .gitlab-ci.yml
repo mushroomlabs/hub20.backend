@@ -59,11 +59,6 @@ build_python_package:
     paths:
       - dist/
 
-  only:
-    - tags
-    - develop
-    - master
-
 
 publish_python_package:
   image: python:3.8
@@ -75,11 +70,11 @@ publish_python_package:
     TWINE_PASSWORD: "$PYPI_TOKEN"
 
   script:
-    - pip install twine -u "$TWINE_USERNAME" -p "$TWINE_PASSWORD" 
+    - pip install twine -u "$TWINE_USERNAME" -p "$TWINE_PASSWORD"
     - twine upload dist/*
 
   only:
-    - tags
+    - master
 
 
 build_docker_image:
