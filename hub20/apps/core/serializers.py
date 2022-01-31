@@ -432,6 +432,7 @@ class StoreViewerSerializer(StoreSerializer):
 class StoreEditorSerializer(StoreSerializer):
     url = serializers.HyperlinkedIdentityField(view_name="user-store-detail")
     accepted_token_list = StoreAcceptedTokenList()
+    checkout_webhook_url = serializers.URLField(allow_null=True)
 
     def create(self, validated_data):
         request = self.context.get("request")
