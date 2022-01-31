@@ -1,4 +1,5 @@
 celery
+celery-pubsub
 channels
 channels_redis
 django>=4
@@ -19,7 +20,6 @@ django-taggit
 drf-nested-routers
 drf-yasg
 ethereum
-eth-abi
 hdwallet
 httpx
 jsonschema
@@ -34,9 +34,6 @@ raiden_contracts
 uritemplate
 uvicorn
 web3
-
-# Replace this with pypi's package once it is updated
-git+https://github.com/mushroomlabs/celery-pubsub.git
 
 # Testing / CI / Document Generation
 bump2version
