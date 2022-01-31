@@ -19,7 +19,6 @@ django-taggit
 drf-nested-routers
 drf-yasg
 ethereum
-eth-abi
 hdwallet
 httpx
 jsonschema

@@ -13,7 +13,7 @@ x-hub20: &backend_service
 
 services:
   db:
-    image: postgres:latest
+    image: "postgres:${HUB20_POSTGRES_SERVER_VERSION:-latest}"
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "${HUB20_DATABASE_NAME:-hub20}"]
       interval: 5s
