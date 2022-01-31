@@ -64,6 +64,11 @@ publish_python_package:
   image: python:3.8
   stage: release
 
+  variables:
+    TWINE_USERNAME: $TWINE_USERNAME
+    TWINE_PASSWORD: $TWINE_PASSWORD
+    TWINE_REPOSITORY_URL: https://upload.pypi.org/legacy
+
   script:
     - pip install twine
     - twine upload dist/* --non-interactive
