@@ -6,20 +6,18 @@ from eth_utils import to_checksum_address
 from ethereum.abi import ContractTranslator
 from web3 import Web3
 from web3._utils.events import get_event_data
-from web3.exceptions import MismatchedABI
+from web3.exceptions import LogTopicError, MismatchedABI
 
-from hub20.apps.blockchain.client import get_web3
-from hub20.apps.blockchain.models import Chain
+from hub20.apps.blockchain.client import make_web3
+from hub20.apps.blockchain.factories.base import FAKER
+from hub20.apps.blockchain.models import BaseEthereumAccount, Chain
 from hub20.apps.blockchain.typing import Address, EthereumAccount_T
-from hub20.apps.ethereum_money import get_ethereum_account_model
-
-from .abi import EIP20_ABI
-from .app_settings import TRANSFER_GAS_LIMIT
-from .models import EthereumToken, EthereumTokenAmount
-from .typing import EthereumClient_T
+from hub20.apps.ethereum_money.abi import EIP20_ABI
+from hub20.apps.ethereum_money.app_settings import TRANSFER_GAS_LIMIT
+from hub20.apps.ethereum_money.models import EthereumToken, EthereumTokenAmount
+from hub20.apps.ethereum_money.typing import EthereumClient_T
 
 logger = logging.getLogger(__name__)
-EthereumAccount = get_ethereum_account_model()
 User = get_user_model()
 
 
@@ -30,8 +28,9 @@ def get_transaction_events(transaction_receipt, event_abi):
         try:
             event = get_event_data(w3.codec, event_abi, log)
             events.append(event)
-        except MismatchedABI:
-            pass
+        except (MismatchedABI, LogTopicError) as exc:
+            tx_hash = transaction_receipt.transactionHash.hex()
+            logger.info(f"{exc} when getting events from tx {tx_hash}")
     return events
 
 
@@ -41,12 +40,30 @@ def encode_transfer_data(recipient_address, amount: EthereumTokenAmount):
     return f"0x{encoded_data.hex()}"
 
 
-def get_max_fee(w3: Web3) -> EthereumTokenAmount:
-    chain = Chain.make(chain_id=int(w3.net.version))
-    ETH = EthereumToken.ETH(chain=chain)
+def get_transfer_gas_estimate(w3: Web3, token: EthereumToken):
+    if token.is_ERC20:
+        contract = w3.eth.contract(abi=EIP20_ABI, address=token.address)
+        return contract.functions.transfer(FAKER.ethereum_address(), 0).estimateGas(
+            {"from": FAKER.ethereum_address()}
+        )
+    else:
+        return 21000
+
+
+def get_estimate_fee(w3: Web3, token: EthereumToken) -> EthereumTokenAmount:
+    native_token = EthereumToken.make_native(chain=token.chain)
 
     gas_price = w3.eth.generateGasPrice()
-    return ETH.from_wei(TRANSFER_GAS_LIMIT * gas_price)
+    gas_estimate = get_transfer_gas_estimate(w3=w3, token=token)
+    return native_token.from_wei(gas_estimate * gas_price)
+
+
+def get_max_fee(w3: Web3) -> EthereumTokenAmount:
+    chain = Chain.active.get(id=w3.eth.chain_id)
+    native_token = EthereumToken.make_native(chain=chain)
+
+    gas_price = chain.gas_price_estimate or w3.eth.generateGasPrice()
+    return native_token.from_wei(TRANSFER_GAS_LIMIT * gas_price)
 
 
 def get_account_balance(w3: Web3, token: EthereumToken, address: Address) -> EthereumTokenAmount:
@@ -61,32 +78,33 @@ def get_token_information(w3: Web3, address):
     contract = w3.eth.contract(abi=EIP20_ABI, address=to_checksum_address(address))
     return {
         "name": contract.functions.name().call(),
-        "code": contract.functions.symbol().call(),
+        "symbol": contract.functions.symbol().call(),
         "decimals": contract.functions.decimals().call(),
     }
 
 
 def make_token(w3: Web3, address) -> EthereumToken:
     token_data = get_token_information(w3=w3, address=address)
-    chain = Chain.make(chain_id=int(w3.net.version))
+    chain = Chain.active.get(id=w3.eth.chain_id)
     return EthereumToken.make(chain=chain, address=address, **token_data)
 
 
 class EthereumClient:
     def __init__(self, account: EthereumAccount_T, w3: Optional[Web3] = None) -> None:
         self.account = account
-        self.w3 = w3 or get_web3()
 
     def build_transfer_transaction(self, recipient, amount: EthereumTokenAmount):
         token = amount.currency
-        chain_id = int(self.w3.net.version)
-        message = f"Connected to network {chain_id}, token {token.code} is on {token.chain_id}"
+
+        w3 = make_web3(provider=token.chain.provider)
+        chain_id = w3.eth.chain_id
+        message = f"Connected to network {chain_id}, token {token.symbol} is on {token.chain_id}"
         assert token.chain_id == chain_id, message
 
         transaction_params = {
             "chainId": chain_id,
-            "nonce": self.w3.eth.getTransactionCount(self.account.address),
-            "gasPrice": self.w3.eth.generateGasPrice(),
+            "nonce": w3.eth.getTransactionCount(self.account.address),
+            "gasPrice": w3.eth.generateGasPrice(),
             "gas": TRANSFER_GAS_LIMIT,
             "from": self.account.address,
         }
@@ -100,17 +118,19 @@ class EthereumClient:
         return transaction_params
 
     def transfer(self, amount: EthereumTokenAmount, address, *args, **kw):
+        w3 = make_web3(provider=amount.currency.chain.provider)
         transaction_data = self.build_transfer_transaction(recipient=address, amount=amount)
-        signed_tx = self.sign_transaction(transaction_data=transaction_data)
-        return self.w3.eth.sendRawTransaction(signed_tx.rawTransaction)
+        signed_tx = self.sign_transaction(transaction_data=transaction_data, w3=w3)
+        return w3.eth.sendRawTransaction(signed_tx.rawTransaction)
 
-    def sign_transaction(self, transaction_data, *args, **kw):
+    def sign_transaction(self, transaction_data, w3: Web3, *args, **kw):
         if not hasattr(self.account, "private_key"):
             raise NotImplementedError("Can not sign transaction without the private key")
-        return self.w3.eth.account.signTransaction(transaction_data, self.account.private_key)
+        return w3.eth.account.signTransaction(transaction_data, self.account.private_key)
 
     def get_balance(self, token: EthereumToken):
-        return get_account_balance(w3=self.w3, token=token, address=self.account.address)
+        w3 = make_web3(provider=token.chain.provider)
+        return get_account_balance(w3=w3, token=token, address=self.account.address)
 
     @classmethod
     def select_for_transfer(
@@ -119,23 +139,25 @@ class EthereumClient:
         receiver: Optional[User] = None,
         address: Optional[Address] = None,
     ) -> Optional[EthereumClient_T]:
-        w3 = get_web3()
+
+        chain = amount.currency.chain
+        w3 = make_web3(provider=chain.provider)
 
         transfer_fee: EthereumTokenAmount = cls.estimate_transfer_fees(w3=w3)
-        assert transfer_fee.is_ETH
+        assert transfer_fee.is_native_token
 
         ETH = transfer_fee.currency
 
-        accounts = EthereumAccount.objects.all().order_by("?")
+        accounts = BaseEthereumAccount.objects.all().order_by("?")
 
-        if amount.is_ETH:
+        if amount.is_native_token:
             amount += transfer_fee
 
         for account in accounts:
             get_balance = lambda t: get_account_balance(w3=w3, token=t, address=account.address)
 
             eth_balance = get_balance(ETH)
-            token_balance = eth_balance if amount.is_ETH else get_balance(amount.currency)
+            token_balance = eth_balance if amount.is_native_token else get_balance(amount.currency)
 
             if eth_balance >= transfer_fee and token_balance >= amount:
                 return cls(account=account, w3=w3)
@@ -143,5 +165,18 @@ class EthereumClient:
 
     @classmethod
     def estimate_transfer_fees(cls, *args, **kw) -> EthereumTokenAmount:
-        w3 = kw.pop("w3", get_web3())
+        w3 = kw["w3"]
         return get_max_fee(w3=w3)
+
+
+__all__ = [
+    "get_transaction_events",
+    "encode_transfer_data",
+    "get_transfer_gas_estimate",
+    "get_estimate_fee",
+    "get_max_fee",
+    "get_account_balance",
+    "get_token_information",
+    "make_token",
+    "EthereumClient",
+]

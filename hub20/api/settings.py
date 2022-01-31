@@ -22,6 +22,7 @@ DJANGO_APPS = [
     "django.contrib.staticfiles",
     "django.contrib.humanize",
     "django.contrib.admin",
+    "django.contrib.postgres",
 ]
 
 THIRD_PARTY_APPS = [
@@ -30,18 +31,21 @@ THIRD_PARTY_APPS = [
     "allauth.socialaccount",
     "channels",
     "corsheaders",
+    "dj_rest_auth",
+    "dj_rest_auth.registration",
     "django_celery_beat",
     "django_filters",
     "djmoney",
+    "drf_link_header_pagination",
     "drf_yasg",
     "rest_framework",
     "rest_framework.authtoken",
-    "rest_auth",
-    "rest_auth.registration",
+    "taggit",
 ]
 
 PROJECT_APPS = [
     "hub20.apps.blockchain",
+    "hub20.apps.wallet",
     "hub20.apps.ethereum_money",
     "hub20.apps.raiden",
     "hub20.apps.core",
@@ -60,6 +64,7 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
+APPEND_SLASHES = False
 ROOT_URLCONF = os.getenv("HUB20_URLCONF_MODULE", "hub20.api.urls")
 ASGI_APPLICATION = "hub20.api.asgi.application"
 SERVE_OPENAPI_URLS = "HUB20_SERVE_OPENAPI_URLS" in os.environ or DEBUG
@@ -98,35 +103,35 @@ DATABASES = {
 DEFAULT_AUTO_FIELD = "django.db.models.AutoField"
 
 
+# Both Channel Layer and the cache system will require a running redis
+# server, so the only thing you can change here is the URL (host/port/db)
+
+
 # Channel Configurations
-CHANNEL_LAYER_BACKEND = os.getenv(
-    "HUB20_CHANNEL_LAYER_BACKEND", "channels_redis.core.RedisChannelLayer"
-)
-CHANNEL_LAYER_HOST = os.getenv("HUB20_CHANNEL_LAYER_HOST", "redis")
-CHANNEL_LAYER_PORT = int(os.getenv("HUB20_CHANNEL_LAYER_PORT", 6379))
+CHANNEL_LAYER_BACKEND = "channels_redis.core.RedisChannelLayer"
+CHANNEL_LAYER_URL = os.getenv("HUB20_CHANNEL_LAYER_URL", "redis://redis:6379/2")
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": CHANNEL_LAYER_BACKEND,
-        "CONFIG": {"hosts": [(CHANNEL_LAYER_HOST, CHANNEL_LAYER_PORT)]},
+        "CONFIG": {"hosts": (CHANNEL_LAYER_URL,)},
     }
 }
 
-# Caches
-CACHE_BACKEND = os.getenv(
-    "HUB20_CACHE_BACKEND", "django.core.cache.backends.filebased.FileBasedCache"
-)
-
-CACHE_LOCATION = os.getenv("HUB20_CACHE_LOCATION", "/tmp/hub20_cache")
-
-
-CACHE_OPTIONS = {
-    "django_redis.cache.RedisCache": {"CLIENT_CLASS": "django_redis.client.DefaultClient"}
-}.get(CACHE_BACKEND, {})
-
-
+# Cache configuration
+CACHE_BACKEND = "django_redis.cache.RedisCache"
+CACHE_LOCATION = os.getenv("HUB20_CACHE_LOCATION", "redis://redis:6379/1")
+CACHE_OPTIONS = {"CLIENT_CLASS": "django_redis.client.DefaultClient"}
 CACHES = {
     "default": {"BACKEND": CACHE_BACKEND, "LOCATION": CACHE_LOCATION, "OPTIONS": CACHE_OPTIONS}
 }
+
+
+# Celery can use redis and many other systems as its task broker (e.g,
+# RabbitMQ). Given that we already have a running redis for cache and
+# channel layers, we use the same server in the default configuration
+
+# Celery configuration
+CELERY_BROKER_URL = os.getenv("HUB20_BROKER_URL", "redis://redis:6379/0")
 
 
 # This needs to be set up if you don't have a front-end proxy server
@@ -146,9 +151,6 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 
-# Raiden
-HUB20_RAIDEN_SERVERS = [s for s in os.getenv("HUB20_RAIDEN_SERVERS", "").split(",") if s]
-
 # Email
 DEFAULT_FROM_EMAIL = os.getenv("HUB20_EMAIL_MAILER_ADDRESS")
 EMAIL_BACKEND = os.getenv("HUB20_EMAIL_BACKEND")
@@ -165,7 +167,6 @@ EMAIL_TIMEOUT = os.getenv("HUB20_EMAIL_TIMEOUT", 5)
 LANGUAGE_CODE = "en-us"
 TIME_ZONE = "UTC"
 USE_I18N = True
-USE_L10N = True
 USE_TZ = True
 
 
@@ -184,6 +185,8 @@ REST_FRAMEWORK = {
         "rest_framework.authentication.TokenAuthentication",
         "rest_framework.authentication.SessionAuthentication",
     ],
+    "DEFAULT_PAGINATION_CLASS": "drf_link_header_pagination.LinkHeaderPagination",
+    "PAGE_SIZE": 250,
 }
 
 # REST Auth
@@ -526,17 +529,9 @@ ACCOUNT_USERNAME_BLACKLIST = [
     "yourdomain",
 ]
 
-# Web3 and Hub20 configuration
-WEB3_PROVIDER_URI = os.getenv("WEB3_PROVIDER_URI", "http://localhost:8545")
-ETHEREUM_ACCOUNT_MODEL = os.getenv(
-    "HUB20_ETHEREUM_ACCOUNT_MODEL", "ethereum_money.KeystoreAccount"
-)
+# Wallet model configuration
+WALLET_MODEL = os.getenv("HUB20_WALLET_MODEL", "wallet.KeystoreAccount")
 
-BLOCKCHAIN_NETWORK_ID = int(os.getenv("HUB20_BLOCKCHAIN_NETWORK_ID", 5 if DEBUG else 1))
-BLOCKCHAIN_START_BLOCK_NUMBER = os.getenv("HUB20_BLOCKCHAIN_STARTING_BLOCK")
-
-
-ETHEREUM_MONEY_TRACKED_TOKENS = [t for t in os.getenv("HUB20_TRACKED_TOKENS", "").split(",") if t]
 ETHEREUM_HD_WALLET_MNEMONIC = os.getenv("HUB20_ETHEREUM_HD_WALLET_MNEMONIC")
 ETHEREUM_HD_WALLET_ROOT_KEY = os.getenv("HUB20_ETHEREUM_HD_WALLET_ROOT_KEY")
 

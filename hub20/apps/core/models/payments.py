@@ -4,22 +4,20 @@ import random
 import uuid
 from typing import Optional
 
-from django.db import models
-from django.db.models import ExpressionWrapper, F, Sum, Q, Exists, OuterRef, Value
-from django.db.models.functions import Lower, Upper, Coalesce
-from django.utils import timezone
-
-
 from django.conf import settings
 from django.contrib.postgres.fields.ranges import IntegerRangeField
+from django.db import models
+from django.db.models import Exists, ExpressionWrapper, F, OuterRef, Q, Sum, Value
+from django.db.models.functions import Coalesce, Lower, Upper
+from django.utils import timezone
 from model_utils.managers import InheritanceManager
 from model_utils.models import TimeStampedModel
 
 from hub20.apps.blockchain.models import BaseEthereumAccount, Chain, Transaction
 from hub20.apps.ethereum_money.models import (
     EthereumToken,
-    EthereumTokenValueModel,
     EthereumTokenAmountField,
+    EthereumTokenValueModel,
 )
 from hub20.apps.raiden.models import Payment as RaidenPaymentEvent, Raiden
 
@@ -40,10 +38,6 @@ def generate_payment_order_id():
     return random.randint(LOWER_BOUND, UPPER_BOUND)
 
 
-def calculate_blockchain_payment_window():
-    return BlockchainPaymentRoute.calculate_payment_window(chain=Chain.make())
-
-
 def calculate_raiden_payment_window():
     return datetime.timedelta(seconds=app_settings.Payment.raiden_route_lifetime)
 
@@ -51,6 +45,14 @@ def calculate_raiden_payment_window():
 class DepositQuerySet(models.QuerySet):
     def expired(self, block_number: Optional[int] = None, at: Optional[datetime.datetime] = None):
         return self.without_blockchain_route(block_number=block_number).without_raiden_route(at=at)
+
+    def open(self, block_number: Optional[int] = None, at: Optional[datetime.datetime] = None):
+        exists_blockchain_route = self.__class__.get_blockchain_window_query(
+            block_number=block_number
+        )
+        exists_raiden_route = self.__class__.get_raiden_window_query(at=at)
+
+        return self.filter(exists_blockchain_route | exists_raiden_route)
 
     def with_blockchain_route(self, block_number: Optional[int] = None):
         exists_route = self.__class__.get_blockchain_window_query(block_number=block_number)
@@ -94,6 +96,9 @@ class PaymentOrderQuerySet(DepositQuerySet):
 
 
 class BlockchainRouteQuerySet(models.QuerySet):
+    def with_provider(self) -> models.QuerySet:
+        return self.filter(chain__providers__is_active=True)
+
     def with_expiration(self) -> models.QuerySet:
         return self.annotate(
             start_block=Lower("payment_window"), expiration_block=Upper("payment_window")
@@ -136,6 +141,7 @@ class BlockchainRouteQuerySet(models.QuerySet):
             currency=F("deposit__currency")
         )
         expired = Q(expiration_block__lt=at_block)
+
         return (
             self.with_expiration()
             .exclude(expired)
@@ -255,7 +261,7 @@ class BlockchainPaymentRoute(PaymentRoute):
     account = models.ForeignKey(
         BaseEthereumAccount, on_delete=models.CASCADE, related_name="blockchain_routes"
     )
-    payment_window = IntegerRangeField(default=calculate_blockchain_payment_window)
+    payment_window = IntegerRangeField()
     chain = models.ForeignKey(Chain, on_delete=models.CASCADE)
     objects = BlockchainRouteQuerySet.as_manager()
 

@@ -23,17 +23,14 @@ from hub20.apps.core.models.transfers import (
     TransferExecution,
     TransferFailure,
 )
-from hub20.apps.ethereum_money import get_ethereum_account_model
 from hub20.apps.ethereum_money.models import EthereumToken
 from hub20.apps.ethereum_money.signals import incoming_transfer_mined, outgoing_transfer_mined
-from hub20.apps.raiden.models import ChannelDeposit, Payment as RaidenPayment, Raiden
-from hub20.apps.raiden.signals import service_deposit_sent
+from hub20.apps.raiden.models import Payment as RaidenPayment, Raiden
+from hub20.apps.wallet import get_wallet_model
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
-
-
-EthereumAccount = get_ethereum_account_model()
+Wallet = get_wallet_model()
 
 
 @receiver(post_save, sender=User)
@@ -56,7 +53,7 @@ def on_raiden_created_create_account(sender, **kw):
 
 @receiver(post_save, sender=BaseEthereumAccount)
 @receiver(post_save, sender=Raiden)
-@receiver(post_save, sender=EthereumAccount)
+@receiver(post_save, sender=Wallet)
 def on_wallet_created_create_account(sender, **kw):
     if kw["created"]:
         WalletAccount.objects.get_or_create(account=kw["instance"])
@@ -179,16 +176,16 @@ def on_blockchain_transfer_executed_move_fee_from_sender_to_treasury(sender, **k
         transaction = execution.transaction
 
         fee = execution.fee
-        ETH = execution.fee.currency
+        native_token = execution.fee.currency
 
-        treasury_book = transaction.block.chain.treasury.get_book(token=ETH)
-        sender_book = execution.transfer.sender.account.get_book(token=ETH)
+        treasury_book = transaction.block.chain.treasury.get_book(token=native_token)
+        sender_book = execution.transfer.sender.account.get_book(token=native_token)
 
         transaction_type = ContentType.objects.get_for_model(transaction)
         params = dict(
             reference_type=transaction_type,
             reference_id=transaction.id,
-            currency=ETH,
+            currency=native_token,
             amount=fee.amount,
         )
 
@@ -206,18 +203,18 @@ def on_transaction_submitted_move_fee_from_wallet_to_fee_account(sender, **kw):
         if not wallet:
             return
 
-        ETH = EthereumToken.ETH(chain=transaction.block.chain)
-        fee = ETH.from_wei(transaction.gas_fee)
+        native_token = EthereumToken.make_native(chain=transaction.block.chain)
+        fee = native_token.from_wei(transaction.gas_fee)
         fee_account = ExternalAddressAccount.get_transaction_fee_account()
 
-        wallet_book = wallet.onchain_account.get_book(token=ETH)
-        fee_book = fee_account.get_book(token=ETH)
+        wallet_book = wallet.onchain_account.get_book(token=native_token)
+        fee_book = fee_account.get_book(token=native_token)
 
         transaction_type = ContentType.objects.get_for_model(transaction)
         params = dict(
             reference_type=transaction_type,
             reference_id=transaction.id,
-            currency=ETH,
+            currency=native_token,
             amount=fee.amount,
         )
 
@@ -306,64 +303,6 @@ def on_reverted_transaction_move_funds_from_treasury_to_sender(sender, **kw):
             logger.exception(exc)
 
 
-@receiver(service_deposit_sent, sender=Transaction)
-def on_service_deposit_transaction_move_funds_from_raiden_wallet_to_external_account(sender, **kw):
-    deposit = kw["amount"]
-    transaction = kw["transaction"]
-    udc_address = kw["contract_address"]
-    raiden = kw["raiden"]
-
-    token = deposit.currency
-
-    transaction_type = ContentType.objects.get_for_model(transaction)
-
-    params = dict(
-        reference_type=transaction_type,
-        reference_id=transaction.id,
-        currency=token,
-        amount=deposit.amount,
-    )
-
-    external_account, _ = ExternalAddressAccount.objects.get_or_create(address=udc_address)
-    raiden_wallet_account, _ = WalletAccount.objects.get_or_create(account=raiden)
-
-    external_account_book = external_account.get_book(token=token)
-    raiden_book = raiden_wallet_account.get_book(token=token)
-
-    raiden_book.debits.get_or_create(**params)
-    external_account_book.credits.get_or_create(**params)
-
-
-@receiver(post_save, sender=ChannelDeposit)
-def on_channel_deposit_move_funds_from_token_network_to_raiden_client(sender, **kw):
-    if kw["created"]:
-        deposit = kw["instance"]
-        raiden = deposit.channel.raiden
-
-        token = deposit.currency
-        token_network_address = token.tokennetwork.address
-
-        deposit_type = ContentType.objects.get_for_model(ChannelDeposit)
-
-        params = dict(
-            reference_type=deposit_type,
-            reference_id=deposit.id,
-            currency=token,
-            amount=deposit.amount,
-        )
-
-        token_network_account, _ = ExternalAddressAccount.objects.get_or_create(
-            address=token_network_address
-        )
-        raiden_client_account, _ = RaidenClientAccount.objects.get_or_create(raiden=raiden)
-
-        external_account_book = token_network_account.get_book(token=token)
-        raiden_client_book = raiden_client_account.get_book(token=token)
-
-        external_account_book.debits.get_or_create(**params)
-        raiden_client_book.credits.get_or_create(**params)
-
-
 __all__ = [
     "on_user_created_create_account",
     "on_chain_created_create_treasury",
@@ -379,6 +318,4 @@ __all__ = [
     "on_internal_transfer_executed_move_funds_from_treasury_to_receiver",
     "on_payment_confirmed_move_funds_from_treasury_to_payee",
     "on_reverted_transaction_move_funds_from_treasury_to_sender",
-    "on_service_deposit_transaction_move_funds_from_raiden_wallet_to_external_account",
-    "on_channel_deposit_move_funds_from_token_network_to_raiden_client",
 ]

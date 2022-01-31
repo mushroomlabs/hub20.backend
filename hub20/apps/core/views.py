@@ -1,42 +1,36 @@
 from typing import Optional
 
 from django.contrib.auth import get_user_model
-from django.db.models import ProtectedError, Q
+from django.db.models import BooleanField, Case, ProtectedError, Value, When
 from django.db.models.query import QuerySet
 from django.http import Http404
 from django.shortcuts import get_object_or_404
-from django_filters import rest_framework as filters
+from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import generics, status
-from rest_framework.mixins import CreateModelMixin, ListModelMixin, RetrieveModelMixin
+from rest_framework.decorators import action
+from rest_framework.filters import OrderingFilter
+from rest_framework.mixins import (
+    CreateModelMixin,
+    DestroyModelMixin,
+    ListModelMixin,
+    RetrieveModelMixin,
+)
 from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.serializers import Serializer
 from rest_framework.views import APIView
 from rest_framework.viewsets import GenericViewSet, ModelViewSet
 
-from hub20.apps.blockchain.models import Chain
-from hub20.apps.blockchain.serializers import ChainSerializer
+from hub20.apps.blockchain.client import make_web3
+from hub20.apps.ethereum_money.client import get_estimate_fee
 from hub20.apps.ethereum_money.models import EthereumToken
+from hub20.apps.ethereum_money.views import BaseTokenViewSet, TokenViewSet
 
 from . import models, serializers
-from .permissions import IsStoreOwnerOrAnonymousReadOnly
+from .filters import DepositFilter, UserFilter
+from .permissions import IsStoreOwner
 
 User = get_user_model()
-
-
-class UserFilter(filters.FilterSet):
-    search = filters.CharFilter(label="search", method="user_suggestion")
-
-    def user_suggestion(self, queryset, name, value):
-        q_username = Q(username__istartswith=value)
-        q_first_name = Q(first_name__istartswith=value)
-        q_last_name = Q(last_name__istartswith=value)
-        q_email = Q(email__istartswith=value)
-        return self.Meta.model.objects.filter(q_username | q_first_name | q_last_name | q_email)
-
-    class Meta:
-        model = User
-        fields = ("search",)
 
 
 class ReadWriteSerializerMixin(generics.GenericAPIView):
@@ -93,6 +87,13 @@ class BaseDepositView:
 
 
 class DepositListView(BaseDepositView, generics.ListCreateAPIView):
+    filterset_class = DepositFilter
+    filter_backends = (
+        OrderingFilter,
+        DjangoFilterBackend,
+    )
+    ordering = "-created"
+
     def get_queryset(self) -> QuerySet:
         return self.request.user.deposit_set.all()
 
@@ -132,6 +133,44 @@ class PaymentOrderView(BasePaymentOrderView, generics.RetrieveDestroyAPIView):
             )
 
 
+class TokenBrowserViewSet(TokenViewSet):
+    def get_serializer_class(self):
+        if self.action == "balance":
+            return serializers.HyperlinkedTokenBalanceSerializer
+
+        return super().get_serializer_class()
+
+    @action(detail=True)
+    def transfer_cost(self, request, **kwargs):
+        """
+        Returns estimated cost in Wei (estimated gas * gas price) to execute a transfer
+
+        Returns 404 if not connected to the blockchain or if token not in database
+        """
+        token = self.get_object()
+        try:
+            w3 = make_web3(provider=token.chain.provider)
+            transfer_cost = get_estimate_fee(w3=w3, token=token)
+            return Response(transfer_cost.as_wei)
+        except AttributeError:
+            raise Http404
+        except TypeError:
+            return Response(status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+    @action(detail=True, permission_classes=(IsAuthenticated,))
+    def balance(self, request, **kwargs):
+        """
+        Returns user balance for that token
+        """
+        try:
+            token = self.get_object()
+            balance = self.request.user.account.get_balance(token)
+            serializer = self.get_serializer(instance=balance)
+            return Response(serializer.data)
+        except AttributeError:
+            raise Http404
+
+
 class TransferListView(generics.ListCreateAPIView):
     permission_classes = (IsAuthenticated,)
     serializer_class = serializers.TransferSerializer
@@ -154,9 +193,17 @@ class TransferView(generics.RetrieveAPIView):
 class TokenBalanceListView(generics.ListAPIView):
     permission_classes = (IsAuthenticated,)
     serializer_class = serializers.HyperlinkedTokenBalanceSerializer
+    filter_backends = (OrderingFilter,)
+    ordering = ("chain_id", "-is_native", "symbol")
 
     def get_queryset(self) -> QuerySet:
-        return self.request.user.account.get_balances()
+        return self.request.user.account.get_balances().annotate(
+            is_native=Case(
+                When(address=EthereumToken.NULL_ADDRESS, then=Value(True)),
+                default=Value(False),
+                output_field=BooleanField(),
+            )
+        )
 
 
 class TokenBalanceView(generics.RetrieveAPIView):
@@ -164,7 +211,9 @@ class TokenBalanceView(generics.RetrieveAPIView):
     serializer_class = serializers.HyperlinkedTokenBalanceSerializer
 
     def get_object(self) -> EthereumToken:
-        token = get_object_or_404(EthereumToken, address=self.kwargs["address"])
+        token = get_object_or_404(
+            EthereumToken, chain_id=self.kwargs["chain_id"], address=self.kwargs["address"]
+        )
         return self.request.user.account.get_balance(token)
 
 
@@ -209,18 +258,18 @@ class PaymentViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
             return None
 
 
-class StoreViewSet(ModelViewSet):
-    def get_permissions(self):
-        return (
-            (IsAuthenticated(),) if self.action == "list" else (IsStoreOwnerOrAnonymousReadOnly(),)
-        )
+class StoreViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
+    permission_classes = (AllowAny,)
+    serializer_class = serializers.StoreViewerSerializer
+    queryset = models.Store.objects.all()
 
-    def get_serializer_class(self):
-        return (
-            serializers.StoreEditorSerializer
-            if self.request.user.is_authenticated
-            else serializers.StoreSerializer
-        )
+    def get_object(self, *args, **kw):
+        return get_object_or_404(models.Store, id=self.kwargs["pk"])
+
+
+class UserStoreViewSet(ModelViewSet):
+    permission_classes = (IsStoreOwner,)
+    serializer_class = serializers.StoreEditorSerializer
 
     def get_queryset(self) -> QuerySet:
         try:
@@ -234,12 +283,44 @@ class StoreViewSet(ModelViewSet):
         return store
 
 
+class UserTokenViewSet(BaseTokenViewSet, DestroyModelMixin):
+    permission_classes = (IsAuthenticated,)
+    serializer_class = serializers.UserTokenSerializer
+
+    def get_serializer_class(self):
+        if self.action == "create":
+            return serializers.UserTokenCreatorSerializer
+
+        return self.serializer_class
+
+    def get_queryset(self) -> QuerySet:
+        qs = super().get_queryset()
+        return qs.filter(userpreferences__user=self.request.user)
+
+    def destroy(self, *args, **kw):
+        token = self.get_object()
+        self.request.user.preferences.tokens.remove(token)
+        return Response(status.HTTP_204_NO_CONTENT)
+
+
+class UserPreferencesView(generics.RetrieveUpdateAPIView):
+    permission_classes = (IsAuthenticated,)
+    serializer_class = serializers.UserPreferencesSerializer
+
+    def get_object(self) -> QuerySet:
+        return self.request.user.preferences
+
+
 class UserViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
     permission_classes = (IsAuthenticated,)
     serializer_class = serializers.UserSerializer
     filterset_class = UserFilter
-    filter_backends = (filters.DjangoFilterBackend,)
+    filter_backends = (
+        OrderingFilter,
+        DjangoFilterBackend,
+    )
     lookup_field = "username"
+    ordering = "username"
 
     def get_queryset(self) -> QuerySet:
         return User.objects.filter(is_active=True, is_superuser=False, is_staff=False)
@@ -258,20 +339,13 @@ class StatusView(APIView):
     permission_classes = (IsAuthenticated,)
 
 
-class NetworkStatusView(StatusView):
-    permission_classes = (AllowAny,)
-
-    def get(self, request, **kw):
-        chain = Chain.make()
-        return Response({"ethereum": ChainSerializer(chain).data})
-
-
 class AccountingReportView(StatusView):
     permission_classes = (IsAdminUser,)
 
     def _get_serialized_book(self, accounting_model_class):
+        books = accounting_model_class.balance_sheet().exclude(total_credit=0, total_debit=0)
         return serializers.AccountingBookSerializer(
-            accounting_model_class.balance_sheet(), many=True, context={"request": self.request}
+            books, many=True, context={"request": self.request}
         ).data
 
     def get(self, request, **kw):
@@ -286,18 +360,14 @@ class AccountingReportView(StatusView):
         )
 
 
-class EthereumAccountBalanceSheets(StatusView):
+class BalanceSheetWalletViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
     permission_classes = (IsAdminUser,)
+    serializer_class = serializers.WalletBalanceSheetSerializer
+    lookup_url_kwarg = "address"
+    lookup_field = "account__address"
 
-    def _get_serialized_balances(self, account):
-        return serializers.AccountingBookSerializer(
-            account.get_balances(), many=True, context={"request": self.request}
-        ).data
+    def get_queryset(self) -> QuerySet:
+        return models.WalletAccount.objects.all()
 
-    def get(self, request, **kw):
-        return Response(
-            {
-                account.account.address: self._get_serialized_balances(account)
-                for account in models.WalletAccount.objects.all()
-            }
-        )
+    def get_object(self) -> models.WalletAccount:
+        return get_object_or_404(models.WalletAccount, account__address=self.kwargs.get("address"))

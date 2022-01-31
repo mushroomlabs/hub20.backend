@@ -1,11 +1,6 @@
-import asyncio
 import logging
-from functools import wraps
-from typing import Any, Dict, Optional
 
-from asgiref.sync import sync_to_async
 from eth_utils import to_checksum_address
-from hexbytes import HexBytes
 from raiden_contracts.constants import (
     CONTRACT_CUSTOM_TOKEN,
     CONTRACT_SERVICE_REGISTRY,
@@ -18,27 +13,17 @@ from raiden_contracts.contract_manager import (
     contracts_precompiled_path,
     get_contracts_deployment_info,
 )
+from raiden_contracts.utils.type_aliases import ChainID
 from web3 import Web3
-from web3.datastructures import AttributeDict
 
-from hub20.apps.blockchain.client import (
-    BLOCK_CREATION_INTERVAL,
-    BLOCK_SCAN_RANGE,
-    blockchain_mined_block_handler,
-    get_transaction_by_hash,
-    get_web3,
-    log_web3_client_exception,
-    send_transaction,
-    wait_for_connection,
-)
-from hub20.apps.blockchain.models import Block, Transaction
-from hub20.apps.blockchain.typing import Address, EthereumAccount_T
+from hub20.apps.blockchain.client import make_web3, send_transaction
+from hub20.apps.blockchain.models import Web3Provider
+from hub20.apps.blockchain.typing import EthereumAccount_T
 from hub20.apps.ethereum_money.abi import EIP20_ABI
 from hub20.apps.ethereum_money.client import get_account_balance, make_token
 from hub20.apps.ethereum_money.models import EthereumToken, EthereumTokenAmount
-from hub20.apps.raiden import signals
 from hub20.apps.raiden.exceptions import InsufficientBalanceError
-from hub20.apps.raiden.models import ChannelDeposit, Raiden, TokenNetwork, TokenNetworkChannel
+from hub20.apps.raiden.models import Raiden, TokenNetwork
 
 GAS_REQUIRED_FOR_DEPOSIT: int = 200_000
 GAS_REQUIRED_FOR_APPROVE: int = 70_000
@@ -48,67 +33,12 @@ GAS_REQUIRED_FOR_MINT: int = 100_000
 logger = logging.getLogger(__name__)
 
 
-class TokenNetworkEventFilterRegistry:
-    _REGISTRY: Dict[Address, Any] = {}
-
-    def __init__(self, token_network: TokenNetwork, w3: Web3, raiden: Raiden):
-        self.token_network = token_network
-        self.contract = get_token_network_contract(w3=w3, token_network=token_network)
-        self.opened_channel_filter = self.contract.events.ChannelOpened.createFilter(
-            fromBlock="latest"
-        )
-        self.closed_channel_filter = self.contract.events.ChannelOpened.createFilter(
-            fromBlock="latest"
-        )
-        self.channel_deposit_filter = self.contract.events.ChannelNewDeposit.createFilter(
-            fromBlock="latest", argument_filters={"participant": raiden.address}
-        )
-
-    @classmethod
-    def get(cls, token_network: TokenNetwork, w3: Web3, raiden: Raiden):
-        if token_network.address in cls._REGISTRY:
-            return cls._REGISTRY[token_network.address]
-        else:
-            event_filter = cls(token_network=token_network, w3=w3, raiden=raiden)
-            cls._REGISTRY[token_network.address] = event_filter
-            return event_filter
-
-
-def token_network_event_handler(handler):
-    @wraps(handler)
-    async def wrapper(*args, **kw):
-        w3: Web3 = get_web3()
-        wait_for_connection(w3=w3)
-        while True:
-            try:
-                wait_for_connection(w3=w3)
-                token_networks = await sync_to_async(list)(
-                    TokenNetwork.objects.select_related("token")
-                )
-                raiden_accounts = await sync_to_async(list)(Raiden.objects.all())
-                for token_network in token_networks:
-                    for raiden in raiden_accounts:
-                        token_code = token_network.token.code
-                        logger.info(f"Running {handler.__name__} for {token_code} network")
-                        await sync_to_async(handler)(
-                            w3=w3, token_network=token_network, raiden=raiden
-                        )
-            except ValueError as exc:
-                log_web3_client_exception(exc)
-                return
-            except Exception as exc:
-                logger.exception(f"Error on {handler.__name__}: {exc}")
-            finally:
-                await asyncio.sleep(BLOCK_CREATION_INTERVAL)
-
-    return wrapper
-
-
 def _get_contract_data(chain_id: int, contract_name: str):
     try:
-        contract_data = get_contracts_deployment_info(chain_id)
+        contract_data = get_contracts_deployment_info(ChainID(chain_id))
+        assert contract_data is not None
         return contract_data["contracts"][contract_name]
-    except KeyError:
+    except (KeyError, AssertionError):
         return None
 
 
@@ -135,23 +65,6 @@ def get_token_network_contract(w3: Web3, token_network: TokenNetwork):
     manager = ContractManager(contracts_precompiled_path())
     abi = manager.get_contract_abi(CONTRACT_TOKEN_NETWORK)
     return w3.eth.contract(abi=abi, address=token_network.address)
-
-
-def get_channel_from_event(token_network: TokenNetwork, event) -> Optional[TokenNetworkChannel]:
-    event_name = event.event
-    if event_name == "ChannelOpened":
-        participants = (event.args.participant1, event.args.participant2)
-        channel_identifier = event.args.channel_identifier
-        channel, _ = token_network.channels.get_or_create(
-            identifier=channel_identifier, participant_addresses=participants
-        )
-        return channel
-
-    if event_name == "ChannelClosed":
-        channel_identifier = event.args.channel_identifier
-        return token_network.channels.filter(identifier=channel_identifier).first()
-
-    return None
 
 
 def get_contract_address(chain_id, contract_name):
@@ -215,7 +128,7 @@ def make_service_deposit(w3: Web3, account: EthereumAccount_T, amount: EthereumT
 
     if service_token_address != token.address:
         raise ValueError(
-            f"Deposit must be in {service_token_address}, {token.code} is {token.address}"
+            f"Deposit must be in {service_token_address}, {token.symbol} is {token.address}"
         )
 
     token_proxy = w3.eth.contract(address=token.address, abi=EIP20_ABI)
@@ -260,281 +173,19 @@ def get_service_deposit_balance(w3: Web3, raiden: Raiden) -> EthereumTokenAmount
     return token.from_wei(user_deposit_contract.functions.effectiveBalance(raiden.address).call())
 
 
-def index_token_network_channel_openings(
-    w3: Web3, token_network: TokenNetwork, starting_block: int, end_block: int
-):
-    token_network_contract = get_token_network_contract(w3=w3, token_network=token_network)
+def get_token_networks():
+    for provider in Web3Provider.available.exclude(raiden__isnull=True):
+        w3: Web3 = make_web3(provider=provider)
 
-    logger.debug(
-        "Getting {} channel open events between block {} and {}".format(
-            token_network.token.code, starting_block, end_block
-        )
-    )
-
-    event_filter = token_network_contract.events.ChannelOpened.createFilter(
-        fromBlock=starting_block, toBlock=end_block
-    )
-
-    for event in event_filter.get_all_entries():
-        process_channel_open_event(w3=w3, token_network=token_network, event=event)
-
-
-def index_token_network_channel_closings(
-    w3: Web3, token_network: TokenNetwork, starting_block: int, end_block: int
-):
-    token_network_contract = get_token_network_contract(w3=w3, token_network=token_network)
-
-    logger.debug(
-        "Getting {} channel close events between block {} and {}".format(
-            token_network.token.code, starting_block, end_block
-        )
-    )
-
-    event_filter = token_network_contract.events.ChannelClosed.createFilter(
-        fromBlock=starting_block, toBlock=end_block
-    )
-
-    for event in event_filter.get_all_entries():
-        process_channel_close_event(w3=w3, token_network=token_network, event=event)
-
-
-def index_token_network_events(w3: Web3, token_network: TokenNetwork):
-    starting_block = token_network.most_recent_channel_event or 0
-    highest_block = token_network.token.chain.highest_block
-    while starting_block < highest_block:
-        end_block = min(starting_block + BLOCK_SCAN_RANGE, highest_block)
-        index_token_network_channel_openings(
-            w3=w3,
-            token_network=token_network,
-            starting_block=starting_block,
-            end_block=end_block,
-        )
-        index_token_network_channel_closings(
-            w3=w3,
-            token_network=token_network,
-            starting_block=starting_block,
-            end_block=end_block,
-        )
-
-        starting_block += BLOCK_SCAN_RANGE
-
-
-def index_all_token_network_events(w3: Web3):
-    for token_network in TokenNetwork.objects.all():
-        index_token_network_events(w3=w3, token_network=token_network)
-
-
-def process_channel_deposit_event(w3: Web3, raiden: Raiden, token_network: TokenNetwork, event):
-    if not event.event == "ChannelNewDeposit":
-        logger.warning("Event {} is not a channel deposit".format(event))
-        return
-
-    if event.args.participant != raiden.address:
-        logger.warning("Event {} does not belong to the raiden account".format(event))
-        return
-
-    if event.address != token_network.address:
-        logger.warning(
-            "Event {} is not for the {} network".format(event, token_network.token.code)
-        )
-        return
-
-    tx_hash = event.transactionHash.hex()
-    transaction = get_transaction_by_hash(w3=w3, transaction_hash=tx_hash)
-    token = token_network.token
-
-    channel_identifier = event.args.channel_identifier
-    channel = raiden.channels.filter(identifier=channel_identifier).first()
-
-    if transaction:
-        raiden.transactions.add(transaction)
-
-    if channel and transaction:
-        token_contract = w3.eth.contract(abi=EIP20_ABI, address=token_network.token.address)
-        receipt = w3.eth.getTransactionReceipt(tx_hash)
         try:
-            transfer_log = token_contract.events.Transfer().processLog(receipt.logs[1])
-            amount = token.from_wei(transfer_log.args._value)
-            ChannelDeposit.objects.get_or_create(
-                transaction=transaction,
-                defaults={"channel": channel, "amount": amount.amount, "currency": token},
-            )
-        except Exception as exc:
-            logger.warning("Failed to get transfer event from {}: {}".format(tx_hash, exc))
+            token_registry_contract = get_token_network_registry_contract(w3=w3)
+        except AssertionError:
+            continue
+        get_token_network_address = token_registry_contract.functions.token_to_token_networks
 
-
-def process_channel_open_event(w3: Web3, token_network: TokenNetwork, event: AttributeDict):
-    if not event.event == "ChannelOpened":
-        logger.warning("Event {} is not a channel open".format(event))
-        return
-
-    if event.address != token_network.address:
-        logger.warning(
-            "Event {} is not for the {} network".format(event, token_network.token.code)
-        )
-        return
-
-    transaction = get_transaction_by_hash(w3, event.transactionHash)
-    if not transaction:
-        logger.warning("Transaction {} could not be synced".format(event.transactionHash.hex()))
-        return
-
-    participants = (event.args.participant1, event.args.participant2)
-    channel_identifier = event.args.channel_identifier
-    channel, _ = token_network.channels.get_or_create(
-        identifier=channel_identifier, participant_addresses=participants
-    )
-
-    token_network.events.get_or_create(channel=channel, transaction=transaction, name=event.event)
-
-
-def process_channel_close_event(w3: Web3, token_network: TokenNetwork, event: AttributeDict):
-    if not event.event == "ChannelClosed":
-        logger.warning("Event {} is not a channel close".format(event))
-        return
-
-    if event.address != token_network.address:
-        logger.warning(
-            "Event {} is not for the {} network".format(event, token_network.token.code)
-        )
-        return
-
-    transaction = get_transaction_by_hash(w3, event.transactionHash)
-    if not transaction:
-        logger.warning("Transaction {} could not be synced".format(event.transactionHash.hex()))
-        return
-
-    channel_identifier = event.args.channel_identifier
-    channel = token_network.channels.filter(identifier=channel_identifier).first()
-
-    if channel:
-        token_network.events.get_or_create(
-            channel=channel, transaction=transaction, name=event.event
-        )
-
-
-def get_all_service_deposits(w3: Web3, raiden: Raiden, **kw):
-    user_deposit_contract_data = _get_contract_data(
-        chain_id=int(w3.net.version), contract_name=CONTRACT_USER_DEPOSIT
-    )
-    user_deposit_contract = get_user_deposit_contract(w3=w3)
-    service_token = get_service_token(w3=w3)
-    service_token_contract = get_service_token_contract(w3=w3)
-    transfer_filter = service_token_contract.events.Transfer.createFilter(
-        fromBlock=user_deposit_contract_data["block_number"],
-        argument_filters={"_to": user_deposit_contract.address, "_from": raiden.address},
-    )
-
-    for entry in transfer_filter.get_all_entries():
-        amount = service_token.from_wei(entry.args._value)
-        tx = get_transaction_by_hash(w3=w3, transaction_hash=entry.transactionHash)
-        signals.service_deposit_sent.send(
-            sender=Transaction,
-            transaction=tx,
-            raiden=raiden,
-            amount=amount,
-            contract_address=user_deposit_contract.address,
-        )
-
-
-def get_all_channel_deposits(w3: Web3, raiden: Raiden, **kw):
-    for token_network in TokenNetwork.objects.all():
-        event_filter = TokenNetworkEventFilterRegistry.get(
-            token_network=token_network, w3=w3, raiden=raiden
-        )
-        deposit_filter = event_filter.contract.events.ChannelNewDeposit.createFilter(
-            fromBlock=0, argument_filters={"participant": raiden.address}
-        )
-        for event in deposit_filter.get_all_entries():
-            process_channel_deposit_event(
-                w3=w3, raiden=raiden, token_network=token_network, event=event
-            )
-
-
-async def get_token_networks():
-    w3: Web3 = get_web3()
-
-    token_registry_contract = get_token_network_registry_contract(w3=w3)
-    get_token_network_address = token_registry_contract.functions.token_to_token_networks
-
-    erc20_tokens = await sync_to_async(EthereumToken.ERC20tokens.all)()
-    for token in erc20_tokens:
-        token_network_address = get_token_network_address(token.address).call()
-        if token_network_address != EthereumToken.NULL_ADDRESS:
-            sync_to_async(TokenNetwork.objects.update_or_create)(
-                token=token, defaults={"address": token_network_address}
-            )
-
-
-async def get_token_network_events():
-    w3: Web3 = get_web3()
-
-    wait_for_connection(w3)
-
-    token_networks = await sync_to_async(list)(TokenNetwork.objects.all())
-
-    for token_network in token_networks:
-        await sync_to_async(index_token_network_events)(w3=w3, token_network=token_network)
-
-
-@blockchain_mined_block_handler
-def listen_service_deposits(w3: Web3, block_hash: HexBytes):
-
-    user_deposit_contract = get_user_deposit_contract(w3=w3)
-    service_token = get_service_token(w3=w3)
-
-    chain_id = int(w3.net.version)
-    raidens_by_address = {a.address: a for a in Raiden.objects.all()}
-
-    logger.info(f"Checking for UDC deposits on {raidens_by_address.keys()}")
-
-    block_data = w3.eth.get_block(block_hash.hex(), full_transactions=True)
-    deposit_txs = [t for t in block_data.transactions if t["to"] == user_deposit_contract.address]
-
-    for tx_data in deposit_txs:
-        fn, params = user_deposit_contract.decode_function_input(tx_data.input)
-
-        deposit_identifier = user_deposit_contract.functions.deposit.function_identifier
-
-        if fn.function_identifier == deposit_identifier:
-            beneficiary = params["beneficiary"]
-
-            if beneficiary in raidens_by_address.keys():
-                raiden = raidens_by_address[beneficiary]
-                tx_hash = tx_data.hash
-                amount = service_token.from_wei(params["new_total_deposit"])
-                logger.info(f"Deposit of {amount.formatted} from {raiden.address} detected")
-                tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
-                block = Block.make(block_data, chain_id=chain_id)
-                tx = Transaction.make(tx_receipt=tx_receipt, tx_data=tx_data, block=block)
-                signals.service_deposit_sent.send(
-                    sender=Transaction,
-                    transaction=tx,
-                    raiden=raiden,
-                    amount=amount,
-                    contract_address=user_deposit_contract.address,
+        for token in EthereumToken.ERC20tokens.filter(chain_id=provider.chain_id):
+            token_network_address = get_token_network_address(token.address).call()
+            if token_network_address != EthereumToken.NULL_ADDRESS:
+                TokenNetwork.objects.update_or_create(
+                    token=token, defaults={"address": token_network_address}
                 )
-
-
-@token_network_event_handler
-def listen_token_network_events(w3: Web3, token_network: TokenNetwork, raiden: Raiden):
-    event_filter = TokenNetworkEventFilterRegistry.get(
-        token_network=token_network, w3=w3, raiden=raiden
-    )
-
-    for event in event_filter.opened_channel_filter.get_new_entries():
-        process_channel_open_event(w3=w3, token_network=token_network, event=event)
-
-    for event in event_filter.closed_channel_filter.get_new_entries():
-        process_channel_close_event(w3=w3, token_network=token_network, event=event)
-
-
-@token_network_event_handler
-def listen_channel_deposits(w3: Web3, token_network: TokenNetwork, raiden: Raiden):
-    contract_manager = TokenNetworkEventFilterRegistry.get(
-        token_network=token_network, w3=w3, raiden=raiden
-    )
-    for event in contract_manager.channel_deposit_filter.get_new_entries():
-        process_channel_deposit_event(
-            w3=w3, raiden=raiden, token_network=token_network, event=event
-        )

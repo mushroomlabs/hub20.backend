@@ -2,33 +2,22 @@ import factory
 from factory import fuzzy
 
 from hub20.apps.blockchain.factories import (
-    BaseWalletFactory,
     EthereumProvider,
     SyncedChainFactory,
+    TransactionDataFactory,
     TransactionFactory,
-    TransactionLogFactory,
 )
-from hub20.apps.blockchain.models import Transaction
+from hub20.apps.ethereum_money.client import encode_transfer_data
 from hub20.apps.ethereum_money.models import (
     EthereumToken,
     EthereumTokenAmount,
-    HierarchicalDeterministicWallet,
-    KeystoreAccount,
+    StableTokenPair,
+    TokenList,
+    UserTokenList,
+    WrappedToken,
 )
 
 factory.Faker.add_provider(EthereumProvider)
-
-
-class KeystoreAccountFactory(BaseWalletFactory):
-    class Meta:
-        model = KeystoreAccount
-
-
-class HDWalletFactory(BaseWalletFactory):
-    index = factory.LazyFunction(lambda: HierarchicalDeterministicWallet.objects.count())
-
-    class Meta:
-        model = HierarchicalDeterministicWallet
 
 
 class EthereumCurrencyFactory(factory.django.DjangoModelFactory):
@@ -37,8 +26,8 @@ class EthereumCurrencyFactory(factory.django.DjangoModelFactory):
 
 
 class ETHFactory(EthereumCurrencyFactory):
-    name = fuzzy.FuzzyChoice(choices=["Ethereum"])
-    code = fuzzy.FuzzyChoice(choices=["ETH"])
+    name = "Ether"
+    symbol = "ETH"
     address = EthereumToken.NULL_ADDRESS
 
     class Meta:
@@ -48,11 +37,35 @@ class ETHFactory(EthereumCurrencyFactory):
 
 class Erc20TokenFactory(EthereumCurrencyFactory):
     name = factory.Sequence(lambda n: f"ERC20 Token #{n:03}")
-    code = factory.Sequence(lambda n: f"TOK#{n:03}")
+    symbol = factory.Sequence(lambda n: f"TOK#{n:03}")
     address = factory.Faker("ethereum_address")
 
     class Meta:
         model = EthereumToken
+
+
+class WrappedEtherFactory(factory.django.DjangoModelFactory):
+    wrapper = factory.SubFactory(Erc20TokenFactory)
+    wrapped = factory.SubFactory(ETHFactory)
+
+    class Meta:
+        model = WrappedToken
+
+
+class WrappedTokenFactory(factory.django.DjangoModelFactory):
+    wrapper = factory.SubFactory(Erc20TokenFactory)
+    wrapped = factory.SubFactory(Erc20TokenFactory)
+
+    class Meta:
+        model = WrappedToken
+
+
+class StableTokenFactory(factory.django.DjangoModelFactory):
+    token = factory.SubFactory(Erc20TokenFactory)
+    currency = factory.Iterator(["USD", "EUR", "GBP"])
+
+    class Meta:
+        model = StableTokenPair
 
 
 class EthereumTokenValueModelFactory(factory.django.DjangoModelFactory):
@@ -81,18 +94,58 @@ class EtherAmountFactory(factory.Factory):
         model = EthereumTokenAmount
 
 
+class Erc20TransactionDataFactory(TransactionDataFactory):
+    data = factory.LazyAttribute(
+        lambda obj: {
+            "from": obj.from_address,
+            "to": obj.to_address,
+            "status": obj.status,
+            "blockNumber": obj.block_number,
+            "blockHash": obj.block_hash,
+            "gasUsed": obj.gas_used,
+            "logs": [encode_transfer_data(obj.to_address, obj.amount)],
+        }
+    )
+
+    class Params:
+        gas_used = factory.fuzzy.FuzzyInteger(50000, 200000)
+        amount = factory.SubFactory(Erc20TokenAmountFactory)
+
+
 class Erc20TransferFactory(TransactionFactory):
-    log = factory.RelatedFactory(TransactionLogFactory, "transaction")
+    class Params:
+        recipient = factory.Faker("ethereum_address")
+        amount = factory.SubFactory(Erc20TokenAmountFactory)
+        to_address = factory.LazyAttribute(lambda obj: obj.amount.currency.address)
+
+
+class BaseTokenListFactory(factory.django.DjangoModelFactory):
+    name = factory.Sequence(lambda n: f"Token List #{n:02}")
+    description = factory.Sequence(lambda n: f"Description for token list #{n:02}")
+
+    @factory.post_generation
+    def tokens(self, create, tokens, **kw):
+        if not create:
+            return
+
+        if tokens:
+            for token in tokens:
+                self.tokens.add(token)
+
+
+class TokenListFactory(BaseTokenListFactory):
+    url = factory.Sequence(lambda n: f"http://tokenlist{n:02}.example.com")
 
     class Meta:
-        model = Transaction
+        model = TokenList
 
 
-EthereumAccountFactory = BaseWalletFactory
+class UserTokenListFactory(BaseTokenListFactory):
+    class Meta:
+        model = UserTokenList
 
 
 __all__ = [
-    "EthereumAccountFactory",
     "ETHFactory",
     "Erc20TokenFactory",
     "EthereumTokenValueModelFactory",
@@ -100,4 +153,9 @@ __all__ = [
     "Erc20TokenAmountFactory",
     "EtherAmountFactory",
     "Erc20TransferFactory",
+    "TokenListFactory",
+    "WrappedEtherFactory",
+    "WrappedTokenFactory",
+    "StableTokenFactory",
+    "UserTokenListFactory",
 ]

@@ -6,8 +6,8 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 from factory import fuzzy
 
-from hub20.apps.blockchain.factories import EthereumProvider
-from hub20.apps.ethereum_money.factories import BaseWalletFactory, Erc20TokenFactory
+from hub20.apps.blockchain.factories import BaseWalletFactory, EthereumProvider
+from hub20.apps.ethereum_money.factories import Erc20TokenFactory
 
 from . import models
 
@@ -42,6 +42,17 @@ class TokenNetworkFactory(factory.django.DjangoModelFactory):
 class RaidenFactory(BaseWalletFactory):
     address = "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
     url = factory.Sequence(lambda n: "http://raiden:{0}".format(5000 + n))
+
+    @factory.post_generation
+    def channels(obj, create, extracted, **kw):
+        if not create:
+            return
+
+        if not extracted:
+            ChannelFactory(raiden=obj)
+        else:
+            for channel in extracted:
+                obj.channels.add(channel)
 
     class Meta:
         model = models.Raiden

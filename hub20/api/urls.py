@@ -1,12 +1,6 @@
 from typing import Callable
 
-from django.conf import settings
-from django.conf.urls.static import static
-from django.urls import include, path
-from django.views.generic import TemplateView
-from drf_yasg import openapi
-from drf_yasg.views import get_schema_view
-from rest_auth.views import (
+from dj_rest_auth.views import (
     LoginView,
     LogoutView,
     PasswordChangeView,
@@ -14,6 +8,12 @@ from rest_auth.views import (
     PasswordResetView,
     UserDetailsView,
 )
+from django.conf import settings
+from django.conf.urls.static import static
+from django.urls import include, path
+from django.views.generic import TemplateView
+from drf_yasg import openapi
+from drf_yasg.views import get_schema_view
 from rest_framework.permissions import AllowAny
 
 from hub20.apps.core.api import urlpatterns as core_urlpatterns
@@ -34,13 +34,13 @@ urlpatterns = [
         "rest_password_reset_confirm",
     ),
     make_auth_view("accounts/password/change", PasswordChangeView, "rest_password_change"),
-    make_auth_view("accounts/user", UserDetailsView, "rest_user_details"),
     make_auth_view("session/login", LoginView, "rest_login"),
     make_auth_view("session/logout", LogoutView, "rest_logout"),
+    path("my/profile", UserDetailsView.as_view(), name="rest_user_details"),
+    path("register/", include("dj_rest_auth.registration.urls")),
+    path("networks/blockchains/", include("hub20.apps.blockchain.api", namespace="blockchain")),
+    path("networks/raiden/", include("hub20.apps.raiden.api")),
     path("", IndexView.as_view(), name="index"),
-    path("register/", include("rest_auth.registration.urls")),
-    path("tokens/", include("hub20.apps.ethereum_money.api", namespace="ethereum_money")),
-    path("raiden/", include("hub20.apps.raiden.api")),
 ]
 
 urlpatterns.extend(core_urlpatterns)

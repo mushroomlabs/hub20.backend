@@ -1,1 +1,0 @@
-BLOCK_CREATION_INTERVAL = 10  # In seconds

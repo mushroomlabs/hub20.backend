@@ -1,46 +1,50 @@
 import logging
-from typing import Optional, Tuple
+from typing import Dict, Optional, Tuple
 from urllib.parse import urlparse
 
-from django.conf import settings
-from django.db.models import Avg
+from eth_abi.codec import ABICodec
+from pydantic import BaseModel
 from web3 import Web3
-from web3.gas_strategies.time_based import fast_gas_price_strategy
+from web3._utils.events import get_event_data
+from web3._utils.filters import construct_event_filter_params
+from web3.exceptions import ExtraDataLengthError
 from web3.middleware import geth_poa_middleware
 from web3.providers import HTTPProvider, IPCProvider, WebsocketProvider
-from web3.types import TxParams, TxReceipt, Wei
+from web3.types import TxReceipt
 
+from hub20.apps.blockchain import analytics
 from hub20.apps.blockchain.exceptions import Web3TransactionError
-from hub20.apps.blockchain.models import Transaction
-
-from .utils import wait_for_connection
+from hub20.apps.blockchain.models import Web3Provider
 
 logger = logging.getLogger(__name__)
 
 
-def database_history_gas_price_strategy(w3: Web3, params: Optional[TxParams] = None) -> Wei:
-
-    BLOCK_HISTORY_SIZE = 100
-    chain_id = int(w3.net.version)
-    current_block_number = w3.eth.blockNumber
-
-    txs = Transaction.objects.filter(
-        block__chain=chain_id,
-        block__number__gte=current_block_number - BLOCK_HISTORY_SIZE,
-    )
-    avg_price = txs.aggregate(avg_price=Avg("gas_price")).get("avg_price")
-    if avg_price:
-        wei_price = int(avg_price)
-        logger.debug(f"Average Gas Price in last {txs.count()} transactions: {wei_price} wei")
-        return Wei(wei_price)
-    else:
-        logger.debug("No transactions to determine gas price. Default to 'fast' strategy")
-        return fast_gas_price_strategy(web3=w3, transaction_params=params)
+class Web3ProviderConfiguration(BaseModel):
+    client_version: Optional[str]
+    supports_eip1559: bool
+    supports_pending_filters: bool
+    requires_geth_poa_middleware: bool
 
 
-def make_web3(provider_url: str) -> Web3:
+def eip1559_price_strategy(w3: Web3, *args, **kw):
+    try:
+        current_block = w3.eth.get_block("latest")
+        return analytics.recommended_eip1559_gas_price(
+            current_block, max_priority_fee=w3.eth.max_priority_fee
+        )
+    except Exception as exc:
+        chain_id = w3.eth.chain_id
+        logger.exception(f"Error when getting price estimate for {chain_id}", exc_info=exc)
+        return analytics.estimate_gas_price(chain_id)
+
+
+def historical_trend_price_strategy(w3: Web3, *args, **kw):
+    return analytics.estimate_gas_price(w3.eth.chain_id)
+
+
+def get_web3(provider_url: str) -> Web3:
     endpoint = urlparse(provider_url)
-    logger.debug(f"Instantiating new Web3 for {endpoint.hostname}")
+
     provider_class = {
         "http": HTTPProvider,
         "https": HTTPProvider,
@@ -49,23 +53,74 @@ def make_web3(provider_url: str) -> Web3:
     }.get(endpoint.scheme, IPCProvider)
 
     w3 = Web3(provider_class(provider_url))
-    w3.middleware_onion.inject(geth_poa_middleware, layer=0)
-    w3.eth.setGasPriceStrategy(database_history_gas_price_strategy)
+    return w3
+
+
+def make_web3(provider: Web3Provider) -> Web3:
+    w3 = get_web3(provider_url=provider.url)
+
+    if provider.requires_geth_poa_middleware:
+        w3.middleware_onion.inject(geth_poa_middleware, layer=0)
+
+    price_strategy = (
+        eip1559_price_strategy if provider.supports_eip1559 else historical_trend_price_strategy
+    )
+    w3.eth.setGasPriceStrategy(price_strategy)
 
     return w3
 
 
-def get_web3(provider_url: Optional[str] = None) -> Web3:
-    provider_url = provider_url or settings.WEB3_PROVIDER_URI
-    w3 = make_web3(provider_url)
+def inspect_web3(w3: Web3) -> Web3ProviderConfiguration:
+    try:
+        version: Optional[str] = w3.clientVersion
+    except ValueError:
+        version = None
 
-    wait_for_connection(w3)
-    client_network_id = int(w3.net.version)
-    app_network_id = settings.BLOCKCHAIN_NETWORK_ID
-    if client_network_id != app_network_id:
-        raise ValueError(f"Web3 node connected to {client_network_id}, we are on {app_network_id}")
+    try:
+        max_fee = w3.eth.max_priority_fee
+        eip1559 = bool(type(max_fee) is int)
+    except ValueError:
+        eip1559 = False
 
-    return w3
+    try:
+        w3.eth.filter("pending")
+        pending_filters = True
+    except ValueError:
+        pending_filters = False
+
+    try:
+        w3.eth.get_block("latest")
+        requires_geth_poa_middleware = False
+    except ExtraDataLengthError:
+        requires_geth_poa_middleware = True
+
+    return Web3ProviderConfiguration(
+        client_version=version,
+        supports_eip1559=eip1559,
+        supports_pending_filters=pending_filters,
+        requires_geth_poa_middleware=requires_geth_poa_middleware,
+    )
+
+
+def get_event_logs(w3: Web3, event, argument_filters: Dict, from_block: int, to_block: int):
+    """
+    Taken and adapted from `https://web3py.readthedocs.io/en/stable/examples.html`
+
+    """
+    abi = event._get_event_abi()
+    codec: ABICodec = w3.codec
+
+    data_filter_set, event_filter_params = construct_event_filter_params(
+        abi,
+        codec,
+        address=argument_filters.get("address"),
+        argument_filters=argument_filters,
+        fromBlock=from_block,
+        toBlock=to_block,
+    )
+
+    logger.debug("Querying eth_getLogs with the following parameters: %s", event_filter_params)
+    return [get_event_data(codec, abi, log) for log in w3.eth.get_logs(event_filter_params)]
 
 
 def send_transaction(

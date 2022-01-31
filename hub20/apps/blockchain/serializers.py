@@ -1,11 +1,12 @@
 import logging
 
 from django.utils.translation import gettext_lazy as _
-from ethereum.utils import checksum_encode
+from ethereum.utils import checksum_encode, normalize_address
 from hexbytes import HexBytes
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 
+from .analytics import estimate_gas_price
 from .constants import (
     SIGNATURE_R_MAX_VALUE,
     SIGNATURE_R_MIN_VALUE,
@@ -20,12 +21,47 @@ logger = logging.getLogger(__name__)
 
 
 class ChainSerializer(serializers.ModelSerializer):
-    network = serializers.IntegerField(source="id", read_only=True)
-    height = serializers.IntegerField(source="highest_block", read_only=True)
+    url = serializers.HyperlinkedIdentityField(view_name="blockchain:chain-detail")
+    token = serializers.CharField(source="native_token.symbol", read_only=True)
+    explorers = serializers.SerializerMethodField()
+    status = serializers.HyperlinkedIdentityField(view_name="blockchain:chain-status")
+
+    def get_explorers(self, obj):
+        return obj.explorers.values_list("url", flat=True)
 
     class Meta:
         model = Chain
-        fields = read_only_fields = ("network", "height", "synced", "online")
+        fields = read_only_fields = (
+            "url",
+            "id",
+            "name",
+            "token",
+            "explorers",
+            "status",
+        )
+
+
+class ChainStatusSerializer(serializers.ModelSerializer):
+    url = serializers.HyperlinkedIdentityField(view_name="blockchain:chain-status")
+    chain = serializers.HyperlinkedIdentityField(view_name="blockchain:chain-detail")
+    height = serializers.IntegerField(source="highest_block", read_only=True)
+    online = serializers.BooleanField(source="provider.connected")
+    synced = serializers.BooleanField(source="provider.synced")
+    gas_price_estimate = serializers.SerializerMethodField()
+
+    def get_gas_price_estimate(self, obj):
+        return estimate_gas_price(obj.id)
+
+    class Meta:
+        model = Chain
+        fields = read_only_fields = (
+            "url",
+            "chain",
+            "height",
+            "online",
+            "synced",
+            "gas_price_estimate",
+        )
 
 
 # ================================================ #
@@ -46,20 +82,15 @@ class EthereumAddressField(serializers.Field):
         return obj
 
     def to_internal_value(self, data):
-        # Check if address is valid
         try:
-            if checksum_encode(data) != data:
-                raise ValueError
-            elif int(data, 16) == 0 and not self.allow_zero_address:
+            if int(data, 16) == 0 and not self.allow_zero_address:
                 raise ValidationError("0x0 address is not allowed")
             elif int(data, 16) == 1 and not self.allow_sentinel_address:
                 raise ValidationError("0x1 address is not allowed")
-        except ValueError:
-            raise ValidationError("Address %s is not checksumed" % data)
+
+            return checksum_encode(normalize_address(int(data, 16)))
         except Exception:
             raise ValidationError("Address %s is not valid" % data)
-
-        return data
 
 
 class HexadecimalField(serializers.Field):

@@ -32,8 +32,6 @@ from hub20.apps.core.tests.unit.mocks import (
     MockRaidenTransferExecutor,
     mock_fee_estimation,
 )
-from hub20.apps.ethereum_money import get_ethereum_account_model
-from hub20.apps.ethereum_money.factories import EthereumAccountFactory
 from hub20.apps.ethereum_money.tests.base import add_eth_to_account, add_token_to_account
 from hub20.apps.raiden.factories import (
     ChannelFactory,
@@ -41,8 +39,7 @@ from hub20.apps.raiden.factories import (
     RaidenFactory,
     TokenNetworkFactory,
 )
-
-EthereumAccount = get_ethereum_account_model()
+from hub20.apps.wallet.factories import EthereumAccountFactory
 
 
 @pytest.mark.django_db(transaction=True)
@@ -57,16 +54,16 @@ class BlockchainPaymentTestCase(BaseTestCase):
         self.chain = self.blockchain_route.chain
 
     def test_transaction_sets_payment_as_received(self):
-        add_token_to_account(self.blockchain_route.account, self.order.as_token_amount, self.chain)
+        add_token_to_account(self.blockchain_route.account, self.order.as_token_amount)
         self.assertTrue(self.order.is_paid)
         self.assertFalse(self.order.is_confirmed)
 
     def test_transaction_creates_blockchain_payment(self):
-        add_token_to_account(self.blockchain_route.account, self.order.as_token_amount, self.chain)
+        add_token_to_account(self.blockchain_route.account, self.order.as_token_amount)
         self.assertEqual(self.order.payments.count(), 1)
 
     def test_can_not_add_same_transaction_twice(self):
-        add_token_to_account(self.blockchain_route.account, self.order.as_token_amount, self.chain)
+        add_token_to_account(self.blockchain_route.account, self.order.as_token_amount)
         self.assertEqual(self.order.payments.count(), 1)
         payment = self.order.payments.select_subclasses().first()
         with self.assertRaises(IntegrityError):
@@ -78,9 +75,7 @@ class BlockchainPaymentTestCase(BaseTestCase):
             )
 
     def test_user_balance_is_updated_on_completed_payment(self):
-        tx = add_token_to_account(
-            self.blockchain_route.account, self.order.as_token_amount, self.chain
-        )
+        tx = add_token_to_account(self.blockchain_route.account, self.order.as_token_amount)
 
         block_number = tx.block.number + app_settings.Payment.minimum_confirmations
         block_data = BlockMock(number=block_number)
@@ -93,7 +88,7 @@ class BlockchainPaymentTestCase(BaseTestCase):
 class CheckoutTestCase(BaseTestCase):
     def setUp(self):
         self.checkout = CheckoutFactory()
-        self.checkout.store.accepted_currencies.add(self.checkout.currency)
+        self.checkout.store.accepted_token_list.tokens.add(self.checkout.currency)
 
     def test_checkout_user_and_store_owner_are_the_same(self):
         self.assertEqual(self.checkout.store.owner, self.checkout.user)
@@ -101,7 +96,7 @@ class CheckoutTestCase(BaseTestCase):
     def test_checkout_currency_must_be_accepted_by_store(self):
         self.checkout.clean()
 
-        self.checkout.store.accepted_currencies.clear()
+        self.checkout.store.accepted_token_list.tokens.clear()
         with self.assertRaises(ValidationError):
             self.checkout.clean()
 
@@ -152,6 +147,7 @@ class TransferTestCase(BaseTestCase):
         self.deposit = Erc20TokenPaymentConfirmationFactory(
             payment__route__deposit__user=self.sender,
         )
+
         self.credit = self.deposit.payment.as_token_amount
         self.wallet = EthereumAccountFactory()
         self.fee_amount = mock_fee_estimation()
@@ -207,8 +203,8 @@ class InternalTransferTestCase(TransferTestCase):
 class ExternalTransferTestCase(TransferTestCase):
     def setUp(self):
         super().setUp()
-        add_token_to_account(self.wallet, self.credit, self.chain)
-        add_eth_to_account(self.wallet, self.fee_amount, self.chain)
+        add_token_to_account(self.wallet, self.credit)
+        add_eth_to_account(self.wallet, self.fee_amount)
 
         self.transfer = ExternalTransferFactory(
             sender=self.sender, currency=self.credit.currency, amount=self.credit.amount

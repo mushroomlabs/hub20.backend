@@ -7,11 +7,8 @@ from hub20.apps.blockchain.factories import (
     TransactionFactory,
 )
 from hub20.apps.core import models
-from hub20.apps.ethereum_money.factories import (
-    Erc20TokenFactory,
-    EthereumAccountFactory,
-    ETHFactory,
-)
+from hub20.apps.ethereum_money.factories import Erc20TokenFactory, ETHFactory
+from hub20.apps.wallet.factories import EthereumAccountFactory
 
 from .base import UserFactory
 
@@ -45,6 +42,9 @@ class EtherBlockchainPaymentRouteFactory(factory.django.DjangoModelFactory):
     deposit = factory.SubFactory(EtherPaymentOrderFactory)
     account = factory.SubFactory(EthereumAccountFactory)
     chain = factory.SubFactory(SyncedChainFactory)
+    payment_window = factory.LazyAttribute(
+        lambda obj: (obj.chain.highest_block, obj.chain.highest_block + 100)
+    )
 
     class Meta:
         model = models.BlockchainPaymentRoute

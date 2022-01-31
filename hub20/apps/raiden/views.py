@@ -4,8 +4,6 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAdminUser
 from rest_framework.response import Response
 
-from hub20.apps.ethereum_money.app_settings import TRACKED_TOKENS
-
 from . import models, serializers
 
 
@@ -17,32 +15,28 @@ class RaidenViewSet(
     BaseRaidenViewMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet
 ):
     serializer_class = serializers.RaidenSerializer
+    queryset = models.Raiden.objects.all()
 
-    def get_queryset(self, *args, **kw):
-        return models.Raiden.objects.all()
+    @action(detail=True, methods=["get"])
+    def status(self, request, pk=None):
+        raiden = self.get_object()
+        serializer = serializers.RaidenStatusSerializer(raiden, context={"request": request})
+        return Response(serializer.data)
 
 
 class ChannelViewMixin(BaseRaidenViewMixin):
     serializer_class = serializers.ChannelSerializer
 
+
+class ChannelViewSet(
+    ChannelViewMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet
+):
     def get_queryset(self, *args, **kw):
         return models.Channel.objects.filter(raiden_id=self.kwargs["raiden_pk"])
 
     def get_object(self):
         return self.get_queryset().filter(pk=self.kwargs["pk"]).first()
 
-
-class ServiceDepositMixin(BaseRaidenViewMixin):
-    serializer_class = serializers.ServiceDepositSerializer
-
-    def get_queryset(self, *args, **kw):
-        raiden = models.Raiden.objects.first()
-        return raiden and models.UserDepositContractOrder.objects.filter(raiden=raiden)
-
-
-class ChannelViewSet(
-    ChannelViewMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet
-):
     @action(
         detail=True,
         methods=["POST"],
@@ -70,6 +64,11 @@ class ChannelViewSet(
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+class ServiceDepositMixin(BaseRaidenViewMixin):
+    serializer_class = serializers.ServiceDepositSerializer
+    queryset = models.UserDepositContractOrder.objects.all()
+
+
 class ServiceDepositListView(ServiceDepositMixin, generics.ListCreateAPIView):
     pass
 
@@ -83,7 +82,7 @@ class TokenNetworkViewMixin:
     serializer_class = serializers.TokenNetworkSerializer
     lookup_field = "address"
     lookup_url_kwarg = "address"
-    queryset: QuerySet = models.TokenNetwork.objects.filter(token__address__in=TRACKED_TOKENS)
+    queryset: QuerySet = models.TokenNetwork.objects.all()
 
 
 class TokenNetworkViewSet(

@@ -3,104 +3,124 @@ import logging
 
 import celery_pubsub
 from asgiref.sync import sync_to_async
+from requests.exceptions import ConnectionError, HTTPError
 from web3 import Web3
 from web3.exceptions import TransactionNotFound
-from requests.exceptions import ConnectionError
 
-from hub20.apps.blockchain.models import Chain
+from hub20.apps.blockchain.app_settings import BLOCK_SCAN_RANGE
+from hub20.apps.blockchain.exceptions import Web3UnsupportedMethod
+from hub20.apps.blockchain.models import Chain, Web3Provider
 
-from .constants import BLOCK_CREATION_INTERVAL
-from .decorators import web3_filter_event_handler
-from .utils import is_connected_to_blockchain
 from .web3 import make_web3
 
 logger = logging.getLogger(__name__)
+BLOCK_CREATION_INTERVAL = 10  # In seconds
+PENDING_TX_POLLING_INTERVAL = 2  # In seconds
+
+PENDING_TX_FILTER_REGISTRY = {}
 
 
-async def node_online_status():
-    while True:
-        chains = await sync_to_async(list)(Chain.objects.filter(enabled=True))
-        for chain in chains:
-            try:
-                w3 = make_web3(provider_url=chain.provider_url)
-                is_online = is_connected_to_blockchain(w3=w3)
-            except ConnectionError:
-                is_online = False
-            except ValueError:
-                # The node does not support the peer count method. Assume healthy.
-                is_online = w3.isConnected()
+def _get_pending_tx_filter(w3):
+    global PENDING_TX_FILTER_REGISTRY
+    try:
+        return PENDING_TX_FILTER_REGISTRY[w3.eth.chain_id]
+    except KeyError:
+        try:
+            eth_filter = w3.eth.filter("latest")
+        except ValueError:
+            raise Web3UnsupportedMethod("filter method not supported")
 
-            if chain.online and not is_online:
-                logger.debug(f"Node {chain.provider_hostname} went offline")
-                await sync_to_async(celery_pubsub.publish)(
-                    "node.connection.nok", chain_id=chain.id, provider_url=chain.provider_url
-                )
-
-            elif is_online and not chain.online:
-                logger.debug(f"Node {chain.provider_hostname} is back online")
-                await sync_to_async(celery_pubsub.publish)(
-                    "node.connection.ok", chain_id=chain.id, provider_url=chain.provider_url
-                )
-
-        await asyncio.sleep(BLOCK_CREATION_INTERVAL)
+        PENDING_TX_FILTER_REGISTRY[w3.eth.chain_id] = eth_filter
+        return eth_filter
 
 
-async def node_sync_status():
-    while True:
-        chains = await sync_to_async(list)(Chain.objects.filter(enabled=True))
-        for chain in chains:
-            try:
-                w3 = make_web3(provider_url=chain.provider_url)
-                is_synced = bool(not w3.eth.syncing)
-            except ValueError:
-                # The node does not support the eth_syncing method. Assume healthy.
-                is_synced = True
-            except ConnectionError:
-                continue
-
-            if chain.synced and not is_synced:
-                await sync_to_async(celery_pubsub.publish)(
-                    "node.sync.nok", provider_url=chain.provider_url
-                )
-            elif is_synced and not chain.synced:
-                logger.debug(f"Node {chain.provider_hostname} is back in sync")
-                await sync_to_async(celery_pubsub.publish)(
-                    "node.sync.ok", provider_url=chain.provider_url
-                )
-
-        await asyncio.sleep(BLOCK_CREATION_INTERVAL)
+async def generate_blocks(w3: Web3, chain: Chain):
+    current_block = w3.eth.block_number
+    start = chain.highest_block
+    stop = min(current_block, chain.highest_block + BLOCK_SCAN_RANGE)
+    for block_number in range(start, stop):
+        logger.debug(f"Getting block #{block_number} from {chain}")
+        yield w3.eth.get_block(block_number, full_transactions=True)
 
 
-@web3_filter_event_handler(filter_type="latest", polling_interval=BLOCK_CREATION_INTERVAL / 2)
-async def process_new_block(w3: Web3, chain: Chain, event):
-    logger.info(f"New block: {event.hex()}")
-    block_data = w3.eth.get_block(event, full_transactions=True)
-    await sync_to_async(celery_pubsub.publish)(
-        "blockchain.block.mined", chain_id=w3.eth.chain_id, block_data=block_data
-    )
-    for tx_data in block_data["transactions"]:
+async def generate_tx_data(w3: Web3, transaction_list):
+    for tx_data in transaction_list:
         try:
             tx_receipt = w3.eth.get_transaction_receipt(tx_data.hash)
-            await sync_to_async(celery_pubsub.publish)(
-                "blockchain.transaction.mined",
-                chain_id=w3.eth.chain_id,
-                block_data=block_data,
-                transaction_data=tx_data,
-                transaction_receipt=tx_receipt,
-            )
+            yield (tx_data, tx_receipt)
         except TransactionNotFound:
             pass
 
 
-@web3_filter_event_handler(filter_type="pending", polling_interval=2)
-async def process_pending_transaction(w3: Web3, chain: Chain, event):
-    tx_hash = event.hex()
-    logger.info(f"Pending tx broadcast: {tx_hash}")
-    try:
-        tx_data = w3.eth.getTransaction(tx_hash)
-        logger.debug(f"{tx_data['to']} to {tx_data['from']}")
-        await sync_to_async(celery_pubsub.publish)(
-            "blockchain.transaction.broadcast", chain_id=w3.eth.chain_id, transaction_data=tx_data
+async def process_mined_blocks():
+    while True:
+        providers = await sync_to_async(list)(Web3Provider.available.select_related("chain"))
+        for provider in providers:
+            chain = provider.chain
+            w3: Web3 = make_web3(provider=provider)
+            logger.info(f"Getting blocks for {chain.name}")
+            async for block_data in generate_blocks(w3=w3, chain=provider.chain):
+                block_number = block_data.number
+                logger.info(f"Processing block #{block_number} on {provider}")
+                await sync_to_async(celery_pubsub.publish)(
+                    "blockchain.mined.block",
+                    chain_id=w3.eth.chain_id,
+                    block_data=block_data,
+                    provider_url=provider.url,
+                )
+                chain.highest_block = block_number
+                logger.debug(f"Updating chain height to {block_number}")
+            await sync_to_async(chain.save)()
+        await asyncio.sleep(BLOCK_CREATION_INTERVAL)
+
+
+async def process_pending_transactions():
+    while True:
+        providers = await sync_to_async(list)(
+            Web3Provider.available.filter(supports_pending_filters=True).select_related("chain")
         )
-    except TransactionNotFound:
-        logger.info(f"Transaction {tx_hash} not found at pending status")
+        for provider in providers:
+            w3: Web3 = make_web3(provider=provider)
+            try:
+                tx_filter = _get_pending_tx_filter(w3)
+                for tx in tx_filter.get_new_entries():
+                    tx_hash = tx.hex()
+                    logger.info(f"Tx {tx_hash} broadcast by {provider.hostname}")
+                    try:
+                        tx_data = w3.eth.getTransaction(tx_hash)
+                        logger.debug(f"{tx_data['to']} to {tx_data['from']}")
+                        await sync_to_async(celery_pubsub.publish)(
+                            "blockchain.broadcast.transaction",
+                            chain_id=w3.eth.chain_id,
+                            transaction_data=tx_data,
+                        )
+                    except TransactionNotFound:
+                        logger.debug(f"Pending tx {tx_hash} not found on {provider.hostname}")
+            except (Web3UnsupportedMethod, ValueError):
+                logger.warning(
+                    f"{provider.hostname} does not support pending filters and will be disabled"
+                )
+                await sync_to_async(Web3Provider.objects.filter(id=provider).update)(
+                    supports_pending_filters=False
+                )
+            except (HTTPError, ConnectionError):
+                logger.warning(f"Failed to connect to {provider.hostname}")
+                await sync_to_async(celery_pubsub.publish)(
+                    "node.connection.nok",
+                    chain_id=provider.chain_id,
+                    provider_url=provider.url,
+                )
+            except Exception:
+                logger.exception(f"Failed to get pending txs from {provider.hostname}")
+
+                # We remove the filter in case it was uninstalled by the server, so that we
+                # can use a new one
+                PENDING_TX_FILTER_REGISTRY.pop(w3.eth.chain_id, None)
+        await asyncio.sleep(PENDING_TX_POLLING_INTERVAL)
+
+
+__all__ = [
+    "BLOCK_CREATION_INTERVAL",
+    "process_mined_blocks",
+    "process_pending_transactions",
+]

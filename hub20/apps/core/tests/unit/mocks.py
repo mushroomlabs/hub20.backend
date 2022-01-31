@@ -1,7 +1,6 @@
 from decimal import Decimal
 from unittest.mock import MagicMock
 
-from hub20.apps.blockchain.factories import TransactionFactory
 from hub20.apps.blockchain.models import Transaction
 from hub20.apps.core.choices import PAYMENT_NETWORKS
 from hub20.apps.core.models import (
@@ -10,10 +9,9 @@ from hub20.apps.core.models import (
     Transfer,
     TransferReceipt,
 )
-from hub20.apps.ethereum_money.client import encode_transfer_data
+from hub20.apps.ethereum_money.factories import Erc20TransferFactory, EtherAmountFactory
 from hub20.apps.ethereum_money.models import EthereumTokenAmount
 from hub20.apps.ethereum_money.signals import outgoing_transfer_mined
-from hub20.apps.ethereum_money.factories import EtherAmountFactory
 from hub20.apps.raiden.factories import ChannelFactory, PaymentEventFactory
 
 
@@ -23,13 +21,13 @@ class MockBlockchainTransferExecutor(BlockchainTransferExecutor):
         self.w3 = MagicMock()
 
     def execute(self, transfer: Transfer):
-        tx = TransactionFactory(
+        tx = Erc20TransferFactory(
+            recipient=transfer.address,
             from_address=self.account.address,
-            to_address=transfer.currency.address,
-            data=encode_transfer_data(transfer.address, transfer.as_token_amount),
+            amount=transfer.as_token_amount,
         )
         TransferReceipt.objects.create(
-            transfer=transfer, network=PAYMENT_NETWORKS.blockchain, identifier=tx.hash_hex
+            transfer=transfer, network=PAYMENT_NETWORKS.blockchain, identifier=tx.hash
         )
 
         outgoing_transfer_mined.send(

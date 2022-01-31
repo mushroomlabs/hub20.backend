@@ -1,81 +1,96 @@
 from __future__ import annotations
 
+import json
 import logging
-import os
-from typing import Any, Optional
+import uuid
 
-import ethereum
-from django.conf import settings
+import requests
+from django.contrib.auth import get_user_model
 from django.db import models
-from django.db.models import Max, Q, Sum
-from hdwallet import HDWallet
-from hdwallet.symbols import ETH
+from django.db.models import Q, Sum
 from model_utils.managers import QueryManager
-from web3 import Web3
-from web3.contract import Contract
+from model_utils.models import TimeStampedModel
+from taggit.managers import TaggableManager
 
-from hub20.apps.blockchain.fields import EthereumAddressField, HexField
-from hub20.apps.blockchain.models import BaseEthereumAccount, Chain
+from hub20.apps.blockchain.fields import EthereumAddressField
+from hub20.apps.blockchain.models import Chain
 
-from .abi import EIP20_ABI
-from .app_settings import HD_WALLET_MNEMONIC, HD_WALLET_ROOT_KEY
+from . import choices
+from .fields import EthereumTokenAmountField, TokenlistStandardURLField
+from .schemas import TokenList as TokenListDataModel, validate_token_list
 from .typing import TokenAmount, TokenAmount_T, Wei
 
 logger = logging.getLogger(__name__)
+User = get_user_model()
 
 
 class EthereumToken(models.Model):
     NULL_ADDRESS = "0x0000000000000000000000000000000000000000"
     chain = models.ForeignKey(Chain, on_delete=models.CASCADE, related_name="tokens")
-    code = models.CharField(max_length=8)
+    address = EthereumAddressField(default=NULL_ADDRESS)
+    symbol = models.CharField(max_length=20)
     name = models.CharField(max_length=500)
     decimals = models.PositiveIntegerField(default=18)
-    address = EthereumAddressField(default=NULL_ADDRESS)
+    logoURI = TokenlistStandardURLField(max_length=512, null=True, blank=True)
     is_listed = models.BooleanField(default=False)
 
     objects = models.Manager()
-    ERC20tokens = QueryManager(
-        ~Q(address=NULL_ADDRESS) & Q(chain_id=settings.BLOCKCHAIN_NETWORK_ID)
-    )
-    tracked = QueryManager(is_listed=True, chain_id=settings.BLOCKCHAIN_NETWORK_ID)
-    ethereum = QueryManager(address=NULL_ADDRESS, chain_id=settings.BLOCKCHAIN_NETWORK_ID)
+    native = QueryManager(address=NULL_ADDRESS)
+    ERC20tokens = QueryManager(~Q(address=NULL_ADDRESS))
+    tradeable = QueryManager(chain__providers__is_active=True)
 
     @property
     def is_ERC20(self) -> bool:
         return self.address != self.NULL_ADDRESS
 
+    @property
+    def wrapped_by(self):
+        return self.__class__.objects.filter(id__in=self.wrapping_tokens.values("wrapper"))
+
+    @property
+    def wraps(self):
+        wrapping = getattr(self, "wrappedtoken", None)
+        return wrapping and wrapping.wrapper
+
+    @property
+    def is_stable(self):
+        return hasattr(self, "stable_pair")
+
+    @property
+    def tracks_currency(self):
+        pairing = getattr(self, "stable_pair", None)
+        return pairing and pairing.currency
+
     def __str__(self) -> str:
-        components = [self.code]
+        components = [self.symbol]
         if self.is_ERC20:
             components.append(self.address)
 
         components.append(str(self.chain_id))
         return " - ".join(components)
 
-    def get_contract(self, w3: Web3) -> Contract:
-        if not self.is_ERC20:
-            raise ValueError("Not an ERC20 token")
-
-        return w3.eth.contract(abi=EIP20_ABI, address=self.address)
-
     def from_wei(self, wei_amount: Wei) -> EthereumTokenAmount:
         value = TokenAmount(wei_amount) / (10 ** self.decimals)
         return EthereumTokenAmount(amount=value, currency=self)
 
-    @staticmethod
-    def ETH(chain: Chain):
-        eth, _ = EthereumToken.objects.update_or_create(
+    @classmethod
+    def make_native(cls, chain: Chain):
+        token, _ = cls.objects.update_or_create(
             chain=chain,
-            code="ETH",
-            address=EthereumToken.NULL_ADDRESS,
-            defaults={"is_listed": True, "name": "Ethereum"},
+            address=cls.NULL_ADDRESS,
+            defaults=dict(
+                is_listed=True,
+                name=chain.native_token.name,
+                decimals=chain.native_token.decimals,
+                symbol=chain.native_token.symbol,
+            ),
         )
-        return eth
+        return token
 
     @classmethod
     def make(cls, address: str, chain: Chain, **defaults):
-        if address == EthereumToken.NULL_ADDRESS:
-            return EthereumToken.ETH(chain)
+        if address == cls.NULL_ADDRESS:
+            return cls.make_native(chain)
 
         obj, _ = cls.objects.update_or_create(address=address, chain=chain, defaults=defaults)
         return obj
@@ -84,12 +99,135 @@ class EthereumToken(models.Model):
         unique_together = (("chain", "address"),)
 
 
-class EthereumTokenAmountField(models.DecimalField):
-    def __init__(self, *args: Any, **kw: Any) -> None:
-        kw.setdefault("decimal_places", 18)
-        kw.setdefault("max_digits", 32)
+class WrappedToken(models.Model):
+    """
+    Tokens that have are minted and burned dependent on how much
+    of a primary token is locked are called 'wrapper tokens'. This can
+    happen in-chain (e.g, W-ETH wrapping ETH), or cross-chain
+    "bridged" tokens (e.g, WBTC wrapping BTC, Binance BAT wrapping
+    ERC20 BAT, Arbitrum DAI wrapping Ethereum DAI, etc)a
 
-        super().__init__(*args, **kw)
+    The idea of this table is to provide a way for operators and users
+    to optionally accept payments and transfers of a wrapped token
+    instead of the 'original' one.
+
+    """
+
+    wrapped = models.ForeignKey(
+        EthereumToken, related_name="wrapping_tokens", on_delete=models.CASCADE
+    )
+    wrapper = models.OneToOneField(EthereumToken, on_delete=models.CASCADE)
+
+    class Meta:
+        unique_together = ("wrapped", "wrapper")
+
+
+class StableTokenPair(models.Model):
+    """
+    A stabletoken is a token whose value is supposed to be pegged to a
+    'real' fiat currency. These value pegs can be 'soft' or 'hard',
+    (e.g, both USDC and DAI are pegged to the USD, but DAI's price is
+    determined algorithmically and therefore can oscillate, while USDC
+    is supposed to always be worth one USD
+    """
+
+    token = models.OneToOneField(
+        EthereumToken, related_name="stable_pair", on_delete=models.CASCADE
+    )
+    algorithmic_peg = models.BooleanField(default=True)
+    currency = models.CharField(max_length=3, choices=choices.CURRENCIES)
+
+
+class AbstractTokenListModel(models.Model):
+    id = models.UUIDField(default=uuid.uuid4, primary_key=True)
+    name = models.CharField(max_length=64)
+    description = models.TextField(null=True)
+    tokens = models.ManyToManyField(
+        EthereumToken, related_name="%(app_label)s_%(class)s_tokenlists"
+    )
+    keywords = TaggableManager()
+
+    def __str__(self):
+        return self.name
+
+    @classmethod
+    def fetch(cls, url) -> TokenListDataModel:
+        response = requests.get(url)
+
+        try:
+            response.raise_for_status()
+        except requests.exceptions.HTTPError:
+            raise ValueError(f"Failed to fetch {url}")
+
+        try:
+            token_list_data = response.json()
+        except json.decoder.JSONDecodeError:
+            raise ValueError(f"Could not decode json response from {url}")
+
+        validate_token_list(token_list_data)
+
+        return TokenListDataModel(**token_list_data)
+
+    class Meta:
+        abstract = True
+
+
+class TokenList(AbstractTokenListModel):
+    """
+    A model to manage [token lists](https://tokenlists.org). Only
+    admins can manage/import/export them.
+    """
+
+    url = TokenlistStandardURLField()
+    version = models.CharField(max_length=32)
+
+    class Meta:
+        unique_together = ("url", "version")
+
+    @classmethod
+    def make(cls, url, token_list_data: TokenListDataModel, description=None):
+
+        token_list, _ = cls.objects.get_or_create(
+            url=url,
+            version=token_list_data.version.as_string,
+            defaults=dict(name=token_list_data.name),
+        )
+        token_list.description = description
+        token_list.keywords.add(*token_list_data.keywords)
+        token_list.save()
+
+        for token_entry in token_list_data.tokens:
+            token, _ = EthereumToken.objects.get_or_create(
+                chain_id=token_entry.chainId,
+                address=token_entry.address,
+                defaults=dict(
+                    name=token_entry.name,
+                    decimals=token_entry.decimals,
+                    symbol=token_entry.symbol,
+                    logoURI=token_entry.logoURI,
+                ),
+            )
+            token_list.tokens.add(token)
+        return token_list
+
+
+class UserTokenList(AbstractTokenListModel, TimeStampedModel):
+    """
+    A model to manage [token lists](https://tokenlists.org). Only
+    admins can manage/import/export them.
+    """
+
+    user = models.ForeignKey(User, related_name="token_lists", on_delete=models.CASCADE)
+
+    @classmethod
+    def clone(cls, user, token_list: TokenList):
+        user_token_list = user.token_lists.create(
+            name=token_list.name,
+            description=token_list.description,
+        )
+        user_token_list.tokens.set(token_list.tokens.all())
+        user_token_list.keywords.set(token_list.keywords.all())
+        return user_token_list
 
 
 class EthereumTokenValueModel(models.Model):
@@ -108,63 +246,6 @@ class EthereumTokenValueModel(models.Model):
         abstract = True
 
 
-class ColdWallet(BaseEthereumAccount):
-    @classmethod
-    def generate(cls):
-        raise TypeError("Cold wallets do not store private keys and can not be generated")
-
-
-class KeystoreAccount(BaseEthereumAccount):
-    private_key = HexField(max_length=64, unique=True)
-
-    @classmethod
-    def generate(cls):
-        private_key = os.urandom(32)
-        address = ethereum.utils.privtoaddr(private_key)
-        checksum_address = ethereum.utils.checksum_encode(address.hex())
-        return cls.objects.create(address=checksum_address, private_key=private_key.hex())
-
-
-class HierarchicalDeterministicWallet(BaseEthereumAccount):
-    BASE_PATH_FORMAT = "m/44'/60'/0'/0/{index}"
-
-    index = models.PositiveIntegerField(unique=True)
-
-    @property
-    def private_key(self):
-        wallet = self.__class__.get_wallet(index=self.index)
-        return wallet.private_key()
-
-    @property
-    def private_key_bytes(self) -> bytes:
-        return bytearray.fromhex(self.private_key)
-
-    @classmethod
-    def get_wallet(cls, index: int) -> HDWallet:
-        wallet = HDWallet(symbol=ETH)
-
-        if HD_WALLET_MNEMONIC:
-            wallet.from_mnemonic(mnemonic=HD_WALLET_MNEMONIC)
-        elif HD_WALLET_ROOT_KEY:
-            wallet.from_xprivate_key(xprivate_key=HD_WALLET_ROOT_KEY)
-        else:
-            raise ValueError("Can not generate new addresses for HD Wallets. No seed available")
-
-        wallet.from_path(cls.BASE_PATH_FORMAT.format(index=index))
-        return wallet
-
-    @classmethod
-    def generate(cls):
-        latest_generation = cls.get_latest_generation()
-        index = 0 if latest_generation is None else latest_generation + 1
-        wallet = HierarchicalDeterministicWallet.get_wallet(index)
-        return cls.objects.create(index=index, address=wallet.p2pkh_address())
-
-    @classmethod
-    def get_latest_generation(cls) -> Optional[int]:
-        return cls.objects.aggregate(generation=Max("index")).get("generation")
-
-
 class EthereumTokenAmount:
     def __init__(self, amount: TokenAmount_T, currency: EthereumToken):
         self.amount: TokenAmount = TokenAmount(amount)
@@ -176,7 +257,7 @@ class EthereumTokenAmount:
         frac = self.amount % 1
 
         amount_formatted = str(integral) if not bool(frac) else self.amount.normalize()
-        return f"{amount_formatted} {self.currency.code}"
+        return f"{amount_formatted} {self.currency.symbol}"
 
     @property
     def as_wei(self) -> Wei:
@@ -187,7 +268,7 @@ class EthereumTokenAmount:
         return hex(self.as_wei)
 
     @property
-    def is_ETH(self) -> bool:
+    def is_native_token(self) -> bool:
         return self.currency.address == EthereumToken.NULL_ADDRESS
 
     def _check_currency_type(self, other: EthereumTokenAmount):
@@ -247,7 +328,8 @@ __all__ = [
     "EthereumToken",
     "EthereumTokenAmount",
     "EthereumTokenValueModel",
-    "ColdWallet",
-    "KeystoreAccount",
-    "HierarchicalDeterministicWallet",
+    "StableTokenPair",
+    "TokenList",
+    "UserTokenList",
+    "WrappedToken",
 ]

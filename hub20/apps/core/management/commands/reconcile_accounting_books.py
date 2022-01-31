@@ -6,8 +6,9 @@ from django.core.management.base import BaseCommand
 from django.db.models import QuerySet
 from web3 import Web3
 
-from hub20.apps.blockchain.client import BLOCK_SCAN_RANGE, get_web3
-from hub20.apps.blockchain.models import BaseEthereumAccount, Chain, Transaction
+from hub20.apps.blockchain.app_settings import BLOCK_SCAN_RANGE
+from hub20.apps.blockchain.client import make_web3
+from hub20.apps.blockchain.models import BaseEthereumAccount, Chain, Transaction, Web3Provider
 from hub20.apps.core.models.accounting import (
     ExternalAddressAccount,
     RaidenClientAccount,
@@ -69,75 +70,72 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         accounts = BaseEthereumAccount.objects.all()
+        transaction_type = ContentType.objects.get_for_model(Transaction)
+
         for user in User.objects.all():
             UserAccount.objects.get_or_create(user=user)
 
         for wallet in accounts:
             WalletAccount.objects.get_or_create(account=wallet)
 
-        raiden = Raiden.objects.first()
+        # Index Transactions
+        for provider in Web3Provider.available.all():
+            chain = provider.chain
+            w3 = make_web3(provider=provider)
+            Treasury.objects.get_or_create(chain=chain)
 
-        if raiden is not None:
-            RaidenClientAccount.objects.get_or_create(raiden=raiden)
+            native_token = EthereumToken.make_native(chain=chain)
+            tokens = EthereumToken.ERC20tokens.filter(chain=chain)
 
-        chain = Chain.make()
-        Treasury.objects.get_or_create(chain=chain)
+            index_token_events(w3=w3, chain=chain, accounts=accounts, tokens=tokens)
+            index_all_token_network_events(w3=w3)
 
-        transaction_type = ContentType.objects.get_for_model(Transaction)
+            for raiden in Raiden.objects.all():
+                RaidenClientAccount.objects.get_or_create(raiden=raiden)
+                get_all_service_deposits(w3=w3, raiden=raiden)
+                get_all_channel_deposits(w3=w3, raiden=raiden)
 
-        ETH = EthereumToken.ETH(chain=chain)
-        tokens = EthereumToken.ERC20tokens.all()
+            # Native Token Value Transfers
+            for account in accounts:
+                wallet_book = account.onchain_account.get_book(token=native_token)
 
-        w3 = get_web3()
+                # Ethereum Transactions Received
+                for tx in account.transactions.filter(to_address=account.address, value__gt=0):
+                    amount = native_token.from_wei(tx.value)
+                    params = dict(
+                        reference_type=transaction_type,
+                        reference_id=tx.id,
+                        currency=native_token,
+                        amount=amount.amount,
+                    )
+                    external_address_account, _ = ExternalAddressAccount.objects.get_or_create(
+                        address=tx.from_address
+                    )
+                    external_address_book = external_address_account.get_book(token=native_token)
 
-        index_token_events(w3=w3, chain=chain, accounts=accounts, tokens=tokens)
-        index_all_token_network_events(w3=w3)
+                    external_address_book.debits.get_or_create(**params)
+                    wallet_book.credits.get_or_create(**params)
 
-        if raiden is not None:
-            get_all_service_deposits(w3=w3, raiden=raiden)
-            get_all_channel_deposits(w3=w3, raiden=raiden)
+                # Ethereum Transactions Sent
+                for tx in account.transactions.filter(from_address=account.address, value__gt=0):
+                    amount = native_token.from_wei(tx.value)
+                    params = dict(
+                        reference_type=transaction_type,
+                        reference_id=tx.id,
+                        currency=native_token,
+                        amount=amount.amount,
+                    )
+                    external_address_account, _ = ExternalAddressAccount.objects.get_or_create(
+                        address=tx.to_address
+                    )
 
-        # Ethereum Value Transfers
-        for account in accounts:
-            wallet_book = account.onchain_account.get_book(token=ETH)
+                    external_address_book = external_address_account.get_book(token=ETH)
 
-            # Ethereum Transactions Received
-            for tx in account.transactions.filter(to_address=account.address, value__gt=0):
-                amount = ETH.from_wei(tx.value)
-                params = dict(
-                    reference_type=transaction_type,
-                    reference_id=tx.id,
-                    currency=ETH,
-                    amount=amount.amount,
-                )
-                external_address_account, _ = ExternalAddressAccount.objects.get_or_create(
-                    address=tx.from_address
-                )
-                external_address_book = external_address_account.get_book(token=ETH)
-
-                external_address_book.debits.get_or_create(**params)
-                wallet_book.credits.get_or_create(**params)
-
-            # Ethereum Transactions Sent
-            for tx in account.transactions.filter(from_address=account.address, value__gt=0):
-                amount = ETH.from_wei(tx.value)
-                params = dict(
-                    reference_type=transaction_type,
-                    reference_id=tx.id,
-                    currency=ETH,
-                    amount=amount.amount,
-                )
-                external_address_account, _ = ExternalAddressAccount.objects.get_or_create(
-                    address=tx.to_address
-                )
-
-                external_address_book = external_address_account.get_book(token=ETH)
-
-                external_address_book.credits.get_or_create(**params)
-                wallet_book.debits.get_or_create(**params)
+                    external_address_book.credits.get_or_create(**params)
+                    wallet_book.debits.get_or_create(**params)
 
         # Raiden payments
-        if raiden is not None:
+        for raiden in Raiden.objects.all():
             payment_type = ContentType.objects.get_for_model(RaidenPayment)
             for channel in raiden.channels.all():
                 logger.info(f"Recording entries for {channel}")

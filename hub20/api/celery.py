@@ -1,14 +1,17 @@
 import json
-import uuid
 import os
-
+import uuid
+from datetime import timedelta
 from decimal import Decimal
 
 from celery import Celery
 from celery.schedules import crontab
+from django.conf import settings
 from hexbytes import HexBytes
 from kombu.serialization import register
 from web3.datastructures import AttributeDict
+
+NODE_HEALTH_CHECK_INTERVAL = 15
 
 
 class Web3Encoder(json.JSONEncoder):
@@ -64,7 +67,7 @@ register(
 class Hub20CeleryConfig:
     name = "Hub20"
 
-    broker_url = "memory" if "HUB20_TEST" in os.environ else os.getenv("HUB20_BROKER_URL")
+    broker_url = "memory" if "HUB20_TEST" in os.environ else settings.CELERY_BROKER_URL
     broker_use_ssl = "HUB20_BROKER_USE_SSL" in os.environ
     beat_schedule = {
         "clear-expired-sessions": {
@@ -74,6 +77,26 @@ class Hub20CeleryConfig:
         "execute-transfers": {
             "task": "hub20.apps.core.tasks.execute_pending_transfers",
             "schedule": crontab(),
+        },
+        "check-providers-connected": {
+            "task": "hub20.apps.blockchain.tasks.check_providers_are_connected",
+            "schedule": timedelta(seconds=NODE_HEALTH_CHECK_INTERVAL),
+        },
+        "check-providers-synced": {
+            "task": "hub20.apps.blockchain.tasks.check_providers_are_synced",
+            "schedule": timedelta(seconds=NODE_HEALTH_CHECK_INTERVAL),
+        },
+        "check-chain-reorgs": {
+            "task": "hub20.apps.blockchain.tasks.check_chains_were_reorganized",
+            "schedule": timedelta(seconds=10),
+        },
+        "reset-inactive-providers": {
+            "task": "hub20.apps.blockchain.tasks.reset_inactive_providers",
+            "schedule": crontab(minute="*/5"),
+        },
+        "refresh-priority-fee-cache": {
+            "task": "hub20.apps.blockchain.tasks.refresh_max_priority_fee",
+            "schedule": timedelta(seconds=30),
         },
     }
     task_always_eager = "HUB20_TEST" in os.environ

@@ -1,96 +1,62 @@
 import datetime
+import json
 import logging
 from typing import Optional
 from urllib.parse import urlparse
 
-from django.conf import settings
-from django.contrib.postgres.fields import ArrayField
+from django.contrib.postgres.fields import ArrayField, HStoreField
 from django.db import models
-from django.db.models import Avg, Max, Q
+from django.db.models import Max
+from django.db.transaction import atomic
 from django.utils import timezone
-from hexbytes import HexBytes
 from model_utils.managers import InheritanceManager, QueryManager
 from web3 import Web3
-from web3.types import TxParams, Wei
+from web3.datastructures import AttributeDict
 
-from .app_settings import CHAIN_ID, START_BLOCK_NUMBER
-from .choices import ETHEREUM_CHAINS
-from .fields import EthereumAddressField, HexField, Uint256Field
-from .typing import Address
+from .app_settings import START_BLOCK_NUMBER
+from .fields import EthereumAddressField, HexField, Web3ProviderURLField
 
 logger = logging.getLogger(__name__)
 
 
-def database_history_gas_price_strategy(w3: Web3, params: TxParams = None) -> Wei:
-
-    BLOCK_HISTORY_SIZE = 100
-    chain_id = int(w3.net.version)
-    current_block_number = w3.eth.blockNumber
-    default_price = Web3.toWei(1.2, "gwei")
-
-    txs = Transaction.objects.filter(
-        block__chain=chain_id, block__number__gte=current_block_number - BLOCK_HISTORY_SIZE
-    )
-    return Wei(txs.aggregate(avg_price=Avg("gas_price")).get("avg_price")) or default_price
-
-
-class TransactionQuerySet(models.QuerySet):
-    def involving_address(self, chain, address):
-        return self.filter(block__chain=chain).filter(
-            Q(from_address=address)
-            | Q(to_address=address)
-            | Q(baseethereumaccount__address=address)
-        )
-
-    def last_block_with(self, chain, address):
-        qs = self.involving_address(chain, address).select_related("block")
-        return qs.aggregate(highest=Max("block__number")).get("highest") or 0
+def serialize_web3_data(data: AttributeDict):
+    return json.loads(Web3.toJSON(data))
 
 
 class Chain(models.Model):
-    id = models.PositiveIntegerField(
-        primary_key=True,
-        choices=ETHEREUM_CHAINS,
-        default=ETHEREUM_CHAINS.mainnet,
-    )
-    provider_url = models.URLField(unique=True)
-    synced = models.BooleanField()
-    online = models.BooleanField(default=False)
+    id = models.PositiveBigIntegerField(primary_key=True)
+    name = models.CharField(max_length=128, default="EVM-compatible network")
+    is_mainnet = models.BooleanField(default=True)
     highest_block = models.PositiveIntegerField()
-    enabled = models.BooleanField(default=True)
-
     objects = models.Manager()
-    available = QueryManager(enabled=True, synced=True, online=True)
+    active = QueryManager(providers__is_active=True)
 
     @property
-    def provider_hostname(self):
-        endpoint = urlparse(self.provider_url)
-        return endpoint.hostname
+    def provider(self):
+        return self.providers.filter(is_active=True).first()
 
-    @classmethod
-    def make(cls, chain_id: Optional[int] = CHAIN_ID):
-        chain, _ = cls.objects.get_or_create(
-            id=chain_id,
-            defaults={
-                "synced": False,
-                "highest_block": 0,
-                "provider_url": settings.WEB3_PROVIDER_URI,
-            },
-        )
-        return chain
+    @property
+    def synced(self):
+        return self.provider.synced and self.provider.is_active
+
+    def __str__(self):
+        return f"{self.name} ({self.id})"
+
+    class Meta:
+        ordering = ("id",)
 
 
 class Block(models.Model):
     hash = HexField(max_length=64, primary_key=True)
     chain = models.ForeignKey(Chain, on_delete=models.CASCADE, related_name="blocks")
     number = models.PositiveIntegerField(db_index=True)
+    base_fee_per_gas = models.PositiveBigIntegerField(null=True)
     timestamp = models.DateTimeField()
     parent_hash = HexField(max_length=64)
     uncle_hashes = ArrayField(HexField(max_length=64))
 
     def __str__(self) -> str:
-        hash_hex = self.hash if type(self.hash) is str else self.hash.hex()
-        return f"{hash_hex} #{self.number}"
+        return f"{self.hash} #{self.number}"
 
     @property
     def parent(self):
@@ -115,6 +81,7 @@ class Block(models.Model):
                 "timestamp": timezone.make_aware(block_time),
                 "parent_hash": block_data.parentHash,
                 "uncle_hashes": block_data.uncles,
+                "base_fee_per_gas": getattr(block_data, "baseFeePerGas", None),
             },
         )
         return block
@@ -127,105 +94,112 @@ class Block(models.Model):
         unique_together = ("chain", "hash", "number")
 
 
-class Transaction(models.Model):
-    chain = models.ForeignKey(Chain, on_delete=models.CASCADE, related_name="transactions")
-    block = models.ForeignKey(Block, on_delete=models.CASCADE, related_name="transactions")
+class AbstractTransactionRecord(models.Model):
     hash = HexField(max_length=64, db_index=True)
     from_address = EthereumAddressField(db_index=True)
     to_address = EthereumAddressField(db_index=True)
-    gas_used = Uint256Field()
-    gas_price = Uint256Field()
-    nonce = Uint256Field()
-    index = Uint256Field()
-    value = Uint256Field()
-    data = models.TextField()
-
-    objects = TransactionQuerySet.as_manager()
-
-    @property
-    def hash_hex(self):
-        return self.hash if type(self.hash) is str else self.hash.hex()
-
-    @property
-    def gas_fee(self) -> Uint256Field:
-        return self.gas_used * self.gas_price
 
     def __str__(self) -> str:
-        return f"Tx {self.hash_hex}"
+        return f"{self.__class__.__name__} {self.hash}"
+
+    class Meta:
+        abstract = True
+
+
+class TransactionDataRecord(AbstractTransactionRecord):
+    """
+    Transaction data records do not represent transactions by themselves
+    """
+
+    chain = models.ForeignKey(Chain, related_name="transaction_data", on_delete=models.CASCADE)
+    data = HStoreField()
 
     @classmethod
-    def make(cls, tx_data, tx_receipt, block: Block):
-        try:
-            assert tx_data.blockHash == tx_receipt.blockHash, "tx data/receipt block hash mismatch"
-            assert tx_data.blockHash == HexBytes(block.hash), "Block hash mismatch"
-            assert tx_data.hash == tx_receipt.transactionHash, "Tx hash mismatch"
-            assert tx_data["from"] == tx_receipt["from"], "Sender address mismatch"
-            assert tx_data["to"] == tx_receipt["to"], "Recipient address mismatch"
-            assert tx_data.transactionIndex == tx_receipt.transactionIndex, "Tx index mismatch"
-        except AssertionError as exc:
-            logger.warning(f"Transaction will not be recorded: {exc}")
-            return None
-
-        tx, _ = cls.objects.get_or_create(
-            hash=tx_receipt.transactionHash,
-            block=block,
-            chain=block.chain,
+    def make(cls, chain_id: int, tx_data: AttributeDict, force=False):
+        action = cls.objects.update_or_create if force else cls.objects.get_or_create
+        data, _ = action(
+            chain_id=chain_id,
+            hash=tx_data.hash,
             defaults={
-                "from_address": tx_receipt["from"],
-                "to_address": tx_receipt.to,
-                "index": tx_receipt.transactionIndex,
-                "gas_used": tx_receipt.gasUsed,
-                "gas_price": tx_data.gasPrice,
-                "nonce": tx_data.nonce,
-                "value": tx_data.value,
-                "data": tx_data.input,
+                "from_address": tx_data["from"],
+                "to_address": tx_data.to,
+                "data": serialize_web3_data(tx_data),
             },
         )
-
-        for log_data in tx_receipt.logs:
-            TransactionLog.make(log_data, tx)
-
-        return tx
+        return data
 
     class Meta:
         unique_together = ("hash", "chain")
 
 
-class TransactionLog(models.Model):
-    transaction = models.ForeignKey(Transaction, on_delete=models.CASCADE, related_name="logs")
-    index = models.SmallIntegerField()
-    data = models.TextField()
-    topics = ArrayField(models.TextField())
+class Transaction(AbstractTransactionRecord):
+    """
+    Transaction models record the receipt, and should store
+    all information related to a mined transaction
+    """
 
-    @classmethod
-    def make(cls, log_data, transaction: Transaction):
-        tx_log, _ = cls.objects.get_or_create(
-            index=log_data.logIndex,
-            transaction=transaction,
-            defaults={"data": log_data.data, "topics": [topic.hex() for topic in log_data.topics]},
-        )
-        return tx_log
+    block = models.ForeignKey(Block, related_name="transactions", on_delete=models.CASCADE)
+    receipt = HStoreField()
+
+    def __str__(self) -> str:
+        return f"Tx {self.hash}"
+
+    @property
+    def gas_used(self) -> int:
+        return int(self.receipt.get("gasUsed", 0))
+
+    @property
+    def gas_price(self) -> int:
+        return int(self.receipt.get("effectiveGasPrice", 0))
+
+    @property
+    def gas_fee(self) -> int:
+        return self.gas_used * self.gas_price
 
     class Meta:
-        unique_together = ("transaction", "index")
+        constraints = [
+            models.UniqueConstraint(fields=["hash", "block"], name="unique_tx_per_block"),
+        ]
+
+    @classmethod
+    def make(
+        cls,
+        chain_id: int,
+        tx_receipt: AttributeDict,
+        block_data: AttributeDict,
+        force=False,
+    ):
+        block = Block.make(chain_id=chain_id, block_data=block_data)
+        action = cls.objects.update_or_create if force else cls.objects.get_or_create
+        tx, _ = action(
+            block=block,
+            hash=tx_receipt.transactionHash,
+            defaults={
+                "from_address": tx_receipt["from"],
+                "to_address": tx_receipt.to,
+                "receipt": serialize_web3_data(tx_receipt),
+            },
+        )
+        return tx
+
+
+class AbstractTokenInfo(models.Model):
+    name = models.CharField(max_length=500)
+    symbol = models.CharField(max_length=16)
+    decimals = models.PositiveIntegerField(default=18)
+
+    class Meta:
+        abstract = True
+
+
+class NativeToken(AbstractTokenInfo):
+    chain = models.OneToOneField(Chain, on_delete=models.CASCADE, related_name="native_token")
 
 
 class BaseEthereumAccount(models.Model):
     address = EthereumAddressField(unique=True, db_index=True)
     transactions = models.ManyToManyField(Transaction)
     objects = InheritanceManager()
-
-    def last_contract_interaction(
-        self, chain: Chain, contract_address: Address
-    ) -> Optional[Transaction]:
-        q_contract_transaction = Q(from_address=contract_address) | Q(to_address=contract_address)
-        return self.transactions.filter(q_contract_transaction).order_by("-block__number").first()
-
-    def most_recent_contract_interaction(self, chain: Chain, contract_address: Address) -> int:
-        transaction = self.last_contract_interaction(
-            chain=chain, contract_address=contract_address
-        )
-        return transaction and transaction.block.number or 0
 
     def __str__(self):
         return self.address
@@ -236,4 +210,74 @@ class BaseEthereumAccount(models.Model):
         return private_key and bytearray.fromhex(private_key[2:])
 
 
-__all__ = ["Block", "Chain", "Transaction", "TransactionLog", "BaseEthereumAccount"]
+class Web3Provider(models.Model):
+    chain = models.ForeignKey(Chain, related_name="providers", on_delete=models.CASCADE)
+    url = Web3ProviderURLField()
+    client_version = models.CharField(max_length=300, null=True)
+    requires_geth_poa_middleware = models.BooleanField(default=False)
+    supports_pending_filters = models.BooleanField(default=False)
+    supports_eip1559 = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+    synced = models.BooleanField(default=False)
+    connected = models.BooleanField(default=False)
+
+    objects = models.Manager()
+    active = QueryManager(is_active=True)
+    available = QueryManager(synced=True, connected=True, is_active=True)
+
+    @property
+    def is_online(self):
+        return self.connected and self.synced
+
+    @property
+    def hostname(self):
+        return urlparse(self.url).hostname
+
+    @atomic()
+    def activate(self):
+        self.chain.providers.exclude(id=self.id).update(is_active=False)
+        self.is_active = True
+        self.save()
+
+    def __str__(self):
+        return self.hostname
+
+
+class Explorer(models.Model):
+    chain = models.ForeignKey(Chain, related_name="explorers", on_delete=models.CASCADE)
+    name = models.CharField(max_length=200, null=True)
+    url = models.URLField()
+    standard = models.CharField(max_length=200, null=True)
+
+    class Meta:
+        unique_together = ("url", "chain")
+
+
+class EventIndexer(models.Model):
+    chain = models.ForeignKey(Chain, related_name="indexers", on_delete=models.CASCADE)
+    name = models.CharField(max_length=200)
+    last_block = models.PositiveBigIntegerField(default=1)
+
+    @classmethod
+    def make(cls, chain_id: int, name: str):
+        indexer, _ = cls.objects.get_or_create(chain_id=chain_id, name=name)
+        return indexer
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["chain", "name"], name="unique_name_per_chain"),
+        ]
+
+
+__all__ = [
+    "Block",
+    "Chain",
+    "Transaction",
+    "TransactionDataRecord",
+    "BaseEthereumAccount",
+    "AbstractTokenInfo",
+    "NativeToken",
+    "Web3Provider",
+    "Explorer",
+    "EventIndexer",
+]

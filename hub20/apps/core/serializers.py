@@ -9,9 +9,10 @@ from rest_framework.reverse import reverse
 from hub20.apps.blockchain.serializers import EthereumAddressField, HexadecimalField
 from hub20.apps.ethereum_money.models import EthereumToken, EthereumTokenAmount
 from hub20.apps.ethereum_money.serializers import (
-    CurrencyRelatedField,
-    EthereumTokenSelectorField,
     EthereumTokenSerializer,
+    HyperlinkedRelatedTokenField,
+    HyperlinkedTokenIdentityField,
+    HyperlinkedTokenMixin,
     TokenValueField,
 )
 
@@ -28,6 +29,30 @@ class UserRelatedField(serializers.SlugRelatedField):
         super().__init__(*args, **kw)
 
 
+class StoreAcceptedTokenList(serializers.HyperlinkedRelatedField):
+    view_name = "user-tokenlist-detail"
+
+    def get_queryset(self):
+        request = self.context.get("request")
+
+        return request.user.token_lists.all()
+
+
+class UserTokenSelectorField(HyperlinkedRelatedTokenField, HyperlinkedTokenMixin):
+    def get_attribute(self, instance):
+        return instance
+
+
+class HyperlinkedBalanceIdentityField(serializers.HyperlinkedIdentityField):
+    def __init__(self, *args, **kw):
+        kw.setdefault("view_name", "balance-detail")
+        super().__init__(*args, **kw)
+
+    def get_url(self, obj, view_name, request, format):
+        url_kwargs = {"chain_id": obj.chain_id, "address": obj.address}
+        return reverse(view_name, kwargs=url_kwargs, request=request, format=format)
+
+
 class UserSerializer(serializers.ModelSerializer):
     url = serializers.HyperlinkedIdentityField(view_name="users-detail", lookup_field="username")
 
@@ -37,23 +62,21 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 class TokenBalanceSerializer(EthereumTokenSerializer):
-    balance = TokenValueField(read_only=True)
+    token = HyperlinkedTokenIdentityField(view_name="token-detail")
+    amount = TokenValueField(read_only=True, source="balance")
 
     class Meta:
         model = EthereumTokenSerializer.Meta.model
-        fields = EthereumTokenSerializer.Meta.fields + ("balance",)
-        read_only_fields = EthereumTokenSerializer.Meta.read_only_fields + ("balance",)
-
-
-class HyperlinkedTokenBalanceSerializer(TokenBalanceSerializer):
-    url = serializers.SerializerMethodField()
-
-    def get_url(self, obj):
-        return reverse(
-            "balance-detail",
-            kwargs={"address": obj.address},
-            request=self.context.get("request"),
+        fields = read_only_fields = (
+            "token",
+            "amount",
         )
+
+
+class HyperlinkedTokenBalanceSerializer(HyperlinkedTokenMixin, TokenBalanceSerializer):
+    url = HyperlinkedTokenIdentityField(view_name="balance-detail")
+
+    view_name = "balance-detail"
 
     class Meta:
         model = TokenBalanceSerializer.Meta.model
@@ -65,7 +88,7 @@ class TransferSerializer(serializers.ModelSerializer):
     url = serializers.HyperlinkedIdentityField(view_name="transfer-detail")
     address = EthereumAddressField(required=False, allow_null=True)
     recipient = UserRelatedField(source="receiver", required=False, allow_null=True)
-    token = CurrencyRelatedField(source="currency")
+    token = HyperlinkedRelatedTokenField(source="currency")
     target = serializers.CharField(read_only=True)
     status = serializers.CharField(read_only=True)
 
@@ -104,8 +127,11 @@ class TransferSerializer(serializers.ModelSerializer):
         transfer_amount = EthereumTokenAmount(currency=currency, amount=data["amount"])
         user_balance_amount = request.user.account.get_balance_token_amount(currency)
 
+        if not user_balance_amount:
+            raise serializers.ValidationError("No balance available", code="invalid")
+
         if user_balance_amount < transfer_amount:
-            raise serializers.ValidationError("Insufficient balance")
+            raise serializers.ValidationError("Insufficient balance", code="insufficient")
 
         return data
 
@@ -132,7 +158,7 @@ class TransferSerializer(serializers.ModelSerializer):
 
 
 class TransferExecutionSerializer(serializers.ModelSerializer):
-    token = CurrencyRelatedField(source="transfer.currency")
+    token = HyperlinkedRelatedTokenField(source="transfer.currency")
     target = serializers.CharField(source="transfer.target", read_only=True)
     amount = TokenValueField(source="transfer.amount")
 
@@ -241,7 +267,7 @@ class RaidenPaymentSerializer(PaymentSerializer):
 
 class DepositSerializer(serializers.ModelSerializer):
 
-    token = EthereumTokenSelectorField(source="currency")
+    token = HyperlinkedRelatedTokenField(source="currency")
     routes = serializers.SerializerMethodField()
     payments = serializers.SerializerMethodField()
 
@@ -319,7 +345,7 @@ class PaymentOrderReadSerializer(PaymentOrderSerializer):
 
 
 class PaymentConfirmationSerializer(serializers.ModelSerializer):
-    token = CurrencyRelatedField(source="payment.currency")
+    token = HyperlinkedRelatedTokenField(source="payment.currency")
     amount = TokenValueField(source="payment.amount")
     route = serializers.SerializerMethodField()
 
@@ -340,7 +366,7 @@ class CheckoutSerializer(PaymentOrderSerializer):
         currency = data["currency"]
         store = data["store"]
         if currency not in store.accepted_currencies.all():
-            raise serializers.ValidationError(f"{currency.code} is not accepted at {store.name}")
+            raise serializers.ValidationError(f"{currency.symbol} is not accepted at {store.name}")
 
         return data
 
@@ -381,31 +407,82 @@ class StoreSerializer(serializers.ModelSerializer):
     url = serializers.HyperlinkedIdentityField(view_name="store-detail")
     site_url = serializers.URLField(source="url")
     public_key = serializers.CharField(source="rsa.public_key_pem", read_only=True)
-    accepted_currencies = serializers.HyperlinkedRelatedField(
-        queryset=EthereumToken.tracked.all(),
-        many=True,
-        view_name="ethereum_money:token-detail",
-        lookup_field="address",
-    )
 
     class Meta:
         model = models.Store
-        fields = ("id", "url", "name", "site_url", "public_key", "accepted_currencies")
+        fields = ("id", "url", "name", "site_url", "public_key")
         read_only_fields = ("id", "public_key")
 
 
-class StoreEditorSerializer(StoreSerializer):
-    def create(self, validated_data):
-        request = self.context.get("request")
-        currencies = validated_data.pop("accepted_currencies", [])
-        store = models.Store.objects.create(owner=request.user, **validated_data)
-        store.accepted_currencies.set(currencies)
-        return store
+class StoreViewerSerializer(StoreSerializer):
+    accepted_currencies = HyperlinkedRelatedTokenField(many=True)
 
     class Meta:
         model = models.Store
-        fields = StoreSerializer.Meta.fields + ("checkout_webhook_url",)
+        fields = read_only_fields = (
+            "id",
+            "url",
+            "name",
+            "site_url",
+            "public_key",
+            "accepted_currencies",
+        )
+
+
+class StoreEditorSerializer(StoreSerializer):
+    url = serializers.HyperlinkedIdentityField(view_name="user-store-detail")
+    accepted_token_list = StoreAcceptedTokenList()
+    checkout_webhook_url = serializers.URLField(allow_null=True)
+
+    def create(self, validated_data):
+        request = self.context.get("request")
+        return models.Store.objects.create(owner=request.user, **validated_data)
+
+    class Meta:
+        model = models.Store
+        fields = StoreSerializer.Meta.fields + (
+            "accepted_token_list",
+            "checkout_webhook_url",
+        )
         read_only_fields = StoreSerializer.Meta.read_only_fields
+
+
+class UserTokenSerializer(EthereumTokenSerializer):
+    url = HyperlinkedTokenIdentityField(view_name="user-token-detail")
+    token = HyperlinkedTokenIdentityField(view_name="token-detail", read_only=True)
+    address = EthereumAddressField(read_only=True)
+    chain_id = serializers.PrimaryKeyRelatedField(read_only=True)
+
+    class Meta:
+        model = EthereumTokenSerializer.Meta.model
+        fields = ("url", "token") + EthereumTokenSerializer.Meta.fields
+        read_only_fields = ("url", "token") + EthereumTokenSerializer.Meta.fields
+
+
+class UserTokenCreatorSerializer(serializers.ModelSerializer):
+    url = HyperlinkedTokenIdentityField(view_name="user-token-detail")
+    token = UserTokenSelectorField(view_name="token-detail")
+
+    def validate(self, data):
+        token = data["token"]
+        if not EthereumToken.tradeable.filter(id=token.id).exists():
+            raise serializers.ValidationError(
+                f"Token {token.symbol} on chain #{token.chain_id} is not listed for trade"
+            )
+        return data
+
+    def create(self, validated_data):
+        request = self.context["request"]
+        token = validated_data["token"]
+        native_token = EthereumToken.make_native(token.chain)
+        request.user.preferences.tokens.add(token)
+        request.user.preferences.tokens.add(native_token)
+        return token
+
+    class Meta:
+        model = EthereumTokenSerializer.Meta.model
+        fields = ("url", "token") + EthereumTokenSerializer.Meta.fields
+        read_only_fields = ("url",) + EthereumTokenSerializer.Meta.fields
 
 
 class BookEntrySerializer(serializers.ModelSerializer):
@@ -465,16 +542,37 @@ class DebitSerializer(BookEntrySerializer):
         fields = read_only_fields = BookEntrySerializer.Meta.fields
 
 
-class AccountingBookSerializer(EthereumTokenSerializer):
+class UserPreferencesSerializer(serializers.ModelSerializer):
+    tokens = HyperlinkedRelatedTokenField(
+        view_name="token-detail",
+        queryset=EthereumToken.tradeable.all(),
+        many=True,
+    )
+
+    class Meta:
+        model = models.UserPreferences
+        fields = ("tokens",)
+
+
+class AccountingBookSerializer(serializers.Serializer):
+    token = HyperlinkedTokenIdentityField(view_name="token-detail", source="*")
     total_credit = TokenValueField(read_only=True)
     total_debit = TokenValueField(read_only=True)
     balance = TokenValueField(read_only=True)
 
-    class Meta:
-        model = EthereumTokenSerializer.Meta.model
-        fields = EthereumTokenSerializer.Meta.fields + ("total_credit", "total_debit", "balance")
-        read_only_fields = EthereumTokenSerializer.Meta.fields + (
-            "total_credit",
-            "total_debit",
-            "balance",
+
+class WalletBalanceSheetSerializer(serializers.ModelSerializer):
+    url = serializers.SerializerMethodField()
+    address = EthereumAddressField(source="account.address", read_only=True)
+    balances = AccountingBookSerializer(many=True, read_only=True)
+
+    def get_url(self, obj):
+        return reverse(
+            "accounting-wallets-detail",
+            kwargs=dict(address=obj.account.address),
+            request=self.context["request"],
         )
+
+    class Meta:
+        model = models.WalletAccount
+        fields = read_only_fields = ("url", "address", "balances")

@@ -12,10 +12,10 @@ from model_utils.choices import Choices
 from model_utils.managers import InheritanceManager, QueryManager
 from model_utils.models import StatusModel, TimeStampedModel
 
-from hub20.apps.blockchain.fields import EthereumAddressField, Uint256Field
-from hub20.apps.blockchain.models import BaseEthereumAccount, Chain, Transaction
+from hub20.apps.blockchain.fields import EthereumAddressField, HexField, Uint256Field
+from hub20.apps.blockchain.models import BaseEthereumAccount, Chain, Transaction, Web3Provider
 from hub20.apps.blockchain.typing import Address
-from hub20.apps.ethereum_money.app_settings import TRACKED_TOKENS
+from hub20.apps.blockchain.validators import uri_parsable_scheme_validator
 from hub20.apps.ethereum_money.models import (
     EthereumToken,
     EthereumTokenAmount,
@@ -26,12 +26,17 @@ from hub20.apps.ethereum_money.models import (
 CHANNEL_STATUSES = Choices("opened", "settling", "settled", "unusable", "closed", "closing")
 User = get_user_model()
 
+raiden_url_validator = uri_parsable_scheme_validator(("http", "https"))
+
+
+class RaidenURLField(models.URLField):
+    default_validators = [raiden_url_validator]
+
 
 class TokenNetwork(models.Model):
     address = EthereumAddressField()
     token = models.OneToOneField(EthereumToken, on_delete=models.CASCADE)
     objects = models.Manager()
-    tracked = QueryManager(token__address__in=TRACKED_TOKENS)
 
     def can_reach(self, address) -> bool:
         # This is a very naive assumption. One should not assume that we can
@@ -43,6 +48,10 @@ class TokenNetwork(models.Model):
         return open_channels.filter(participant_addresses__contains=[address]).exists()
 
     @property
+    def chain(self):
+        return self.token.chain
+
+    @property
     def events(self):
         return TokenNetworkChannelEvent.objects.filter(channel__token_network=self)
 
@@ -52,7 +61,7 @@ class TokenNetwork(models.Model):
         return self.channels.aggregate(max_block=max_block_aggregate).get("max_block")
 
     def __str__(self):
-        return f"{self.address} - ({self.token.code} @ {self.token.chain_id})"
+        return f"{self.address} - ({self.token.symbol} @ {self.token.chain_id})"
 
 
 class TokenNetworkChannel(models.Model):
@@ -64,9 +73,7 @@ class TokenNetworkChannel(models.Model):
 
     @property
     def events(self):
-        return self.tokennetworkchannelevent_set.order_by(
-            "transaction__block__number", "transaction__index"
-        )
+        return self.tokennetworkchannelevent_set.order_by("transaction__block__number")
 
 
 class TokenNetworkChannelStatus(StatusModel):
@@ -100,7 +107,8 @@ class TokenNetworkChannelEvent(models.Model):
 
 
 class Raiden(BaseEthereumAccount):
-    url = models.URLField(unique=True)
+    url = RaidenURLField(unique=True)
+    web3_provider = models.ForeignKey(Web3Provider, null=True, on_delete=models.SET_NULL)
 
     @property
     def private_key(self):
@@ -115,6 +123,10 @@ class Raiden(BaseEthereumAccount):
     @property
     def open_channels(self):
         return self.channels.filter(status=Channel.STATUS.opened)
+
+    @property
+    def chain(self) -> Optional[Chain]:
+        return self.web3_provider and self.web3_provider.chain
 
     @property
     def payments(self):
@@ -182,15 +194,13 @@ class Channel(StatusModel):
 
         token = EthereumToken.ERC20tokens.filter(address=token_address).first()
 
-        if token is None:
-            chain = Chain.make()
-            token = EthereumToken.make(address=token_address, chain=chain)
+        assert token is not None
+        assert token.chain == raiden.chain
 
-        token_network = TokenNetwork.objects.filter(address=token_network_address).first()
-        if token_network is None:
-            token_network = TokenNetwork.objects.create(address=token_network_address, token=token)
+        token_network, _ = TokenNetwork.objects.get_or_create(
+            address=token_network_address, token=token
+        )
 
-        assert token_network.address == token_network_address
         assert token_network.token.address == token_address
 
         balance = token.from_wei(channel_data.pop("balance"))
@@ -268,20 +278,11 @@ class Payment(models.Model):
         unique_together = ("channel", "identifier", "sender_address", "receiver_address")
 
 
-class ChannelDeposit(EthereumTokenValueModel):
-    channel = models.ForeignKey(Channel, related_name="deposits", on_delete=models.CASCADE)
-    transaction = models.ForeignKey(Transaction, on_delete=models.CASCADE)
-
-
-class ChannelWithdraw(EthereumTokenValueModel):
-    channel = models.ForeignKey(Channel, related_name="withdrawals", on_delete=models.CASCADE)
-    transaction = models.ForeignKey(Transaction, on_delete=models.CASCADE)
-
-
 class RaidenManagementOrder(TimeStampedModel):
     raiden = models.ForeignKey(Raiden, on_delete=models.CASCADE)
     user = models.ForeignKey(User, on_delete=models.PROTECT)
     objects = InheritanceManager()
+    transaction_hash = HexField(max_length=64, unique=True, null=True)
 
 
 class JoinTokenNetworkOrder(RaidenManagementOrder):
@@ -304,7 +305,7 @@ class ChannelWithdrawOrder(RaidenManagementOrder):
 
 
 class UserDepositContractOrder(RaidenManagementOrder, EthereumTokenValueModel):
-    pass
+    chain = models.ForeignKey(Chain, related_name="user_deposit_orders", on_delete=models.CASCADE)
 
 
 class RaidenManagementOrderResult(TimeStampedModel):

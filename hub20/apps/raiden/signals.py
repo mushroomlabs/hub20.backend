@@ -1,7 +1,5 @@
 from django.dispatch import Signal
 
-raiden_payment_received = Signal(providing_args=["payment"])
-raiden_payment_sent = Signal(providing_args=["payment"])
-service_deposit_sent = Signal(
-    providing_args=["transaction", "raiden", "amount", "contract_address"]
-)
+raiden_payment_received = Signal(["payment"])
+raiden_payment_sent = Signal(["payment"])
+service_deposit_sent = Signal(["transaction", "raiden", "amount", "contract_address"])

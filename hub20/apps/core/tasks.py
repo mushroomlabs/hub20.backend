@@ -41,7 +41,7 @@ def send_session_event(session_key, event, **event_data):
     layer = get_channel_layer()
     channel_group_name = SessionEventsConsumer.get_group_name(session_key)
     event_data.update({"type": "notify_event", "event": event})
-    logger.info(f"Sending session event to {session_key}")
+    logger.info(f"Sending {event} to session {session_key}")
     async_to_sync(layer.group_send)(channel_group_name, event_data)
 
 
@@ -75,7 +75,7 @@ def call_checkout_webhook(checkout_id):
         except httpx.ConnectError:
             logger.warning(f"Failed to connect to {url}")
         except httpx.HTTPError as exc:
-            logger.exception(f"Webhook {url} for {checkout_id} resulted in error: {exc}")
+            logger.warning(f"Webhook {url} for {checkout_id} resulted in error response: {exc}")
         except Exception as exc:
             logger.exception(f"Failed to call webhook at {url} for {checkout_id}: {exc}")
     except Checkout.DoesNotExist:
@@ -83,18 +83,18 @@ def call_checkout_webhook(checkout_id):
 
 
 @shared_task
-def notify_new_block(chain_id, block_data):
+def notify_new_block(chain_id, block_data, provider_url):
 
     block_number = block_data["number"]
     session_keys = _get_open_session_keys()
     logger.info(f"Notifying {len(session_keys)} clients about block #{block_number}")
     for session_key in session_keys:
-        event_data = {
-            k: v
-            for k, v in block_data.items()
-            if k in ["gasUsed", "hash", "nonce", "number", "parentsHash", "size", "timestamp"]
-        }
-
+        event_data = dict(
+            chain_id=chain_id,
+            hash=block_data.hash.hex(),
+            number=block_number,
+            timestamp=block_data.timestamp,
+        )
         send_session_event(session_key, event=Events.BLOCKCHAIN_BLOCK_CREATED.value, **event_data)
 
 
@@ -117,7 +117,7 @@ def clear_expired_sessions():
     Session.objects.filter(expire_date__lte=timezone.now()).delete()
 
 
-celery_pubsub.subscribe("blockchain.block.mined", notify_new_block)
+celery_pubsub.subscribe("blockchain.mined.block", notify_new_block)
 celery_pubsub.subscribe("node.sync.nok", notify_node_unavailable)
 celery_pubsub.subscribe("node.sync.ok", notify_node_recovered)
 celery_pubsub.subscribe("node.connection.nok", notify_node_unavailable)
