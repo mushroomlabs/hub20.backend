@@ -40,6 +40,7 @@ test:
   script:
     - export
     - pip install -e .
+    - django-admin makemigrations
     - pytest
 
   only:
