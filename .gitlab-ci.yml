@@ -67,7 +67,7 @@ publish_python_package:
   variables:
     TWINE_USERNAME: $TWINE_USERNAME
     TWINE_PASSWORD: $TWINE_PASSWORD
-    TWINE_REPOSITORY_URL: https://upload.pypi.org/legacy
+    TWINE_REPOSITORY_URL: $TWINE_REPOSITORY_URL
 
   script:
     - pip install twine
