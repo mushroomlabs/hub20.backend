@@ -8,8 +8,6 @@ x-hub20: &backend_service
       condition: service_healthy
     db:
       condition: service_healthy
-    ethereum:
-      condition: service_healthy
 
 services:
   db:
