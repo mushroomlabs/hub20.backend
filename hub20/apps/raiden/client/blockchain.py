@@ -174,7 +174,7 @@ def get_service_deposit_balance(w3: Web3, raiden: Raiden) -> EthereumTokenAmount
 
 
 def get_token_networks():
-    for provider in Web3Provider.available.exclude(raiden__isnull=True):
+    for provider in Web3Provider.available.exclude(chain__raiden__isnull=True):
         w3: Web3 = make_web3(provider=provider)
 
         try:

@@ -52,7 +52,6 @@ def on_raiden_created_create_account(sender, **kw):
 
 
 @receiver(post_save, sender=BaseEthereumAccount)
-@receiver(post_save, sender=Raiden)
 @receiver(post_save, sender=Wallet)
 def on_wallet_created_create_account(sender, **kw):
     if kw["created"]:

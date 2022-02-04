@@ -173,7 +173,7 @@ class RaidenStatusSerializer(serializers.ModelSerializer):
     cost_estimates = serializers.SerializerMethodField()
 
     def get_online(self, obj):
-        client = RaidenClient(raiden_account=obj)
+        client = RaidenClient(raiden_node=obj)
         return "ready" == client.get_status()
 
     def get_cost_estimates(self, obj):

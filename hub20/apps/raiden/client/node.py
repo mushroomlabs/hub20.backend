@@ -13,6 +13,7 @@ from django.utils.timezone import make_aware
 from ethereum.utils import checksum_encode
 from web3.datastructures import AttributeDict
 
+from hub20.apps.blockchain.models import BaseEthereumAccount, Chain
 from hub20.apps.blockchain.typing import Address
 from hub20.apps.ethereum_money.models import EthereumTokenAmount
 from hub20.apps.raiden.exceptions import RaidenConnectionError, RaidenPaymentError
@@ -47,8 +48,8 @@ def _make_request(url: str, method: str = "GET", **payload: Any) -> Union[List, 
 class RaidenClient:
     URL_BASE_PATH = "/api/v1"
 
-    def __init__(self, raiden_account: Raiden) -> None:
-        self.raiden = raiden_account
+    def __init__(self, raiden_node: Raiden) -> None:
+        self.raiden = raiden_node
 
     def _parse_payment(self, payment_data: Dict, channel: Channel) -> Optional[AttributeDict]:
         event_name = payment_data.pop("event")
@@ -194,10 +195,12 @@ class RaidenClient:
         return checksum_encode(response.get("our_address"))
 
     @classmethod
-    def make(cls, url) -> RaidenClient:
+    def make_raiden(cls, url, chain: Chain) -> Raiden:
         account_address: Address = cls.get_node_account_address(url)
-        raiden_account, _ = Raiden.objects.get_or_create(address=account_address, url=url)
-        return cls(raiden_account=raiden_account)
+
+        account, _ = BaseEthereumAccount.objects.get_or_create(address=account_address)
+        raiden_node, _ = Raiden.objects.get_or_create(url=url, account=account, chain=chain)
+        return raiden_node
 
     @classmethod
     def select_for_transfer(
@@ -223,16 +226,16 @@ class RaidenClient:
         if not amount.currency.tokennetwork.can_reach(address):
             return None
 
-        raiden_account = Raiden.objects.first()
+        raiden_node = Raiden.objects.first()
 
-        return raiden_account and cls(raiden_account=raiden_account)
+        return raiden_node and cls(raiden_node=raiden_node)
 
 
 def raiden_periodic_response_handler(period=2):
     def decorator(handler):
         async def wrapper(*args, **kw):
-            raiden_accounts = await sync_to_async(list)(Raiden.objects.exclude(web3_provider=None))
-            raiden_clients = [RaidenClient(raiden_account=raiden) for raiden in raiden_accounts]
+            raiden_nodes = await sync_to_async(list)(Raiden.objects.all())
+            raiden_clients = [RaidenClient(raiden_node=raiden) for raiden in raiden_nodes]
 
             while True:
                 for raiden_client in raiden_clients:
