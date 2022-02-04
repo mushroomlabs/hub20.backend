@@ -137,6 +137,8 @@ class TokenBrowserViewSet(TokenViewSet):
     def get_serializer_class(self):
         if self.action == "balance":
             return serializers.HyperlinkedTokenBalanceSerializer
+        elif self.action == "routes":
+            return serializers.TokenRouteDescriptorSerializer
 
         return super().get_serializer_class()
 
@@ -169,6 +171,15 @@ class TokenBrowserViewSet(TokenViewSet):
             return Response(serializer.data)
         except AttributeError:
             raise Http404
+
+    @action(detail=True, permission_classes=(IsAuthenticated,))
+    def routes(self, request, **kwargs):
+        """
+        Returns list of all routes that can be used for deposits/withdrawals in the hub
+        """
+        token = self.get_object()
+        serializer = self.get_serializer(instance=token)
+        return Response(serializer.data)
 
 
 class TransferListView(generics.ListCreateAPIView):

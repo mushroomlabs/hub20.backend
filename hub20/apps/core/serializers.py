@@ -84,6 +84,23 @@ class HyperlinkedTokenBalanceSerializer(HyperlinkedTokenMixin, TokenBalanceSeria
         read_only_fields = ("url",) + TokenBalanceSerializer.Meta.read_only_fields
 
 
+class TokenRouteDescriptorSerializer(HyperlinkedTokenMixin, EthereumTokenSerializer):
+    url = HyperlinkedTokenIdentityField(view_name="token-routes")
+    token = HyperlinkedTokenIdentityField(view_name="token-detail")
+    blockchain = serializers.HyperlinkedRelatedField(
+        view_name="blockchain:chain-detail", source="chain_id", read_only=True
+    )
+    networks = serializers.SerializerMethodField()
+
+    def get_networks(self, obj):
+        return {"raiden": hasattr(obj, "tokennetwork")}
+
+    class Meta:
+        model = EthereumTokenSerializer.Meta.model
+        fields = ("url", "token", "blockchain", "networks")
+        read_only_fields = ("url", "token", "blockchain", "networks")
+
+
 class TransferSerializer(serializers.ModelSerializer):
     url = serializers.HyperlinkedIdentityField(view_name="transfer-detail")
     address = EthereumAddressField(required=False, allow_null=True)
