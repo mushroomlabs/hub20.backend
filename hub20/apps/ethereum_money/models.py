@@ -8,9 +8,11 @@ import requests
 from django.contrib.auth import get_user_model
 from django.db import models
 from django.db.models import Q, Sum
+from django.utils.translation import gettext_lazy as _
 from model_utils.managers import QueryManager
 from model_utils.models import TimeStampedModel
 from taggit.managers import TaggableManager
+from taggit.models import GenericUUIDTaggedItemBase, TaggedItemBase
 
 from hub20.apps.blockchain.fields import EthereumAddressField
 from hub20.apps.blockchain.models import Chain
@@ -22,6 +24,12 @@ from .typing import TokenAmount, TokenAmount_T, Wei
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
+
+
+class UUIDTaggedItem(GenericUUIDTaggedItemBase, TaggedItemBase):
+    class Meta:
+        verbose_name = _("Tag")
+        verbose_name_plural = _("Tags")
 
 
 class EthereumToken(models.Model):
@@ -145,7 +153,7 @@ class AbstractTokenListModel(models.Model):
     tokens = models.ManyToManyField(
         EthereumToken, related_name="%(app_label)s_%(class)s_tokenlists"
     )
-    keywords = TaggableManager()
+    keywords = TaggableManager(through=UUIDTaggedItem)
 
     def __str__(self):
         return self.name
