@@ -57,6 +57,7 @@ class RaidenFactory(factory.django.DjangoModelFactory):
 
     class Meta:
         model = models.Raiden
+        django_get_or_create = ("chain",)
 
 
 class ChannelFactory(factory.django.DjangoModelFactory):

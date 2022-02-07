@@ -19,9 +19,23 @@ class TransferFactory(EthereumTokenValueModelFactory):
 class InternalTransferFactory(TransferFactory):
     receiver = factory.SubFactory(UserFactory)
 
+    class Meta:
+        model = models.InternalTransfer
 
-class ExternalTransferFactory(TransferFactory):
+
+class BlockchainTransferFactory(TransferFactory):
     address = factory.Faker("ethereum_address")
 
+    class Meta:
+        model = models.BlockchainTransfer
 
-__all__ = ["TransferFactory", "InternalTransferFactory", "ExternalTransferFactory"]
+
+class RaidenTransferFactory(TransferFactory):
+    address = factory.Faker("ethereum_address")
+    identifier = factory.fuzzy.FuzzyInteger(2 ** 48, 2 ** 53)
+
+    class Meta:
+        model = models.RaidenTransfer
+
+
+__all__ = ["InternalTransferFactory", "BlockchainTransferFactory", "RaidenTransferFactory"]

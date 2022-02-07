@@ -174,13 +174,13 @@ class TransferSerializer(serializers.ModelSerializer):
         read_only_fields = ("id", "status", "target")
 
 
-class TransferExecutionSerializer(serializers.ModelSerializer):
+class TransferConfirmationSerializer(serializers.ModelSerializer):
     token = HyperlinkedRelatedTokenField(source="transfer.currency")
     target = serializers.CharField(source="transfer.target", read_only=True)
     amount = TokenValueField(source="transfer.amount")
 
     class Meta:
-        model = models.TransferExecution
+        model = models.TransferConfirmation
         fields = read_only_fields = ("created", "token", "amount", "target")
 
 
@@ -514,13 +514,13 @@ class BookEntrySerializer(serializers.ModelSerializer):
     def get_summary(self, obj):
         return {
             models.Transfer: "transfer",
-            models.TransferExecution: "transfer sent",
+            models.TransferConfirmation: "transfer sent",
             models.PaymentConfirmation: "payment received",
         }.get(type(obj.reference))
 
     def get_reference(self, obj):
         params = {
-            models.TransferExecution: lambda: {
+            models.TransferConfirmation: lambda: {
                 "viewname": "transfer-detail",
                 "kwargs": {"pk": obj.reference.transfer.pk},
             },

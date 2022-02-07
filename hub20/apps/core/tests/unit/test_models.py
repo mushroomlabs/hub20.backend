@@ -1,3 +1,4 @@
+from decimal import Decimal
 from unittest.mock import patch
 
 import pytest
@@ -6,16 +7,17 @@ from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 from django.test import TestCase
 
-from hub20.apps.blockchain.models import Block
+from hub20.apps.blockchain.models import Block, Transaction
 from hub20.apps.blockchain.signals import block_sealed
 from hub20.apps.blockchain.tests.mocks import BlockMock
 from hub20.apps.core.choices import TRANSFER_STATUS
 from hub20.apps.core.factories import (
+    BlockchainTransferFactory,
     CheckoutFactory,
     Erc20TokenPaymentConfirmationFactory,
     Erc20TokenPaymentOrderFactory,
-    ExternalTransferFactory,
     InternalTransferFactory,
+    RaidenTransferFactory,
     StoreFactory,
     UserAccountFactory,
 )
@@ -25,13 +27,14 @@ from hub20.apps.core.models.payments import (
     BlockchainPaymentRoute,
     RaidenPaymentRoute,
 )
-from hub20.apps.core.models.transfers import TransferCancellation
+from hub20.apps.core.models.transfers import RaidenClient, TransferCancellation, Web3Client
 from hub20.apps.core.settings import app_settings
-from hub20.apps.core.tests.unit.mocks import (
-    MockBlockchainTransferExecutor,
-    MockRaidenTransferExecutor,
-    mock_fee_estimation,
+from hub20.apps.ethereum_money.factories import (
+    Erc20TransactionDataFactory,
+    Erc20TransferFactory,
+    EtherAmountFactory,
 )
+from hub20.apps.ethereum_money.signals import outgoing_transfer_mined
 from hub20.apps.ethereum_money.tests.base import add_eth_to_account, add_token_to_account
 from hub20.apps.raiden.factories import (
     ChannelFactory,
@@ -150,14 +153,14 @@ class TransferTestCase(BaseTestCase):
 
         self.credit = self.deposit.payment.as_token_amount
         self.wallet = EthereumAccountFactory()
-        self.fee_amount = mock_fee_estimation()
+        self.fee_amount = EtherAmountFactory(amount=Decimal("0.001"))
         self.chain = self.fee_amount.currency.chain
 
         self.raiden = RaidenFactory()
 
 
 class InternalTransferTestCase(TransferTestCase):
-    def test_transfers_are_finalized_as_executed(self):
+    def test_transfers_are_finalized_as_confirmed(self):
         transfer = InternalTransferFactory(
             sender=self.sender,
             receiver=self.receiver,
@@ -167,8 +170,8 @@ class InternalTransferTestCase(TransferTestCase):
 
         transfer.execute()
         self.assertTrue(transfer.is_finalized)
-        self.assertEqual(transfer.status, TRANSFER_STATUS.executed)
-        self.assertTrue(transfer.is_executed)
+        self.assertEqual(transfer.status, TRANSFER_STATUS.confirmed)
+        self.assertTrue(transfer.is_confirmed)
 
     def test_transfers_change_balance(self):
         transfer = InternalTransferFactory(
@@ -200,33 +203,40 @@ class InternalTransferTestCase(TransferTestCase):
         self.assertEqual(transfer.status, TRANSFER_STATUS.failed)
 
 
-class ExternalTransferTestCase(TransferTestCase):
+class BlockchainTransferTestCase(TransferTestCase):
     def setUp(self):
         super().setUp()
         add_token_to_account(self.wallet, self.credit)
         add_eth_to_account(self.wallet, self.fee_amount)
 
-        self.transfer = ExternalTransferFactory(
+        self.transfer = BlockchainTransferFactory(
             sender=self.sender, currency=self.credit.currency, amount=self.credit.amount
         )
-        self.transfer.EXECUTORS = (MockBlockchainTransferExecutor,)
 
-    @patch.object(MockBlockchainTransferExecutor, "select_for_transfer")
+    @patch.object(Web3Client, "select_for_transfer")
     def test_external_transfers_fail_without_funds(self, select_for_transfer):
-        select_for_transfer.return_value = None
+        select_for_transfer.side_effect = ValueError("no wallet available")
         self.transfer.execute()
         self.assertTrue(self.transfer.is_failed)
         self.assertEqual(self.transfer.status, TRANSFER_STATUS.failed)
 
-    @patch.object(MockBlockchainTransferExecutor, "select_for_transfer")
-    def test_transfers_can_be_executed_with_enough_balance(self, select_for_transfer):
-        select_for_transfer.return_value = MockBlockchainTransferExecutor(self.wallet)
+    @patch.object(Web3Client, "select_for_transfer")
+    @patch.object(Web3Client, "transfer")
+    def test_transfers_can_be_processed_with_enough_balance(
+        self, web3_execute_transfer, select_for_transfer
+    ):
+        select_for_transfer.return_value = Web3Client(self.wallet)
+        web3_execute_transfer.return_value = Erc20TransactionDataFactory(
+            amount=self.credit,
+            from_address=self.wallet.address,
+            recipient=self.transfer.address,
+        )
         self.transfer.execute()
-        self.assertTrue(self.transfer.is_executed)
-        self.assertEqual(self.transfer.status, TRANSFER_STATUS.executed)
+        self.assertTrue(self.transfer.is_processed)
+        self.assertEqual(self.transfer.status, TRANSFER_STATUS.processed)
 
 
-class TransferAccountingTestcase(TransferTestCase):
+class TransferAccountingTestCase(TransferTestCase):
     def test_cancelled_transfer_generate_refunds(self):
         transfer = InternalTransferFactory(
             sender=self.sender,
@@ -247,17 +257,50 @@ class TransferAccountingTestcase(TransferTestCase):
 
         self.assertEqual(last_treasury_debit.reference, cancellation)
 
-    def test_external_transfers_generate_accounting_entries_for_wallet_and_external_address(self):
-        transfer = ExternalTransferFactory(
+    @patch.object(Web3Client, "select_for_transfer")
+    @patch.object(Web3Client, "transfer")
+    def test_external_transfers_generate_accounting_entries_for_wallet_and_external_address(
+        self, web3_execute_transfer, select_for_transfer
+    ):
+        transfer = BlockchainTransferFactory(
             sender=self.sender, currency=self.credit.currency, amount=self.credit.amount
         )
 
-        with patch.object(MockBlockchainTransferExecutor, "select_for_transfer") as select:
-            select.return_value = MockBlockchainTransferExecutor(self.wallet)
-            transfer.EXECUTORS = (MockBlockchainTransferExecutor,)
-            transfer.execute()
+        payout_tx_data = Erc20TransactionDataFactory(
+            amount=transfer.as_token_amount,
+            recipient=transfer.address,
+            from_address=self.wallet.address,
+        )
 
-        transaction = transfer.execution.blockchaintransferexecution.transaction
+        select_for_transfer.return_value = Web3Client(self.wallet)
+        web3_execute_transfer.return_value = payout_tx_data
+
+        transfer.execute()
+
+        # Transfer is executed, now we generate the transaction to get
+        # the confirmation
+
+        # TODO: make a more robust method to test mined transaction,
+        # without relying on the knowledge from
+        # outgoing_transfer_mined.
+
+        payout_tx = Erc20TransferFactory(
+            hash=payout_tx_data.hash,
+            amount=transfer.as_token_amount,
+            recipient=transfer.address,
+            from_address=self.wallet.address,
+        )
+
+        self.wallet.transactions.add(payout_tx)
+        outgoing_transfer_mined.send(
+            sender=Transaction,
+            account=self.wallet,
+            transaction=payout_tx,
+            amount=transfer.as_token_amount,
+            address=transfer.address,
+        )
+
+        transaction = transfer.confirmation.blockchaintransferconfirmation.transaction
         transaction_type = ContentType.objects.get_for_model(transaction)
 
         wallet_account = self.wallet.onchain_account
@@ -274,21 +317,42 @@ class TransferAccountingTestcase(TransferTestCase):
         self.assertEqual(wallet_debit.as_token_amount, external_credit.as_token_amount)
 
     def test_blockchain_transfers_create_fee_entries(self):
-        transfer = ExternalTransferFactory(
+        transfer = BlockchainTransferFactory(
             sender=self.sender, currency=self.credit.currency, amount=self.credit.amount
         )
 
-        with patch.object(MockBlockchainTransferExecutor, "select_for_transfer") as select:
-            select.return_value = MockBlockchainTransferExecutor(self.wallet)
-            transfer.EXECUTORS = (MockBlockchainTransferExecutor,)
-            transfer.execute()
+        with patch.object(Web3Client, "select_for_transfer") as select:
+            with patch.object(Web3Client, "transfer") as web3_transfer_execute:
+                payout_tx_data = Erc20TransactionDataFactory(
+                    amount=transfer.as_token_amount,
+                    recipient=transfer.address,
+                    from_address=self.wallet.address,
+                )
+                select.return_value = Web3Client(self.wallet)
+                web3_transfer_execute.return_value = payout_tx_data
+                transfer.execute()
 
-        self.assertTrue(hasattr(transfer, "execution"))
-        self.assertTrue(hasattr(transfer.execution, "blockchaintransferexecution"))
+        payout_tx = Erc20TransferFactory(
+            hash=payout_tx_data.hash,
+            amount=transfer.as_token_amount,
+            recipient=transfer.address,
+            from_address=self.wallet.address,
+        )
 
-        transaction = transfer.execution.blockchaintransferexecution.transaction
+        outgoing_transfer_mined.send(
+            sender=Transaction,
+            account=self.wallet,
+            amount=transfer.as_token_amount,
+            address=transfer.address,
+            transaction=payout_tx,
+        )
+
+        self.assertTrue(hasattr(transfer, "confirmation"))
+        self.assertTrue(hasattr(transfer.confirmation, "blockchaintransferconfirmation"))
+
+        transaction = transfer.confirmation.blockchaintransferconfirmation.transaction
         transaction_type = ContentType.objects.get_for_model(transaction)
-        ETH = transfer.execution.blockchaintransferexecution.fee.currency
+        ETH = transfer.confirmation.blockchaintransferconfirmation.fee.currency
 
         treasury_book = self.chain.treasury.get_book(token=ETH)
         fee_account = ExternalAddressAccount.get_transaction_fee_account()
@@ -302,24 +366,37 @@ class TransferAccountingTestcase(TransferTestCase):
         self.assertIsNotNone(fee_account.credits.filter(**entry_filters).last())
         self.assertIsNotNone(sender_book.debits.filter(**entry_filters).last())
 
-    def test_raiden_transfers_create_entries_for_account_and_external_address(self):
-        transfer = ExternalTransferFactory(
+    @patch.object(RaidenClient, "select_for_transfer")
+    @patch.object(RaidenClient, "transfer")
+    def test_raiden_transfers_create_entries_for_account_and_external_address(
+        self, raiden_transfer, select_for_transfer
+    ):
+        transfer = RaidenTransferFactory(
             sender=self.sender,
             currency=self.credit.currency,
             amount=self.credit.amount,
-            identifier="0xdeadbeef",
         )
+        channel = ChannelFactory(token_network__token=self.credit.currency)
 
-        with patch.object(MockRaidenTransferExecutor, "select_for_transfer") as select:
-            select.return_value = MockRaidenTransferExecutor(account=self.raiden)
-            transfer.EXECUTORS = (MockRaidenTransferExecutor,)
-            transfer.execute()
+        raiden_payment = PaymentEventFactory.build(
+            amount=self.credit.amount,
+            channel=channel,
+            sender_address=self.raiden.account.address,
+            receiver_address=transfer.address,
+            identifier=transfer.identifier,
+        )
+        select_for_transfer.return_value = RaidenClient(raiden_node=self.raiden)
+        raiden_transfer.return_value = dict(identifier=raiden_payment.identifier)
 
-        self.assertTrue(hasattr(transfer, "execution"))
-        self.assertTrue(hasattr(transfer.execution, "raidentransferexecution"))
-        self.assertIsNotNone(transfer.execution.raidentransferexecution.payment)
+        transfer.execute()
 
-        payment = transfer.execution.raidentransferexecution.payment
+        raiden_payment.save()
+
+        self.assertTrue(hasattr(transfer, "confirmation"))
+        self.assertTrue(hasattr(transfer.confirmation, "raidentransferconfirmation"))
+        self.assertIsNotNone(transfer.confirmation.raidentransferconfirmation.payment)
+
+        payment = transfer.confirmation.raidentransferconfirmation.payment
         transfer_type = ContentType.objects.get_for_model(transfer)
 
         self.assertEqual(payment.receiver_address, transfer.address)
@@ -342,6 +419,6 @@ __all__ = [
     "StoreTestCase",
     "TransferTestCase",
     "InternalTransferTestCase",
-    "ExternalTransferTestCase",
-    "TransferAccountingTestcase",
+    "BlockchainTransferTestCase",
+    "TransferAccountingTestCase",
 ]

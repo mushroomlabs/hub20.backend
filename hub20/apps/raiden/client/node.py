@@ -169,7 +169,7 @@ class RaidenClient:
 
     def transfer(
         self, amount: EthereumTokenAmount, address: Address, identifier: Optional[int] = None, **kw
-    ) -> Optional[str]:
+    ) -> Dict:
         url = f"{self.raiden_root_endpoint}/payments/{amount.currency.address}/{str(address)}"
 
         payload = dict(amount=amount.as_wei)
@@ -180,7 +180,7 @@ class RaidenClient:
         try:
             payment_data = _make_request(url, method="POST", **payload)
             assert isinstance(payment_data, dict)
-            return payment_data.get("identifier")
+            return payment_data
         except requests.exceptions.HTTPError as error:
             logger.exception(error)
 
