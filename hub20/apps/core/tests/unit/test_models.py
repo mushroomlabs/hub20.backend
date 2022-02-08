@@ -12,12 +12,12 @@ from hub20.apps.blockchain.signals import block_sealed
 from hub20.apps.blockchain.tests.mocks import BlockMock
 from hub20.apps.core.choices import TRANSFER_STATUS
 from hub20.apps.core.factories import (
-    BlockchainTransferFactory,
+    BlockchainWithdrawalFactory,
     CheckoutFactory,
     Erc20TokenPaymentConfirmationFactory,
     Erc20TokenPaymentOrderFactory,
     InternalTransferFactory,
-    RaidenTransferFactory,
+    RaidenWithdrawalFactory,
     StoreFactory,
     UserAccountFactory,
 )
@@ -203,13 +203,13 @@ class InternalTransferTestCase(TransferTestCase):
         self.assertEqual(transfer.status, TRANSFER_STATUS.failed)
 
 
-class BlockchainTransferTestCase(TransferTestCase):
+class BlockchainWithdrawalTestCase(TransferTestCase):
     def setUp(self):
         super().setUp()
         add_token_to_account(self.wallet, self.credit)
         add_eth_to_account(self.wallet, self.fee_amount)
 
-        self.transfer = BlockchainTransferFactory(
+        self.transfer = BlockchainWithdrawalFactory(
             sender=self.sender, currency=self.credit.currency, amount=self.credit.amount
         )
 
@@ -262,7 +262,7 @@ class TransferAccountingTestCase(TransferTestCase):
     def test_external_transfers_generate_accounting_entries_for_wallet_and_external_address(
         self, web3_execute_transfer, select_for_transfer
     ):
-        transfer = BlockchainTransferFactory(
+        transfer = BlockchainWithdrawalFactory(
             sender=self.sender, currency=self.credit.currency, amount=self.credit.amount
         )
 
@@ -300,7 +300,7 @@ class TransferAccountingTestCase(TransferTestCase):
             address=transfer.address,
         )
 
-        transaction = transfer.confirmation.blockchaintransferconfirmation.transaction
+        transaction = transfer.confirmation.blockchainwithdrawalconfirmation.transaction
         transaction_type = ContentType.objects.get_for_model(transaction)
 
         wallet_account = self.wallet.onchain_account
@@ -317,7 +317,7 @@ class TransferAccountingTestCase(TransferTestCase):
         self.assertEqual(wallet_debit.as_token_amount, external_credit.as_token_amount)
 
     def test_blockchain_transfers_create_fee_entries(self):
-        transfer = BlockchainTransferFactory(
+        transfer = BlockchainWithdrawalFactory(
             sender=self.sender, currency=self.credit.currency, amount=self.credit.amount
         )
 
@@ -348,11 +348,11 @@ class TransferAccountingTestCase(TransferTestCase):
         )
 
         self.assertTrue(hasattr(transfer, "confirmation"))
-        self.assertTrue(hasattr(transfer.confirmation, "blockchaintransferconfirmation"))
+        self.assertTrue(hasattr(transfer.confirmation, "blockchainwithdrawalconfirmation"))
 
-        transaction = transfer.confirmation.blockchaintransferconfirmation.transaction
+        transaction = transfer.confirmation.blockchainwithdrawalconfirmation.transaction
         transaction_type = ContentType.objects.get_for_model(transaction)
-        ETH = transfer.confirmation.blockchaintransferconfirmation.fee.currency
+        ETH = transfer.confirmation.blockchainwithdrawalconfirmation.fee.currency
 
         treasury_book = self.chain.treasury.get_book(token=ETH)
         fee_account = ExternalAddressAccount.get_transaction_fee_account()
@@ -371,7 +371,7 @@ class TransferAccountingTestCase(TransferTestCase):
     def test_raiden_transfers_create_entries_for_account_and_external_address(
         self, raiden_transfer, select_for_transfer
     ):
-        transfer = RaidenTransferFactory(
+        transfer = RaidenWithdrawalFactory(
             sender=self.sender,
             currency=self.credit.currency,
             amount=self.credit.amount,
@@ -393,10 +393,10 @@ class TransferAccountingTestCase(TransferTestCase):
         raiden_payment.save()
 
         self.assertTrue(hasattr(transfer, "confirmation"))
-        self.assertTrue(hasattr(transfer.confirmation, "raidentransferconfirmation"))
-        self.assertIsNotNone(transfer.confirmation.raidentransferconfirmation.payment)
+        self.assertTrue(hasattr(transfer.confirmation, "raidenwithdrawalconfirmation"))
+        self.assertIsNotNone(transfer.confirmation.raidenwithdrawalconfirmation.payment)
 
-        payment = transfer.confirmation.raidentransferconfirmation.payment
+        payment = transfer.confirmation.raidenwithdrawalconfirmation.payment
         transfer_type = ContentType.objects.get_for_model(transfer)
 
         self.assertEqual(payment.receiver_address, transfer.address)
@@ -419,6 +419,6 @@ __all__ = [
     "StoreTestCase",
     "TransferTestCase",
     "InternalTransferTestCase",
-    "BlockchainTransferTestCase",
+    "BlockchainWithdrawalTestCase",
     "TransferAccountingTestCase",
 ]

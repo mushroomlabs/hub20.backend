@@ -126,9 +126,10 @@ class TransferTestCase(TestCase):
 
     def test_no_balance_returns_error(self):
         response = self.client.post(
-            reverse("transfer-list"),
+            reverse("user-withdrawal-list"),
             {
                 "address": self.target_address,
+                "payment_network": "blockchain",
                 "amount": 10,
                 "token": reverse(
                     "token-detail",
@@ -154,9 +155,10 @@ class TransferTestCase(TestCase):
         )
 
         response = self.client.post(
-            reverse("transfer-list"),
+            reverse("user-withdrawal-list"),
             {
                 "address": self.target_address,
+                "payment_network": "blockchain",
                 "amount": TRANSFER_AMOUNT,
                 "token": reverse(
                     "token-detail",

@@ -182,23 +182,22 @@ class TokenBrowserViewSet(TokenViewSet):
         return Response(serializer.data)
 
 
-class TransferListView(generics.ListCreateAPIView):
+class TransferViewSet(GenericViewSet, ListModelMixin, CreateModelMixin, RetrieveModelMixin):
     permission_classes = (IsAuthenticated,)
-    serializer_class = serializers.TransferSerializer
+    serializer_class = serializers.InternalTransferSerializer
 
     def get_queryset(self) -> QuerySet:
-        return self.request.user.transfers_sent.all()
+        return models.InternalTransfer.objects.filter(sender=self.request.user)
 
 
-class TransferView(generics.RetrieveAPIView):
+class WithdrawalViewSet(GenericViewSet, ListModelMixin, CreateModelMixin, RetrieveModelMixin):
     permission_classes = (IsAuthenticated,)
-    serializer_class = serializers.TransferSerializer
+    serializer_class = serializers.WithdrawalSerializer
 
-    def get_object(self):
-        try:
-            return models.Transfer.objects.get(pk=self.kwargs.get("pk"), sender=self.request.user)
-        except models.Transfer.DoesNotExist:
-            raise Http404
+    def get_queryset(self) -> QuerySet:
+        return self.request.user.transfers_sent.filter(
+            internaltransfer__isnull=True
+        ).select_subclasses()
 
 
 class TokenBalanceListView(generics.ListAPIView):

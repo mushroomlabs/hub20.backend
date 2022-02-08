@@ -11,7 +11,7 @@ from model_utils.models import TimeStampedModel
 
 from hub20.apps.blockchain.fields import EthereumAddressField
 from hub20.apps.blockchain.models import Transaction, TransactionDataRecord
-from hub20.apps.core.choices import TRANSFER_STATUS
+from hub20.apps.core.choices import PAYMENT_NETWORKS, TRANSFER_STATUS
 from hub20.apps.ethereum_money.client import Web3Client
 from hub20.apps.ethereum_money.models import (
     EthereumToken,
@@ -135,23 +135,29 @@ class InternalTransfer(Transfer):
         TransferConfirmation.objects.create(transfer=self)
 
 
-class BlockchainTransfer(Transfer):
+class Withdrawal(Transfer):
     address = EthereumAddressField(db_index=True)
+    payment_network = models.CharField(max_length=64, choices=PAYMENT_NETWORKS)
 
+
+class BlockchainWithdrawal(Withdrawal):
     def _execute(self):
         try:
+            assert self.payment_network == PAYMENT_NETWORKS.blockchain, "Wrong payment network"
             web3_client = Web3Client.select_for_transfer(amount=self.amount, address=self.address)
             tx_data = web3_client.transfer(amount=self.as_token_amount, address=self.address)
-            BlockchainTransferReceipt.objects.create(transfer=self, transaction_data=tx_data)
+            BlockchainWithdrawalReceipt.objects.create(transfer=self, transaction_data=tx_data)
         except Exception as exc:
             raise TransferError(str(exc)) from exc
 
+    class Meta:
+        proxy = True
 
-class RaidenTransfer(Transfer):
-    address = EthereumAddressField(db_index=True)
 
+class RaidenWithdrawal(Withdrawal):
     def _execute(self):
         try:
+            assert self.payment_network == PAYMENT_NETWORKS.raiden, "Wrong payment network"
             raiden_client = RaidenClient.select_for_transfer(
                 amount=self.amount, address=self.address
             )
@@ -160,20 +166,25 @@ class RaidenTransfer(Transfer):
                 address=self.address,
                 identifier=raiden_client._ensure_valid_identifier(self.identifier),
             )
-            RaidenTransferReceipt.objects.create(transfer=self, payment_data=payment_data)
+            RaidenWithdrawalReceipt.objects.create(transfer=self, payment_data=payment_data)
+        except AssertionError:
+            raise TransferError("Incorrect transfer method")
         except RaidenPaymentError as exc:
             raise TransferError(exc.message) from exc
+
+    class Meta:
+        proxy = True
 
 
 class TransferReceipt(TimeStampedModel):
     transfer = models.OneToOneField(Transfer, on_delete=models.CASCADE, related_name="receipt")
 
 
-class BlockchainTransferReceipt(TransferReceipt):
+class BlockchainWithdrawalReceipt(TransferReceipt):
     transaction_data = models.OneToOneField(TransactionDataRecord, on_delete=models.CASCADE)
 
 
-class RaidenTransferReceipt(TransferReceipt):
+class RaidenWithdrawalReceipt(TransferReceipt):
     payment_data = HStoreField()
 
 
@@ -184,7 +195,7 @@ class TransferConfirmation(TimeStampedModel):
     objects = InheritanceManager()
 
 
-class BlockchainTransferConfirmation(TransferConfirmation):
+class BlockchainWithdrawalConfirmation(TransferConfirmation):
     transaction = models.OneToOneField(Transaction, on_delete=models.CASCADE)
 
     @property
@@ -193,7 +204,7 @@ class BlockchainTransferConfirmation(TransferConfirmation):
         return native_token.from_wei(self.transaction.gas_fee)
 
 
-class RaidenTransferConfirmation(TransferConfirmation):
+class RaidenWithdrawalConfirmation(TransferConfirmation):
     payment = models.OneToOneField(Payment, on_delete=models.CASCADE)
 
 
@@ -213,11 +224,14 @@ __all__ = [
     "TransferFailure",
     "TransferCancellation",
     "TransferConfirmation",
-    "BlockchainTransfer",
-    "RaidenTransfer",
-    "InternalTransfer",
-    "BlockchainTransferConfirmation",
-    "RaidenTransferConfirmation",
     "TransferReceipt",
     "TransferError",
+    "BlockchainWithdrawal",
+    "BlockchainWithdrawalReceipt",
+    "RaidenWithdrawal",
+    "RaidenWithdrawalReceipt",
+    "InternalTransfer",
+    "BlockchainWithdrawalConfirmation",
+    "RaidenWithdrawalConfirmation",
+    "Withdrawal",
 ]

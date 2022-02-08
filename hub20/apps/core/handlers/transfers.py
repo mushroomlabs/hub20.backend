@@ -5,10 +5,10 @@ from django.dispatch import receiver
 
 from hub20.apps.blockchain.models import Transaction
 from hub20.apps.core.models import (
-    BlockchainTransfer,
-    BlockchainTransferConfirmation,
-    RaidenTransfer,
-    RaidenTransferConfirmation,
+    BlockchainWithdrawal,
+    BlockchainWithdrawalConfirmation,
+    RaidenWithdrawal,
+    RaidenWithdrawalConfirmation,
 )
 from hub20.apps.ethereum_money.signals import outgoing_transfer_mined
 from hub20.apps.raiden.models import Payment
@@ -22,15 +22,15 @@ def on_blockchain_transfer_mined_record_confirmation(sender, **kw):
     transaction = kw["transaction"]
     address = kw["address"]
 
-    transfer = BlockchainTransfer.processed.filter(
+    transfer = BlockchainWithdrawal.processed.filter(
         amount=amount.amount,
         currency=amount.currency,
         address=address,
-        receipt__blockchaintransferreceipt__transaction_data__hash=transaction.hash,
+        receipt__blockchainwithdrawalreceipt__transaction_data__hash=transaction.hash,
     ).first()
 
     if transfer:
-        BlockchainTransferConfirmation.objects.create(transfer=transfer, transaction=transaction)
+        BlockchainWithdrawalConfirmation.objects.create(transfer=transfer, transaction=transaction)
 
 
 @receiver(post_save, sender=Payment)
@@ -38,15 +38,15 @@ def on_raiden_payment_sent_record_confirmation(sender, **kw):
     if kw["created"]:
         payment = kw["instance"]
 
-        transfer = RaidenTransfer.processed.filter(
+        transfer = RaidenWithdrawal.processed.filter(
             amount=payment.amount,
             currency=payment.token,
             address=payment.receiver_address,
-            receipt__raidentransferreceipt__payment_data__identifier=payment.identifier,
+            receipt__raidenwithdrawalreceipt__payment_data__identifier=payment.identifier,
         ).first()
 
         if transfer:
-            RaidenTransferConfirmation.objects.create(transfer=transfer, payment=payment)
+            RaidenWithdrawalConfirmation.objects.create(transfer=transfer, payment=payment)
 
 
 __all__ = [

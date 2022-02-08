@@ -16,8 +16,8 @@ from hub20.apps.core.models.accounting import (
 )
 from hub20.apps.core.models.payments import PaymentConfirmation
 from hub20.apps.core.models.transfers import (
-    BlockchainTransferConfirmation,
-    RaidenTransferConfirmation,
+    BlockchainWithdrawalConfirmation,
+    RaidenWithdrawalConfirmation,
     Transfer,
     TransferCancellation,
     TransferConfirmation,
@@ -141,13 +141,13 @@ def on_outgoing_transfer_mined_move_funds_from_wallet_to_external_address(sender
 
 
 @atomic()
-@receiver(post_save, sender=RaidenTransferConfirmation)
+@receiver(post_save, sender=RaidenWithdrawalConfirmation)
 def on_raiden_transfer_confirmed_move_funds_from_raiden_to_external_address(sender, **kw):
     if kw["created"]:
         confirmation = kw["instance"]
         transfer = confirmation.transfer
 
-        payment = confirmation.raidentransferconfirmation.payment
+        payment = confirmation.raidenwithdrawalconfirmation.payment
         transfer_type = ContentType.objects.get_for_model(transfer)
         params = dict(
             reference_type=transfer_type,
@@ -168,7 +168,7 @@ def on_raiden_transfer_confirmed_move_funds_from_raiden_to_external_address(send
 
 
 @atomic()
-@receiver(post_save, sender=BlockchainTransferConfirmation)
+@receiver(post_save, sender=BlockchainWithdrawalConfirmation)
 def on_blockchain_transfer_confirmed_move_fee_from_sender_to_treasury(sender, **kw):
     if kw["created"]:
         confirmation = kw["instance"]
