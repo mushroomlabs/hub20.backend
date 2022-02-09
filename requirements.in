@@ -7,6 +7,7 @@ django-allauth
 git+https://github.com/celery/django-celery-beat
 # django-celery-beat
 dj-rest-auth
+django-admin-interface
 django-cors-headers
 django-filter
 django-ipware

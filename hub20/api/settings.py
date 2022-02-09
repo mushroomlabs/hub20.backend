@@ -21,7 +21,6 @@ DJANGO_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "django.contrib.humanize",
-    "django.contrib.admin",
     "django.contrib.postgres",
 ]
 
@@ -44,6 +43,10 @@ THIRD_PARTY_APPS = [
 ]
 
 PROJECT_APPS = [
+    "hub20.apps.admin.apps.Hub20AdminConfig",
+    "admin_interface",
+    "colorfield",
+    "django.contrib.admin",
     "hub20.apps.blockchain",
     "hub20.apps.wallet",
     "hub20.apps.ethereum_money",
@@ -68,6 +71,11 @@ APPEND_SLASHES = False
 ROOT_URLCONF = os.getenv("HUB20_URLCONF_MODULE", "hub20.api.urls")
 ASGI_APPLICATION = "hub20.api.asgi.application"
 SERVE_OPENAPI_URLS = "HUB20_SERVE_OPENAPI_URLS" in os.environ or DEBUG
+
+
+if ROOT_URLCONF == "hub20.admin.urls":
+    X_FRAME_OPTIONS = "SAMEORIGIN"
+    SILENCED_SYSTEM_CHECKS = ["security.W019"]
 
 TEMPLATES = [
     {

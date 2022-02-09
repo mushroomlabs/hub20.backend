@@ -163,7 +163,6 @@ class Web3Client:
 
 
 __all__ = [
-    "get_transaction_events",
     "encode_transfer_data",
     "get_transfer_gas_estimate",
     "get_estimate_fee",
