@@ -14,7 +14,12 @@ from hub20.apps.core.models.accounting import (
     UserAccount,
     WalletAccount,
 )
-from hub20.apps.core.models.payments import PaymentConfirmation
+from hub20.apps.core.models.payments import (
+    BlockchainPaymentRoute,
+    Deposit,
+    PaymentConfirmation,
+    PaymentOrder,
+)
 from hub20.apps.core.models.transfers import (
     BlockchainWithdrawalConfirmation,
     RaidenWithdrawalConfirmation,
@@ -26,11 +31,9 @@ from hub20.apps.core.models.transfers import (
 from hub20.apps.ethereum_money.models import EthereumToken
 from hub20.apps.ethereum_money.signals import incoming_transfer_mined, outgoing_transfer_mined
 from hub20.apps.raiden.models import Payment as RaidenPayment, Raiden
-from hub20.apps.wallet import get_wallet_model
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
-Wallet = get_wallet_model()
 
 
 @receiver(post_save, sender=User)
@@ -45,17 +48,36 @@ def on_chain_created_create_treasury(sender, **kw):
         Treasury.objects.get_or_create(chain=kw["instance"])
 
 
+@receiver(post_save, sender=Deposit)
+@receiver(post_save, sender=PaymentOrder)
+def on_payment_order_created_create_treasury(sender, **kw):
+    payment_order = kw["instance"]
+    chain = payment_order.currency.chain
+    Treasury.objects.get_or_create(chain=chain)
+
+
 @receiver(post_save, sender=Raiden)
 def on_raiden_created_create_account(sender, **kw):
     if kw["created"]:
         RaidenClientAccount.objects.get_or_create(raiden=kw["instance"])
 
 
-@receiver(post_save, sender=BaseEthereumAccount)
-@receiver(post_save, sender=Wallet)
+@receiver(post_save)
 def on_wallet_created_create_account(sender, **kw):
+    if not issubclass(sender, BaseEthereumAccount):
+        return
+
     if kw["created"]:
         WalletAccount.objects.get_or_create(account=kw["instance"])
+
+
+@receiver(post_save, sender=BlockchainPaymentRoute)
+def on_blockchain_route_created_create_account(sender, **kw):
+    if kw["created"]:
+        route = kw["instance"]
+        account = route.account
+
+        WalletAccount.objects.get_or_create(account=account)
 
 
 # In-Flows
@@ -305,8 +327,10 @@ def on_reverted_transaction_move_funds_from_treasury_to_sender(sender, **kw):
 __all__ = [
     "on_user_created_create_account",
     "on_chain_created_create_treasury",
+    "on_payment_order_created_create_treasury",
     "on_raiden_created_create_account",
     "on_wallet_created_create_account",
+    "on_blockchain_route_created_create_account",
     "on_incoming_transfer_mined_move_funds_from_external_address_to_wallet",
     "on_raiden_payment_received_move_funds_from_external_address_to_raiden",
     "on_outgoing_transfer_mined_move_funds_from_wallet_to_external_address",
