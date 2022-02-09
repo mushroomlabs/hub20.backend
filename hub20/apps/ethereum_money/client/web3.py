@@ -5,9 +5,8 @@ from django.contrib.auth import get_user_model
 from eth_utils import to_checksum_address
 from ethereum.abi import ContractTranslator
 from web3 import Web3
-from web3._utils.events import get_event_data
 from web3.datastructures import AttributeDict
-from web3.exceptions import LogTopicError, MismatchedABI, TransactionNotFound
+from web3.exceptions import TransactionNotFound
 
 from hub20.apps.blockchain.client import make_web3
 from hub20.apps.blockchain.factories.base import FAKER
@@ -20,19 +19,6 @@ from hub20.apps.ethereum_money.typing import Web3Client_T
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
-
-
-def get_transaction_events(transaction_receipt, event_abi):
-    w3 = Web3()
-    events = []
-    for log in transaction_receipt.logs:
-        try:
-            event = get_event_data(w3.codec, event_abi, log)
-            events.append(event)
-        except (MismatchedABI, LogTopicError) as exc:
-            tx_hash = transaction_receipt.transactionHash.hex()
-            logger.info(f"{exc} when getting events from tx {tx_hash}")
-    return events
 
 
 def encode_transfer_data(recipient_address, amount: EthereumTokenAmount):

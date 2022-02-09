@@ -216,7 +216,7 @@ def check_pending_erc20_transfer_event(chain_id, event_data, provider_url):
         )
 
 
-celery_pubsub.subscribe("blockchain.event.token_transfer", record_token_transfers)
+celery_pubsub.subscribe("blockchain.event.token_transfer.mined", record_token_transfers)
 celery_pubsub.subscribe("blockchain.mined.block", check_eth_transfers)
 celery_pubsub.subscribe(
     "blockchain.broadcast.transaction", check_pending_transaction_for_eth_transfer
