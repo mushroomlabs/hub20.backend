@@ -103,13 +103,15 @@ class Erc20TransactionDataFactory(TransactionDataFactory):
             "blockNumber": obj.block_number,
             "blockHash": obj.block_hash,
             "gasUsed": obj.gas_used,
-            "logs": [encode_transfer_data(obj.to_address, obj.amount)],
+            "logs": [encode_transfer_data(obj.recipient, obj.amount)],
         }
     )
 
     class Params:
+        recipient = factory.Faker("ethereum_address")
         gas_used = factory.fuzzy.FuzzyInteger(50000, 200000)
         amount = factory.SubFactory(Erc20TokenAmountFactory)
+        to_address = factory.LazyAttribute(lambda obj: obj.amount.currency.address)
 
 
 class Erc20TransferFactory(TransactionFactory):

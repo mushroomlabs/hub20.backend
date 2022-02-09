@@ -197,7 +197,7 @@ class NativeToken(AbstractTokenInfo):
 
 
 class BaseEthereumAccount(models.Model):
-    address = EthereumAddressField(unique=True, db_index=True)
+    address = EthereumAddressField(unique=True, db_index=True, blank=False)
     transactions = models.ManyToManyField(Transaction)
     objects = InheritanceManager()
 

@@ -14,23 +14,26 @@ from hub20.apps.core.models.accounting import (
     UserAccount,
     WalletAccount,
 )
-from hub20.apps.core.models.payments import PaymentConfirmation
+from hub20.apps.core.models.payments import (
+    BlockchainPaymentRoute,
+    Deposit,
+    PaymentConfirmation,
+    PaymentOrder,
+)
 from hub20.apps.core.models.transfers import (
-    BlockchainTransferExecution,
-    RaidenTransferExecution,
+    BlockchainWithdrawalConfirmation,
+    RaidenWithdrawalConfirmation,
     Transfer,
     TransferCancellation,
-    TransferExecution,
+    TransferConfirmation,
     TransferFailure,
 )
 from hub20.apps.ethereum_money.models import EthereumToken
 from hub20.apps.ethereum_money.signals import incoming_transfer_mined, outgoing_transfer_mined
 from hub20.apps.raiden.models import Payment as RaidenPayment, Raiden
-from hub20.apps.wallet import get_wallet_model
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
-Wallet = get_wallet_model()
 
 
 @receiver(post_save, sender=User)
@@ -45,18 +48,36 @@ def on_chain_created_create_treasury(sender, **kw):
         Treasury.objects.get_or_create(chain=kw["instance"])
 
 
+@receiver(post_save, sender=Deposit)
+@receiver(post_save, sender=PaymentOrder)
+def on_payment_order_created_create_treasury(sender, **kw):
+    payment_order = kw["instance"]
+    chain = payment_order.currency.chain
+    Treasury.objects.get_or_create(chain=chain)
+
+
 @receiver(post_save, sender=Raiden)
 def on_raiden_created_create_account(sender, **kw):
     if kw["created"]:
         RaidenClientAccount.objects.get_or_create(raiden=kw["instance"])
 
 
-@receiver(post_save, sender=BaseEthereumAccount)
-@receiver(post_save, sender=Raiden)
-@receiver(post_save, sender=Wallet)
+@receiver(post_save)
 def on_wallet_created_create_account(sender, **kw):
+    if not issubclass(sender, BaseEthereumAccount):
+        return
+
     if kw["created"]:
         WalletAccount.objects.get_or_create(account=kw["instance"])
+
+
+@receiver(post_save, sender=BlockchainPaymentRoute)
+def on_blockchain_route_created_create_account(sender, **kw):
+    if kw["created"]:
+        route = kw["instance"]
+        account = route.account
+
+        WalletAccount.objects.get_or_create(account=account)
 
 
 # In-Flows
@@ -142,13 +163,13 @@ def on_outgoing_transfer_mined_move_funds_from_wallet_to_external_address(sender
 
 
 @atomic()
-@receiver(post_save, sender=RaidenTransferExecution)
-def on_raiden_transfer_executed_move_funds_from_raiden_to_external_address(sender, **kw):
+@receiver(post_save, sender=RaidenWithdrawalConfirmation)
+def on_raiden_transfer_confirmed_move_funds_from_raiden_to_external_address(sender, **kw):
     if kw["created"]:
-        execution = kw["instance"]
-        transfer = execution.transfer
+        confirmation = kw["instance"]
+        transfer = confirmation.transfer
 
-        payment = execution.raidentransferexecution.payment
+        payment = confirmation.raidenwithdrawalconfirmation.payment
         transfer_type = ContentType.objects.get_for_model(transfer)
         params = dict(
             reference_type=transfer_type,
@@ -169,17 +190,17 @@ def on_raiden_transfer_executed_move_funds_from_raiden_to_external_address(sende
 
 
 @atomic()
-@receiver(post_save, sender=BlockchainTransferExecution)
-def on_blockchain_transfer_executed_move_fee_from_sender_to_treasury(sender, **kw):
+@receiver(post_save, sender=BlockchainWithdrawalConfirmation)
+def on_blockchain_transfer_confirmed_move_fee_from_sender_to_treasury(sender, **kw):
     if kw["created"]:
-        execution = kw["instance"]
-        transaction = execution.transaction
+        confirmation = kw["instance"]
+        transaction = confirmation.transaction
 
-        fee = execution.fee
-        native_token = execution.fee.currency
+        fee = confirmation.fee
+        native_token = confirmation.fee.currency
 
         treasury_book = transaction.block.chain.treasury.get_book(token=native_token)
-        sender_book = execution.transfer.sender.account.get_book(token=native_token)
+        sender_book = confirmation.transfer.sender.account.get_book(token=native_token)
 
         transaction_type = ContentType.objects.get_for_model(transaction)
         params = dict(
@@ -224,8 +245,11 @@ def on_transaction_submitted_move_fee_from_wallet_to_fee_account(sender, **kw):
 
 # Internal movements
 @atomic()
-@receiver(post_save, sender=Transfer)
+@receiver(post_save)
 def on_transfer_created_move_funds_from_sender_to_treasury(sender, **kw):
+    if not issubclass(sender, Transfer):
+        return
+
     if kw["created"]:
         transfer = kw["instance"]
         params = dict(reference=transfer, currency=transfer.currency, amount=transfer.amount)
@@ -238,15 +262,12 @@ def on_transfer_created_move_funds_from_sender_to_treasury(sender, **kw):
 
 
 @atomic()
-@receiver(post_save, sender=TransferExecution)
-def on_internal_transfer_executed_move_funds_from_treasury_to_receiver(sender, **kw):
-    if kw["created"]:
-        execution = kw["instance"]
-        transfer = execution.transfer
+@receiver(post_save, sender=TransferConfirmation)
+def on_internal_transfer_confirmed_move_funds_from_treasury_to_receiver(sender, **kw):
 
-        if not transfer.receiver:
-            logger.warning("Expected Internal Transfer, but no receiver user defined")
-            return
+    if kw["created"]:
+        confirmation = kw["instance"]
+        transfer = confirmation.transfer.internaltransfer
 
         params = dict(reference=transfer, currency=transfer.currency, amount=transfer.amount)
 
@@ -306,16 +327,18 @@ def on_reverted_transaction_move_funds_from_treasury_to_sender(sender, **kw):
 __all__ = [
     "on_user_created_create_account",
     "on_chain_created_create_treasury",
+    "on_payment_order_created_create_treasury",
     "on_raiden_created_create_account",
     "on_wallet_created_create_account",
+    "on_blockchain_route_created_create_account",
     "on_incoming_transfer_mined_move_funds_from_external_address_to_wallet",
     "on_raiden_payment_received_move_funds_from_external_address_to_raiden",
     "on_outgoing_transfer_mined_move_funds_from_wallet_to_external_address",
-    "on_raiden_transfer_executed_move_funds_from_raiden_to_external_address",
-    "on_blockchain_transfer_executed_move_fee_from_sender_to_treasury",
+    "on_raiden_transfer_confirmed_move_funds_from_raiden_to_external_address",
+    "on_blockchain_transfer_confirmed_move_fee_from_sender_to_treasury",
     "on_transaction_submitted_move_fee_from_wallet_to_fee_account",
     "on_transfer_created_move_funds_from_sender_to_treasury",
-    "on_internal_transfer_executed_move_funds_from_treasury_to_receiver",
+    "on_internal_transfer_confirmed_move_funds_from_treasury_to_receiver",
     "on_payment_confirmed_move_funds_from_treasury_to_payee",
     "on_reverted_transaction_move_funds_from_treasury_to_sender",
 ]

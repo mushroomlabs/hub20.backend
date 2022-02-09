@@ -131,11 +131,15 @@ def record_account_transactions(chain_id, block_data, provider_url):
 
         for tx_data in txs:
             transaction_receipt = w3.eth.get_transaction_receipt(tx_data.hash)
-            Transaction.make(
+            tx = Transaction.make(
                 chain_id=chain_id,
                 tx_receipt=transaction_receipt,
                 block_data=block_data,
             )
+            for account in BaseEthereumAccount.objects.filter(
+                address__in=[tx.from_address, tx.to_address]
+            ):
+                account.transactions.add(tx)
 
 
 @shared_task

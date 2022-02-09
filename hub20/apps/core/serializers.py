@@ -84,34 +84,28 @@ class HyperlinkedTokenBalanceSerializer(HyperlinkedTokenMixin, TokenBalanceSeria
         read_only_fields = ("url",) + TokenBalanceSerializer.Meta.read_only_fields
 
 
+class TokenRouteDescriptorSerializer(HyperlinkedTokenMixin, EthereumTokenSerializer):
+    url = HyperlinkedTokenIdentityField(view_name="token-routes")
+    token = HyperlinkedTokenIdentityField(view_name="token-detail")
+    blockchain = serializers.HyperlinkedRelatedField(
+        view_name="blockchain:chain-detail", source="chain_id", read_only=True
+    )
+    networks = serializers.SerializerMethodField()
+
+    def get_networks(self, obj):
+        return {"raiden": hasattr(obj, "tokennetwork")}
+
+    class Meta:
+        model = EthereumTokenSerializer.Meta.model
+        fields = ("url", "token", "blockchain", "networks")
+        read_only_fields = ("url", "token", "blockchain", "networks")
+
+
 class TransferSerializer(serializers.ModelSerializer):
-    url = serializers.HyperlinkedIdentityField(view_name="transfer-detail")
-    address = EthereumAddressField(required=False, allow_null=True)
-    recipient = UserRelatedField(source="receiver", required=False, allow_null=True)
     token = HyperlinkedRelatedTokenField(source="currency")
-    target = serializers.CharField(read_only=True)
     status = serializers.CharField(read_only=True)
 
-    def validate_recipient(self, value):
-        request = self.context["request"]
-        if value == request.user:
-            raise serializers.ValidationError("You can not make a transfer to yourself")
-        return value
-
     def validate(self, data):
-        # Check if we have a valid recipient
-        address = data.get("address", None)
-        recipient = data.get("receiver", None)
-
-        if not address and not recipient:
-            raise serializers.ValidationError(
-                "Either one of recipient or address must be provided"
-            )
-        if address and recipient:
-            raise serializers.ValidationError(
-                "Choose recipient by address or username, but not both at the same time"
-            )
-
         # We do need to check the balance here though because the amount
         # corresponding to the transfer is deducted from the user's balance
         # upon creation for two reasons: keeping the accounting books balanced
@@ -140,30 +134,65 @@ class TransferSerializer(serializers.ModelSerializer):
 
         return self.Meta.model.objects.create(sender=request.user, **validated_data)
 
+
+class InternalTransferSerializer(TransferSerializer):
+    url = serializers.HyperlinkedIdentityField(view_name="user-transfer-detail")
+    recipient = UserRelatedField(source="receiver")
+
+    def validate_recipient(self, value):
+        request = self.context["request"]
+        if value == request.user:
+            raise serializers.ValidationError("You can not make a transfer to yourself")
+        return value
+
     class Meta:
-        model = models.Transfer
+        model = models.InternalTransfer
         fields = (
-            "id",
             "url",
-            "address",
+            "reference",
             "recipient",
             "amount",
             "token",
             "memo",
             "identifier",
             "status",
-            "target",
         )
-        read_only_fields = ("id", "status", "target")
+        read_only_fields = ("reference", "status")
 
 
-class TransferExecutionSerializer(serializers.ModelSerializer):
+class WithdrawalSerializer(TransferSerializer):
+    url = serializers.HyperlinkedIdentityField(view_name="user-withdrawal-detail")
+    address = EthereumAddressField()
+
+    def validate_recipient(self, value):
+        request = self.context["request"]
+        if value == request.user:
+            raise serializers.ValidationError("You can not make a transfer to yourself")
+        return value
+
+    class Meta:
+        model = models.Withdrawal
+        fields = (
+            "url",
+            "reference",
+            "address",
+            "payment_network",
+            "amount",
+            "token",
+            "memo",
+            "identifier",
+            "status",
+        )
+        read_only_fields = ("reference", "status")
+
+
+class TransferConfirmationSerializer(serializers.ModelSerializer):
     token = HyperlinkedRelatedTokenField(source="transfer.currency")
     target = serializers.CharField(source="transfer.target", read_only=True)
     amount = TokenValueField(source="transfer.amount")
 
     class Meta:
-        model = models.TransferExecution
+        model = models.TransferConfirmation
         fields = read_only_fields = ("created", "token", "amount", "target")
 
 
@@ -266,7 +295,6 @@ class RaidenPaymentSerializer(PaymentSerializer):
 
 
 class DepositSerializer(serializers.ModelSerializer):
-
     token = HyperlinkedRelatedTokenField(source="currency")
     routes = serializers.SerializerMethodField()
     payments = serializers.SerializerMethodField()
@@ -308,8 +336,8 @@ class DepositSerializer(serializers.ModelSerializer):
         read_only_fields = ("id", "created", "status")
 
 
-class HttpDepositSerializer(DepositSerializer):
-    url = serializers.HyperlinkedIdentityField(view_name="deposit-detail")
+class HyperlinkedDepositSerializer(DepositSerializer):
+    url = serializers.HyperlinkedIdentityField(view_name="user-deposit-detail")
 
     class Meta:
         model = DepositSerializer.Meta.model
@@ -497,13 +525,13 @@ class BookEntrySerializer(serializers.ModelSerializer):
     def get_summary(self, obj):
         return {
             models.Transfer: "transfer",
-            models.TransferExecution: "transfer sent",
+            models.TransferConfirmation: "transfer sent",
             models.PaymentConfirmation: "payment received",
         }.get(type(obj.reference))
 
     def get_reference(self, obj):
         params = {
-            models.TransferExecution: lambda: {
+            models.TransferConfirmation: lambda: {
                 "viewname": "transfer-detail",
                 "kwargs": {"pk": obj.reference.transfer.pk},
             },

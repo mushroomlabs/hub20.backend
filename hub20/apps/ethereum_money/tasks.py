@@ -55,7 +55,11 @@ def record_token_transfers(chain_id, event_data, provider_url):
         logger.warning(f"Failed to get transaction {event_data.transactionHash.hex()}")
         return
 
+    tx_hash = event_data.transactionHash.hex()
     for account in BaseEthereumAccount.objects.filter(address=sender):
+        logger.debug(
+            f"Sending signal of outgoing transfer mined from {account.address} on tx {tx_hash}"
+        )
         account.transactions.add(tx)
         signals.outgoing_transfer_mined.send(
             sender=Transaction,
@@ -66,6 +70,9 @@ def record_token_transfers(chain_id, event_data, provider_url):
         )
 
     for account in BaseEthereumAccount.objects.filter(address=recipient):
+        logger.debug(
+            f"Sending signal of incoming transfer mined from {account.address} on tx {tx_hash}"
+        )
         account.transactions.add(tx)
         signals.incoming_transfer_mined.send(
             sender=Transaction,
@@ -209,7 +216,7 @@ def check_pending_erc20_transfer_event(chain_id, event_data, provider_url):
         )
 
 
-celery_pubsub.subscribe("blockchain.event.token_transfer", record_token_transfers)
+celery_pubsub.subscribe("blockchain.event.token_transfer.mined", record_token_transfers)
 celery_pubsub.subscribe("blockchain.mined.block", check_eth_transfers)
 celery_pubsub.subscribe(
     "blockchain.broadcast.transaction", check_pending_transaction_for_eth_transfer

@@ -1,19 +1,18 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional, Union
+import uuid
 
 from django.conf import settings
-from django.contrib.auth import get_user_model
+from django.contrib.postgres.fields import HStoreField
 from django.db import models
-from model_utils.managers import InheritanceManager, QueryManager
+from model_utils.managers import InheritanceManager, InheritanceManagerMixin, QueryManagerMixin
 from model_utils.models import TimeStampedModel
 
 from hub20.apps.blockchain.fields import EthereumAddressField
-from hub20.apps.blockchain.models import Transaction
-from hub20.apps.blockchain.typing import Address
+from hub20.apps.blockchain.models import Transaction, TransactionDataRecord
 from hub20.apps.core.choices import PAYMENT_NETWORKS, TRANSFER_STATUS
-from hub20.apps.ethereum_money.client import EthereumClient
+from hub20.apps.ethereum_money.client import Web3Client
 from hub20.apps.ethereum_money.models import (
     EthereumToken,
     EthereumTokenAmount,
@@ -24,7 +23,6 @@ from hub20.apps.raiden.exceptions import RaidenPaymentError
 from hub20.apps.raiden.models import Payment
 
 logger = logging.getLogger(__name__)
-User = get_user_model()
 
 
 class TransferError(Exception):
@@ -35,84 +33,39 @@ class TransferOperationError(Exception):
     pass
 
 
-class BlockchainTransferExecutor(EthereumClient):
-    def execute(self, transfer: Transfer):
-        try:
-            tx_hash = self.transfer(amount=transfer.as_token_amount, address=transfer.address)
-            TransferReceipt.objects.create(
-                transfer=transfer, network=PAYMENT_NETWORKS.blockchain, identifier=tx_hash.hex()
-            )
-        except Exception as exc:
-            raise TransferError(str(exc)) from exc
-
-
-class RaidenTransferExecutor(RaidenClient):
-    def execute(self, transfer: Transfer):
-        try:
-            payment_identifier = self.transfer(
-                amount=transfer.as_token_amount,
-                address=transfer.address,
-                identifier=self._ensure_valid_identifier(transfer.identifier),
-            )
-        except RaidenPaymentError as exc:
-            raise TransferError(exc.message) from exc
-
-        TransferReceipt.objects.create(
-            transfer=transfer, network=PAYMENT_NETWORKS.raiden, identifier=payment_identifier
-        )
-
-
-class InternalTransferExecutor:
-    def execute(self, transfer: Transfer):
-        TransferReceipt.objects.create(
-            transfer=transfer, network=PAYMENT_NETWORKS.internal, identifier=transfer.identifier
-        )
-        TransferExecution.objects.create(transfer=transfer)
-
-    @classmethod
-    def select_for_transfer(
-        cls,
-        amount: EthereumTokenAmount,
-        receiver: Optional[User] = None,
-        address: Optional[Address] = None,
-    ):
-        if receiver:
-            return cls()
+class TransferStatusQueryManager(InheritanceManagerMixin, QueryManagerMixin, models.Manager):
+    def get_queryset(self):
+        qs = InheritanceManagerMixin.get_queryset(self).filter(self._q)
+        if self._order_by is not None:
+            return qs.order_by(*self._order_by)
+        return qs
 
 
 class Transfer(TimeStampedModel, EthereumTokenValueModel):
-    EXECUTORS = (InternalTransferExecutor, RaidenTransferExecutor, BlockchainTransferExecutor)
-
+    reference = models.UUIDField(default=uuid.uuid4, unique=True)
     sender = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="transfers_sent"
     )
-    receiver = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.PROTECT,
-        related_name="transfers_received",
-        null=True,
-    )
-    address = EthereumAddressField(db_index=True, null=True)
     memo = models.TextField(null=True, blank=True)
     identifier = models.CharField(max_length=300, null=True, blank=True)
     execute_on = models.DateTimeField(auto_now_add=True)
 
-    objects = models.Manager()
-    processed = QueryManager(receipt__isnull=False)
-    canceled = QueryManager(cancellation__isnull=False)
-    failed = QueryManager(failure__isnull=False)
-    executed = QueryManager(execution__isnull=False)
-    pending = QueryManager(
+    objects = InheritanceManager()
+    processed = TransferStatusQueryManager(receipt__isnull=False)
+    canceled = TransferStatusQueryManager(cancellation__isnull=False)
+    failed = TransferStatusQueryManager(failure__isnull=False)
+    confirmed = TransferStatusQueryManager(confirmation__isnull=False)
+    pending = TransferStatusQueryManager(
         receipt__isnull=True,
         cancellation__isnull=True,
         failure__isnull=True,
-        execution__isnull=True,
+        confirmation__isnull=True,
     )
 
     @property
     def status(self) -> str:
-        if self.is_executed:
-            return TRANSFER_STATUS.executed
+        if self.is_confirmed:
+            return TRANSFER_STATUS.confirmed
         elif self.is_failed:
             return TRANSFER_STATUS.failed
         elif self.is_canceled:
@@ -127,32 +80,20 @@ class Transfer(TimeStampedModel, EthereumTokenValueModel):
         return TransferCancellation.objects.filter(transfer=self).exists()
 
     @property
-    def is_processed(self):
-        return TransferReceipt.objects.filter(transfer=self).exists()
-
-    @property
-    def is_executed(self):
-        return TransferExecution.objects.filter(transfer=self).exists()
+    def is_confirmed(self):
+        return TransferConfirmation.objects.filter(transfer=self).exists()
 
     @property
     def is_failed(self):
         return TransferFailure.objects.filter(transfer=self).exists()
 
     @property
-    def is_finalized(self) -> bool:
-        return self.status != TRANSFER_STATUS.scheduled
+    def is_processed(self) -> bool:
+        return TransferReceipt.objects.filter(transfer=self).exists()
 
     @property
-    def target(self) -> Union[User, Address]:
-        return self.receiver or self.address
-
-    def get_executor(self):
-        for executor_class in self.EXECUTORS:
-            executor = executor_class.select_for_transfer(
-                amount=self.as_token_amount, receiver=self.receiver, address=self.address
-            )
-            if executor:
-                return executor
+    def is_finalized(self) -> bool:
+        return self.status != TRANSFER_STATUS.scheduled
 
     def execute(self):
         if self.is_finalized:
@@ -171,11 +112,7 @@ class Transfer(TimeStampedModel, EthereumTokenValueModel):
             if sender_balance.amount < 0:
                 raise TransferError("Insufficient balance")
 
-            executor = self.get_executor()
-            if not executor:
-                raise TransferError("Could not get find a suitable method to execute transfer")
-
-            executor.execute(self)
+            self._execute()
         except TransferError as exc:
             logger.info(f"{self} failed: {str(exc)}")
             TransferFailure.objects.create(transfer=self)
@@ -183,19 +120,82 @@ class Transfer(TimeStampedModel, EthereumTokenValueModel):
             TransferFailure.objects.create(transfer=self)
             logger.exception(exc)
 
+    def _execute(self):
+        raise NotImplementedError()
+
+
+class InternalTransfer(Transfer):
+    receiver = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="internal_transfers_received",
+    )
+
+    def _execute(self):
+        TransferConfirmation.objects.create(transfer=self)
+
+
+class Withdrawal(Transfer):
+    address = EthereumAddressField(db_index=True)
+    payment_network = models.CharField(max_length=64, choices=PAYMENT_NETWORKS)
+
+
+class BlockchainWithdrawal(Withdrawal):
+    def _execute(self):
+        try:
+            assert self.payment_network == PAYMENT_NETWORKS.blockchain, "Wrong payment network"
+            web3_client = Web3Client.select_for_transfer(amount=self.amount, address=self.address)
+            tx_data = web3_client.transfer(amount=self.as_token_amount, address=self.address)
+            BlockchainWithdrawalReceipt.objects.create(transfer=self, transaction_data=tx_data)
+        except Exception as exc:
+            raise TransferError(str(exc)) from exc
+
+    class Meta:
+        proxy = True
+
+
+class RaidenWithdrawal(Withdrawal):
+    def _execute(self):
+        try:
+            assert self.payment_network == PAYMENT_NETWORKS.raiden, "Wrong payment network"
+            raiden_client = RaidenClient.select_for_transfer(
+                amount=self.amount, address=self.address
+            )
+            payment_data = raiden_client.transfer(
+                amount=self.as_token_amount,
+                address=self.address,
+                identifier=raiden_client._ensure_valid_identifier(self.identifier),
+            )
+            RaidenWithdrawalReceipt.objects.create(transfer=self, payment_data=payment_data)
+        except AssertionError:
+            raise TransferError("Incorrect transfer method")
+        except RaidenPaymentError as exc:
+            raise TransferError(exc.message) from exc
+
+    class Meta:
+        proxy = True
+
 
 class TransferReceipt(TimeStampedModel):
     transfer = models.OneToOneField(Transfer, on_delete=models.CASCADE, related_name="receipt")
-    network = models.CharField(max_length=64, choices=PAYMENT_NETWORKS)
-    identifier = models.CharField(max_length=300, null=True)
 
 
-class TransferExecution(TimeStampedModel):
-    transfer = models.OneToOneField(Transfer, on_delete=models.CASCADE, related_name="execution")
+class BlockchainWithdrawalReceipt(TransferReceipt):
+    transaction_data = models.OneToOneField(TransactionDataRecord, on_delete=models.CASCADE)
+
+
+class RaidenWithdrawalReceipt(TransferReceipt):
+    payment_data = HStoreField()
+
+
+class TransferConfirmation(TimeStampedModel):
+    transfer = models.OneToOneField(
+        Transfer, on_delete=models.CASCADE, related_name="confirmation"
+    )
     objects = InheritanceManager()
 
 
-class BlockchainTransferExecution(TransferExecution):
+class BlockchainWithdrawalConfirmation(TransferConfirmation):
     transaction = models.OneToOneField(Transaction, on_delete=models.CASCADE)
 
     @property
@@ -204,7 +204,7 @@ class BlockchainTransferExecution(TransferExecution):
         return native_token.from_wei(self.transaction.gas_fee)
 
 
-class RaidenTransferExecution(TransferExecution):
+class RaidenWithdrawalConfirmation(TransferConfirmation):
     payment = models.OneToOneField(Payment, on_delete=models.CASCADE)
 
 
@@ -220,16 +220,18 @@ class TransferCancellation(TimeStampedModel):
 
 
 __all__ = [
-    "BlockchainTransferExecutor",
     "Transfer",
     "TransferFailure",
     "TransferCancellation",
-    "TransferExecution",
-    "BlockchainTransferExecution",
-    "RaidenTransferExecution",
+    "TransferConfirmation",
     "TransferReceipt",
     "TransferError",
-    "InternalTransferExecutor",
-    "BlockchainTransferExecutor",
-    "RaidenTransferExecutor",
+    "BlockchainWithdrawal",
+    "BlockchainWithdrawalReceipt",
+    "RaidenWithdrawal",
+    "RaidenWithdrawalReceipt",
+    "InternalTransfer",
+    "BlockchainWithdrawalConfirmation",
+    "RaidenWithdrawalConfirmation",
+    "Withdrawal",
 ]

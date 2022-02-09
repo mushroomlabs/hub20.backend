@@ -34,6 +34,13 @@ def _get_pending_tx_filter(w3):
         return eth_filter
 
 
+async def generate_web3_providers():
+    providers = await sync_to_async(list)(Web3Provider.available.select_related("chain"))
+
+    for provider in providers:
+        yield provider
+
+
 async def generate_blocks(w3: Web3, chain: Chain):
     current_block = w3.eth.block_number
     start = chain.highest_block

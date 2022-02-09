@@ -27,7 +27,7 @@ def execute_transfer(transfer_id):
         transfer = Transfer.pending.get(id=transfer_id)
         transfer.execute()
     except Transfer.DoesNotExist:
-        logger.warning(f"Transfer {transfer_id} not found or already executed")
+        logger.warning(f"Transfer {transfer_id} not found or already confirmed")
 
 
 @shared_task

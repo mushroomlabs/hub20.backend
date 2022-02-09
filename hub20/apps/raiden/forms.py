@@ -1,9 +1,11 @@
 from django import forms
 
-from hub20.apps.blockchain.models import Web3Provider
+from hub20.apps.blockchain.models import Chain
 from hub20.apps.blockchain.validators import uri_parsable_scheme_validator
 
 from . import models
+from .client.node import RaidenClient
+from .exceptions import RaidenConnectionError
 
 raiden_url_validator = uri_parsable_scheme_validator(("http", "https"))
 
@@ -14,8 +16,16 @@ class RaidenURLField(forms.URLField):
 
 class RaidenForm(forms.ModelForm):
     url = RaidenURLField()
-    web3_provider = forms.ModelChoiceField(queryset=Web3Provider.available.all())
+    chain = forms.ModelChoiceField(queryset=Chain.active.all())
+
+    def clean(self):
+        try:
+            raiden_url = self.cleaned_data["url"]
+            RaidenClient.get_node_account_address(raiden_url)
+        except RaidenConnectionError:
+            raise forms.ValidationError(f"Could not connect to {raiden_url}")
+        return self.cleaned_data
 
     class Meta:
         model = models.Raiden
-        fields = ("url", "web3_provider")
+        fields = ("url", "chain")
