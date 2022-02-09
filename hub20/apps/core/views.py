@@ -81,6 +81,23 @@ class AccountDebitEntryList(generics.ListAPIView):
         return self.request.user.account.debits.all()
 
 
+class DepositViewSet(GenericViewSet, ListModelMixin, CreateModelMixin, RetrieveModelMixin):
+    permission_classes = (IsAuthenticated,)
+    serializer_class = serializers.HyperlinkedDepositSerializer
+    filterset_class = DepositFilter
+    filter_backends = (
+        OrderingFilter,
+        DjangoFilterBackend,
+    )
+    ordering = "-created"
+
+    def get_queryset(self) -> QuerySet:
+        return self.request.user.deposit_set.all()
+
+    def get_object(self) -> models.Deposit:
+        return get_object_or_404(models.Deposit, pk=self.kwargs.get("pk"), user=self.request.user)
+
+
 class BaseDepositView:
     permission_classes = (IsAuthenticated,)
     serializer_class = serializers.DepositSerializer

@@ -295,7 +295,6 @@ class RaidenPaymentSerializer(PaymentSerializer):
 
 
 class DepositSerializer(serializers.ModelSerializer):
-
     token = HyperlinkedRelatedTokenField(source="currency")
     routes = serializers.SerializerMethodField()
     payments = serializers.SerializerMethodField()
@@ -337,8 +336,8 @@ class DepositSerializer(serializers.ModelSerializer):
         read_only_fields = ("id", "created", "status")
 
 
-class HttpDepositSerializer(DepositSerializer):
-    url = serializers.HyperlinkedIdentityField(view_name="deposit-detail")
+class HyperlinkedDepositSerializer(DepositSerializer):
+    url = serializers.HyperlinkedIdentityField(view_name="user-deposit-detail")
 
     class Meta:
         model = DepositSerializer.Meta.model

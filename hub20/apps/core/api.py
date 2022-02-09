@@ -34,6 +34,7 @@ router.register(
 )
 router.register("my/stores", views.UserStoreViewSet, basename="user-store")
 router.register("my/tokenlists", UserTokenListViewSet, basename="user-tokenlist")
+router.register("my/deposits", views.DepositViewSet, basename="user-deposit")
 
 transfer_router = TransferRouter(trailing_slash=False)
 transfer_router.register("my/transfers", views.TransferViewSet, basename="user-transfer")
@@ -50,8 +51,6 @@ urlpatterns = (
             views.TokenBalanceView.as_view(),
             name="balance-detail",
         ),
-        path("deposits", views.DepositListView.as_view(), name="deposit-list"),
-        path("deposit/<uuid:pk>", views.DepositView.as_view(), name="deposit-detail"),
         path("payment/orders", views.PaymentOrderListView.as_view(), name="payment-order-list"),
         path(
             "payment/order/<uuid:pk>",
