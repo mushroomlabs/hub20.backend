@@ -7,8 +7,9 @@ from eth_utils import to_checksum_address
 
 from hub20.apps.blockchain.client import make_web3
 from hub20.apps.blockchain.models import BaseEthereumAccount, Web3Provider
-from hub20.apps.ethereum_money.models import EthereumToken, EthereumTokenAmount, KeystoreAccount
+from hub20.apps.ethereum_money.models import EthereumToken, EthereumTokenAmount
 from hub20.apps.raiden.client.blockchain import mint_tokens
+from hub20.apps.wallet.models import KeystoreAccount
 
 logger = logging.getLogger(__name__)
 
