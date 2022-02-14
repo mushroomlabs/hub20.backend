@@ -11,8 +11,13 @@ from model_utils.choices import Choices
 from model_utils.managers import InheritanceManager, QueryManager
 from model_utils.models import StatusModel, TimeStampedModel
 
-from hub20.apps.blockchain.fields import EthereumAddressField, HexField, Uint256Field
-from hub20.apps.blockchain.models import BaseEthereumAccount, Chain, Transaction
+from hub20.apps.blockchain.fields import EthereumAddressField, Uint256Field
+from hub20.apps.blockchain.models import (
+    BaseEthereumAccount,
+    Chain,
+    Transaction,
+    TransactionDataRecord,
+)
 from hub20.apps.blockchain.validators import uri_parsable_scheme_validator
 from hub20.apps.ethereum_money.models import (
     EthereumToken,
@@ -273,8 +278,11 @@ class Payment(models.Model):
 class RaidenManagementOrder(TimeStampedModel):
     raiden = models.ForeignKey(Raiden, on_delete=models.CASCADE)
     user = models.ForeignKey(User, on_delete=models.PROTECT)
+    transaction_data = models.ForeignKey(
+        TransactionDataRecord, on_delete=models.PROTECT, related_name="raiden_operations"
+    )
+
     objects = InheritanceManager()
-    transaction_hash = HexField(max_length=64, unique=True, null=True)
 
 
 class JoinTokenNetworkOrder(RaidenManagementOrder):
@@ -301,18 +309,22 @@ class UserDepositContractOrder(RaidenManagementOrder, EthereumTokenValueModel):
 
 
 class RaidenManagementOrderResult(TimeStampedModel):
-    order = models.OneToOneField(
-        RaidenManagementOrder, on_delete=models.CASCADE, related_name="result"
+    order = models.ForeignKey(
+        RaidenManagementOrder, on_delete=models.CASCADE, related_name="results"
     )
-    transaction = models.OneToOneField(Transaction, null=True, on_delete=models.SET_NULL)
+    transaction = models.ForeignKey(
+        Transaction, on_delete=models.CASCADE, related_name="raiden_successful_transactions"
+    )
 
 
 class RaidenManagementOrderError(TimeStampedModel):
-    order = models.OneToOneField(
-        RaidenManagementOrder, on_delete=models.CASCADE, related_name="error"
+    order = models.ForeignKey(
+        RaidenManagementOrder, on_delete=models.CASCADE, related_name="errors"
     )
-    message = models.TextField(null=True, blank=True)
-    transaction = models.OneToOneField(Transaction, null=True, on_delete=models.SET_NULL)
+    message = models.TextField(blank=True)
+    transaction = models.ForeignKey(
+        Transaction, on_delete=models.CASCADE, related_name="raiden_failed_transactions"
+    )
 
 
 __all__ = [

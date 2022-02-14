@@ -8,8 +8,16 @@ router = SimpleRouter(trailing_slash=False)
 router.register("nodes", views.RaidenViewSet, basename="raiden")
 
 nodes_router = NestedSimpleRouter(router, "nodes", lookup="raiden")
-nodes_router.register("channels", views.ChannelViewSet, basename="raiden-channels")
+nodes_router.register("channels", views.ChannelViewSet, basename="raiden-channel")
 nodes_router.register("connections", views.TokenNetworkViewSet, basename="token-network")
+
+channel_management_router = NestedSimpleRouter(nodes_router, "channels", lookup="channel")
+channel_management_router.register(
+    "deposits", views.ChannelDepositViewSet, basename="raiden-channel-deposit"
+)
+channel_management_router.register(
+    "withdrawals", views.ChannelWithdrawalViewSet, basename="raiden-channel-withdrawal"
+)
 
 urlpatterns = [
     path(
@@ -26,3 +34,4 @@ urlpatterns = [
 
 urlpatterns.extend(router.urls)
 urlpatterns.extend(nodes_router.urls)
+urlpatterns.extend(channel_management_router.urls)

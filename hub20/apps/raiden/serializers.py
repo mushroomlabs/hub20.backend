@@ -1,6 +1,9 @@
 from raiden_contracts.contract_manager import gas_measurements
 from rest_framework import serializers
-from rest_framework_nested.relations import NestedHyperlinkedIdentityField
+from rest_framework_nested.relations import (
+    NestedHyperlinkedIdentityField,
+    NestedHyperlinkedRelatedField,
+)
 from rest_framework_nested.serializers import NestedHyperlinkedModelSerializer
 
 from hub20.apps.blockchain.client import make_web3
@@ -94,7 +97,7 @@ class ServiceDepositSerializer(serializers.ModelSerializer):
 
 class ChannelSerializer(NestedHyperlinkedModelSerializer):
     url = NestedHyperlinkedIdentityField(
-        view_name="raiden-channels-detail",
+        view_name="raiden-channel-detail",
         parent_lookup_kwargs={
             "raiden_pk": "raiden_id",
         },
@@ -103,16 +106,37 @@ class ChannelSerializer(NestedHyperlinkedModelSerializer):
 
     class Meta:
         model = models.Channel
-        fields = ("url", "token", "identifier", "partner_address", "status", "balance")
-        read_only_fields = ("url", "token", "identifier", "partner_address", "status", "balance")
+        fields = ("url", "id", "token", "identifier", "partner_address", "status", "balance")
+        read_only_fields = (
+            "url",
+            "id",
+            "token",
+            "identifier",
+            "partner_address",
+            "status",
+            "balance",
+        )
 
 
-class ChannelManagementSerializer(serializers.ModelSerializer):
-    channel = serializers.HyperlinkedRelatedField(view_name="channel-detail", read_only=True)
+class ChannelManagementSerializer(NestedHyperlinkedModelSerializer):
+    parent_lookup_kwargs = {"raiden_pk": "channel__raiden_id", "channel_pk": "channel_id"}
+
+    channel = NestedHyperlinkedRelatedField(
+        view_name="raiden-channel-detail",
+        parent_lookup_kwargs={"raiden_pk": "raiden_id"},
+        read_only=True,
+    )
     amount = TokenValueField()
 
-    def create(self, validated_data):
+    def validate(self, data):
         channel = self.get_channel()
+        if channel is None:
+            raise serializers.ValidationError("Can not get channel information")
+        data["channel"] = channel
+        return data
+
+    def create(self, validated_data):
+        channel = validated_data.pop("channel")
         request = self.context["request"]
 
         return self.Meta.model.objects.create(
@@ -120,22 +144,35 @@ class ChannelManagementSerializer(serializers.ModelSerializer):
         )
 
     def get_channel(self):
-        view = self.context.get("view")
-        return view and view.get_object()
+        view = self.context["view"]
+
+        return models.Channel.objects.filter(
+            raiden_id=view.kwargs["raiden_pk"], pk=view.kwargs["channel_pk"]
+        ).first()
 
 
 class ChannelDepositSerializer(ChannelManagementSerializer):
+    url = NestedHyperlinkedIdentityField(
+        view_name="raiden-channel-deposit-detail",
+        parent_lookup_kwargs={"raiden_pk": "channel__raiden_id", "channel_pk": "channel_id"},
+    )
+
     class Meta:
         model = models.ChannelDepositOrder
-        fields = ("id", "created", "channel", "amount")
-        read_only_fields = ("id", "created", "channel")
+        fields = ("url", "id", "created", "channel", "amount")
+        read_only_fields = ("url", "id", "created", "channel")
 
 
-class ChannelWithdrawSerializer(ChannelManagementSerializer):
+class ChannelWithdrawalSerializer(ChannelManagementSerializer):
+    url = NestedHyperlinkedIdentityField(
+        view_name="raiden-channel-withdrawal-detail",
+        parent_lookup_kwargs={"raiden_pk": "channel__raiden_id", "channel_pk": "channel_id"},
+    )
+
     class Meta:
         model = models.ChannelWithdrawOrder
-        fields = ("created", "channel", "amount")
-        read_only_fields = ("created", "channel")
+        fields = ("url", "id", "created", "channel", "amount")
+        read_only_fields = ("url", "id", "created", "channel")
 
     def validate_amount(self, data):
         channel = self.get_channel()
@@ -163,7 +200,7 @@ class RaidenSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = models.Raiden
-        fields = read_only_fields = ("url", "status", "chain", "address", "channels")
+        fields = read_only_fields = ("url", "id", "status", "chain", "address", "channels")
 
 
 class RaidenStatusSerializer(serializers.ModelSerializer):
@@ -194,7 +231,7 @@ class RaidenStatusSerializer(serializers.ModelSerializer):
                 "channel-withdraw": gas_costs["TokenNetwork.setTotalWithdraw"],
                 "channel-close": gas_costs["TokenNetwork.closeChannel"],
             }
-            return {k: v * gas_price for k, v in actions.items()}
+            return {k: gas_price and (v * gas_price) for k, v in actions.items()}
         except Web3Provider.DoesNotExist:
             return None
 

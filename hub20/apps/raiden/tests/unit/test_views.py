@@ -37,14 +37,14 @@ class ChannelViewTestCase(BaseRaidenAdminViewTestCase):
         self.channel = factories.ChannelFactory()
 
     def test_can_get_deposit_url(self):
-        kwargs = {"raiden_pk": self.channel.raiden.id, "pk": self.channel.id}
-        url = reverse("raiden-channels-deposit", kwargs=kwargs)
-        self.assertTrue(url.endswith(f"channels/{self.channel.id}/deposit"))
+        kwargs = {"raiden_pk": self.channel.raiden.id, "channel_pk": self.channel.id}
+        url = reverse("raiden-channel-deposit-list", kwargs=kwargs)
+        self.assertTrue(url.endswith(f"channels/{self.channel.id}/deposits"))
 
     def test_can_get_withdrawal_url(self):
-        kwargs = {"raiden_pk": self.channel.raiden.id, "pk": self.channel.id}
-        url = reverse("raiden-channels-withdraw", kwargs=kwargs)
-        self.assertTrue(url.endswith(f"channels/{self.channel.id}/withdraw"))
+        kwargs = {"raiden_pk": self.channel.raiden.id, "channel_pk": self.channel.id}
+        url = reverse("raiden-channel-withdrawal-list", kwargs=kwargs)
+        self.assertTrue(url.endswith(f"channels/{self.channel.id}/withdrawals"))
 
 
 __all__ = ["RaidenNodeViewTestCase", "ChannelViewTestCase"]

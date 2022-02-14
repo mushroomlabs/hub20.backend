@@ -1,8 +1,10 @@
 from django.db.models.query import QuerySet
 from rest_framework import generics, mixins, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.mixins import CreateModelMixin, ListModelMixin, RetrieveModelMixin
 from rest_framework.permissions import IsAdminUser
 from rest_framework.response import Response
+from rest_framework.viewsets import GenericViewSet
 
 from . import models, serializers
 
@@ -12,56 +14,44 @@ class BaseRaidenViewMixin:
 
 
 class RaidenViewSet(
-    BaseRaidenViewMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet
+    BaseRaidenViewMixin,
+    GenericViewSet,
+    ListModelMixin,
+    RetrieveModelMixin,
 ):
     serializer_class = serializers.RaidenSerializer
     queryset = models.Raiden.objects.all()
 
-    @action(detail=True, methods=["get"])
+    @action(detail=True, methods=["get"], serializer_class=serializers.RaidenStatusSerializer)
     def status(self, request, pk=None):
-        raiden = self.get_object()
-        serializer = serializers.RaidenStatusSerializer(raiden, context={"request": request})
+        serializer = self.get_serializer(instance=self.get_object())
         return Response(serializer.data)
 
 
-class ChannelViewMixin(BaseRaidenViewMixin):
+class ChannelViewSet(BaseRaidenViewMixin, GenericViewSet, ListModelMixin, RetrieveModelMixin):
     serializer_class = serializers.ChannelSerializer
 
-
-class ChannelViewSet(
-    ChannelViewMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet
-):
     def get_queryset(self, *args, **kw):
         return models.Channel.objects.filter(raiden_id=self.kwargs["raiden_pk"])
 
-    def get_object(self):
-        return self.get_queryset().filter(pk=self.kwargs["pk"]).first()
 
-    @action(
-        detail=True,
-        methods=["POST"],
-        serializer_class=serializers.ChannelDepositSerializer,
-    )
-    def deposit(self, request, *args, **kw):
-        serializer = self.get_serializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        else:
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+class ChannelDepositViewSet(
+    BaseRaidenViewMixin, GenericViewSet, ListModelMixin, CreateModelMixin, RetrieveModelMixin
+):
+    serializer_class = serializers.ChannelDepositSerializer
 
-    @action(
-        detail=True,
-        methods=["POST"],
-        serializer_class=serializers.ChannelWithdrawSerializer,
-    )
-    def withdraw(self, request, *args, **kw):
-        serializer = self.get_serializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        else:
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    def get_queryset(self, *args, **kw):
+        return models.ChannelDepositOrder.objects.filter(channel_id=self.kwargs["channel_pk"])
+
+    def get_object(self, *args, **kw):
+        return models.ChannelDepositOrder.objects.filter(pk=self.kwargs["pk"]).first()
+
+
+class ChannelWithdrawalViewSet(
+    BaseRaidenViewMixin, GenericViewSet, ListModelMixin, CreateModelMixin, RetrieveModelMixin
+):
+    serializer_class = serializers.ChannelWithdrawalSerializer
+    queryset = models.ChannelWithdrawOrder.objects.all()
 
 
 class ServiceDepositMixin(BaseRaidenViewMixin):
