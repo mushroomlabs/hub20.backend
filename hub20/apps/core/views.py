@@ -297,6 +297,8 @@ class StoreViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
 class UserStoreViewSet(ModelViewSet):
     permission_classes = (IsStoreOwner,)
     serializer_class = serializers.StoreEditorSerializer
+    filter_backends = (OrderingFilter,)
+    ordering = "id"
 
     def get_queryset(self) -> QuerySet:
         try:
