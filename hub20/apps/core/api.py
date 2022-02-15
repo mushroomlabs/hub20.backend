@@ -29,9 +29,9 @@ router.register("payments", views.PaymentViewSet, basename="payments")
 router.register("tokenlists", TokenListViewSet, basename="tokenlist")
 router.register("stores", views.StoreViewSet, basename="store")
 router.register("users", views.UserViewSet, basename="users")
-router.register(
-    "accounting/wallets", views.BalanceSheetWalletViewSet, basename="accounting-wallets"
-)
+# router.register(
+#     "accounting/wallets", views.BalanceSheetWalletViewSet, basename="accounting-wallets"
+# )
 router.register("my/stores", views.UserStoreViewSet, basename="user-store")
 router.register("my/tokenlists", UserTokenListViewSet, basename="user-tokenlist")
 router.register("my/deposits", views.DepositViewSet, basename="user-deposit")

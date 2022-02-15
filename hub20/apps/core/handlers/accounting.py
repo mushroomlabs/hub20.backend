@@ -6,20 +6,14 @@ from django.db.models.signals import post_save
 from django.db.transaction import atomic
 from django.dispatch import receiver
 
-from hub20.apps.blockchain.models import BaseEthereumAccount, Chain, Transaction
+from hub20.apps.blockchain.models import BaseEthereumAccount, Transaction
 from hub20.apps.core.models.accounting import (
     ExternalAddressAccount,
     RaidenClientAccount,
     Treasury,
     UserAccount,
-    WalletAccount,
 )
-from hub20.apps.core.models.payments import (
-    BlockchainPaymentRoute,
-    Deposit,
-    PaymentConfirmation,
-    PaymentOrder,
-)
+from hub20.apps.core.models.payments import PaymentConfirmation
 from hub20.apps.core.models.transfers import (
     BlockchainWithdrawalConfirmation,
     RaidenWithdrawalConfirmation,
@@ -42,49 +36,16 @@ def on_user_created_create_account(sender, **kw):
         UserAccount.objects.get_or_create(user=kw["instance"])
 
 
-@receiver(post_save, sender=Chain)
-def on_chain_created_create_treasury(sender, **kw):
-    if kw["created"]:
-        Treasury.objects.get_or_create(chain=kw["instance"])
-
-
-@receiver(post_save, sender=Deposit)
-@receiver(post_save, sender=PaymentOrder)
-def on_payment_order_created_create_treasury(sender, **kw):
-    payment_order = kw["instance"]
-    chain = payment_order.currency.chain
-    Treasury.objects.get_or_create(chain=chain)
-
-
 @receiver(post_save, sender=Raiden)
 def on_raiden_created_create_account(sender, **kw):
     if kw["created"]:
         RaidenClientAccount.objects.get_or_create(raiden=kw["instance"])
 
 
-@receiver(post_save)
-def on_wallet_created_create_account(sender, **kw):
-    if not issubclass(sender, BaseEthereumAccount):
-        return
-
-    if kw["created"]:
-        WalletAccount.objects.get_or_create(account=kw["instance"])
-
-
-@receiver(post_save, sender=BlockchainPaymentRoute)
-def on_blockchain_route_created_create_account(sender, **kw):
-    if kw["created"]:
-        route = kw["instance"]
-        account = route.account
-
-        WalletAccount.objects.get_or_create(account=account)
-
-
 # In-Flows
 @atomic()
 @receiver(incoming_transfer_mined, sender=Transaction)
-def on_incoming_transfer_mined_move_funds_from_external_address_to_wallet(sender, **kw):
-    wallet = kw["account"]
+def on_incoming_transfer_mined_move_funds_from_external_address_to_treasury(sender, **kw):
     amount = kw["amount"]
     transaction = kw["transaction"]
 
@@ -99,12 +60,13 @@ def on_incoming_transfer_mined_move_funds_from_external_address_to_wallet(sender
     external_address_account, _ = ExternalAddressAccount.objects.get_or_create(
         address=transaction.from_address
     )
+    treasury = Treasury.make()
 
     external_address_book = external_address_account.get_book(token=amount.currency)
-    wallet_book = wallet.onchain_account.get_book(token=amount.currency)
+    treasury_book = treasury.get_book(token=amount.currency)
 
     external_address_book.debits.get_or_create(**params)
-    wallet_book.credits.get_or_create(**params)
+    treasury_book.credits.get_or_create(**params)
 
 
 @atomic()
@@ -139,10 +101,9 @@ def on_raiden_payment_received_move_funds_from_external_address_to_raiden(sender
 # Out-flows
 @atomic()
 @receiver(outgoing_transfer_mined, sender=Transaction)
-def on_outgoing_transfer_mined_move_funds_from_wallet_to_external_address(sender, **kw):
+def on_outgoing_transfer_mined_move_funds_from_treasury_to_external_address(sender, **kw):
     transaction = kw["transaction"]
     amount = kw["amount"]
-    wallet = kw["account"]
     address = kw["address"]
 
     transaction_type = ContentType.objects.get_for_model(transaction)
@@ -154,11 +115,12 @@ def on_outgoing_transfer_mined_move_funds_from_wallet_to_external_address(sender
         amount=amount.amount,
     )
     external_account, _ = ExternalAddressAccount.objects.get_or_create(address=address)
+    treasury = Treasury.make()
 
-    wallet_book = wallet.onchain_account.get_book(token=amount.currency)
+    treasury_book = treasury.get_book(token=amount.currency)
     external_account_book = external_account.get_book(token=amount.currency)
 
-    wallet_book.debits.get_or_create(**params)
+    treasury_book.debits.get_or_create(**params)
     external_account_book.credits.get_or_create(**params)
 
 
@@ -199,7 +161,8 @@ def on_blockchain_transfer_confirmed_move_fee_from_sender_to_treasury(sender, **
         fee = confirmation.fee
         native_token = confirmation.fee.currency
 
-        treasury_book = transaction.block.chain.treasury.get_book(token=native_token)
+        treasury = Treasury.make()
+        treasury_book = treasury.get_book(token=native_token)
         sender_book = confirmation.transfer.sender.account.get_book(token=native_token)
 
         transaction_type = ContentType.objects.get_for_model(transaction)
@@ -216,7 +179,7 @@ def on_blockchain_transfer_confirmed_move_fee_from_sender_to_treasury(sender, **
 
 @atomic()
 @receiver(post_save, sender=Transaction)
-def on_transaction_submitted_move_fee_from_wallet_to_fee_account(sender, **kw):
+def on_transaction_submitted_move_fee_from_treasury_to_fee_account(sender, **kw):
     if kw["created"]:
         transaction = kw["instance"]
 
@@ -227,8 +190,9 @@ def on_transaction_submitted_move_fee_from_wallet_to_fee_account(sender, **kw):
         native_token = EthereumToken.make_native(chain=transaction.block.chain)
         fee = native_token.from_wei(transaction.gas_fee)
         fee_account = ExternalAddressAccount.get_transaction_fee_account()
+        treasury = Treasury.make()
 
-        wallet_book = wallet.onchain_account.get_book(token=native_token)
+        treasury_book = treasury.get_book(token=native_token)
         fee_book = fee_account.get_book(token=native_token)
 
         transaction_type = ContentType.objects.get_for_model(transaction)
@@ -239,7 +203,7 @@ def on_transaction_submitted_move_fee_from_wallet_to_fee_account(sender, **kw):
             amount=fee.amount,
         )
 
-        wallet_book.debits.get_or_create(**params)
+        treasury_book.debits.get_or_create(**params)
         fee_book.credits.get_or_create(**params)
 
 
@@ -254,8 +218,10 @@ def on_transfer_created_move_funds_from_sender_to_treasury(sender, **kw):
         transfer = kw["instance"]
         params = dict(reference=transfer, currency=transfer.currency, amount=transfer.amount)
 
+        treasury = Treasury.make()
+
         user_book = transfer.sender.account.get_book(token=transfer.currency)
-        treasury_book = transfer.currency.chain.treasury.get_book(token=transfer.currency)
+        treasury_book = treasury.get_book(token=transfer.currency)
 
         user_book.debits.create(**params)
         treasury_book.credits.create(**params)
@@ -269,9 +235,10 @@ def on_internal_transfer_confirmed_move_funds_from_treasury_to_receiver(sender, 
         confirmation = kw["instance"]
         transfer = confirmation.transfer.internaltransfer
 
+        treasury = Treasury.make()
         params = dict(reference=transfer, currency=transfer.currency, amount=transfer.amount)
 
-        treasury_book = transfer.currency.chain.treasury.get_book(token=transfer.currency)
+        treasury_book = treasury.get_book(token=transfer.currency)
         receiver_book = transfer.receiver.account.get_book(token=transfer.currency)
 
         treasury_book.debits.create(**params)
@@ -290,7 +257,8 @@ def on_payment_confirmed_move_funds_from_treasury_to_payee(sender, **kw):
 
         if is_raiden_payment or is_blockchain_payment:
             params = dict(reference=confirmation, amount=payment.amount, currency=payment.currency)
-            treasury_book = payment.currency.chain.treasury.get_book(token=payment.currency)
+            treasury = Treasury.make()
+            treasury_book = treasury.get_book(token=payment.currency)
             payee_book = payment.route.deposit.user.account.get_book(token=payment.currency)
             treasury_book.debits.create(**params)
             payee_book.credits.create(**params)
@@ -311,7 +279,8 @@ def on_reverted_transaction_move_funds_from_treasury_to_sender(sender, **kw):
             return
 
         try:
-            treasury_book = transfer.currency.chain.treasury.get_book(token=transfer.currency)
+            treasury = Treasury.make()
+            treasury_book = treasury.get_book(token=transfer.currency)
             sender_book = transfer.sender.account.get_book(token=transfer.currency)
             treasury_book.debits.create(
                 reference=transfer_action, currency=transfer.currency, amount=transfer.amount
@@ -326,17 +295,13 @@ def on_reverted_transaction_move_funds_from_treasury_to_sender(sender, **kw):
 
 __all__ = [
     "on_user_created_create_account",
-    "on_chain_created_create_treasury",
-    "on_payment_order_created_create_treasury",
     "on_raiden_created_create_account",
-    "on_wallet_created_create_account",
-    "on_blockchain_route_created_create_account",
-    "on_incoming_transfer_mined_move_funds_from_external_address_to_wallet",
+    "on_incoming_transfer_mined_move_funds_from_external_address_to_treasury",
     "on_raiden_payment_received_move_funds_from_external_address_to_raiden",
-    "on_outgoing_transfer_mined_move_funds_from_wallet_to_external_address",
+    "on_outgoing_transfer_mined_move_funds_from_treasury_to_external_address",
     "on_raiden_transfer_confirmed_move_funds_from_raiden_to_external_address",
     "on_blockchain_transfer_confirmed_move_fee_from_sender_to_treasury",
-    "on_transaction_submitted_move_fee_from_wallet_to_fee_account",
+    "on_transaction_submitted_move_fee_from_treasury_to_fee_account",
     "on_transfer_created_move_funds_from_sender_to_treasury",
     "on_internal_transfer_confirmed_move_funds_from_treasury_to_receiver",
     "on_payment_confirmed_move_funds_from_treasury_to_payee",
