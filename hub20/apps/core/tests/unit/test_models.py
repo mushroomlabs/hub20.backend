@@ -31,7 +31,7 @@ from hub20.apps.core.models.transfers import RaidenClient, TransferCancellation,
 from hub20.apps.core.settings import app_settings
 from hub20.apps.ethereum_money.factories import (
     Erc20TransactionDataFactory,
-    Erc20TransferFactory,
+    Erc20TransactionFactory,
     EtherAmountFactory,
 )
 from hub20.apps.ethereum_money.signals import outgoing_transfer_mined
@@ -283,7 +283,7 @@ class TransferAccountingTestCase(TransferTestCase):
         # without relying on the knowledge from
         # outgoing_transfer_mined.
 
-        payout_tx = Erc20TransferFactory(
+        payout_tx = Erc20TransactionFactory(
             hash=payout_tx_data.hash,
             amount=transfer.as_token_amount,
             recipient=transfer.address,
@@ -330,7 +330,7 @@ class TransferAccountingTestCase(TransferTestCase):
                 web3_transfer_execute.return_value = payout_tx_data
                 transfer.execute()
 
-        payout_tx = Erc20TransferFactory(
+        payout_tx = Erc20TransactionFactory(
             hash=payout_tx_data.hash,
             amount=transfer.as_token_amount,
             recipient=transfer.address,

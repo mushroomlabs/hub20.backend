@@ -22,16 +22,17 @@ class PaymentTransferTestCase(BaseTestCase):
     def setUp(self):
         self.w3 = Web3Mock
 
+    @patch("hub20.apps.ethereum_money.tasks.get_account_balance")
     @patch("hub20.apps.ethereum_money.tasks.Web3Provider")
     @patch("hub20.apps.ethereum_money.tasks.make_web3")
-    def test_can_detect_erc20_transfers(self, make_web3_mock, MockWeb3Provider):
+    def test_can_detect_erc20_transfers(
+        self, make_web3_mock, MockWeb3Provider, get_account_balance_mock
+    ):
 
         checkout = CheckoutFactory()
         route = checkout.routes.select_subclasses().first()
 
         self.assertIsNotNone(route)
-
-        make_web3_mock
 
         transaction_params = dict(
             blockNumber=checkout.currency.chain.highest_block,
@@ -61,6 +62,8 @@ class PaymentTransferTestCase(BaseTestCase):
         self.w3.eth.get_transaction.return_value = tx_data
         self.w3.eth.get_transaction_receipt.return_value = tx_receipt
         self.w3.eth.get_block.return_value = block_data
+
+        get_account_balance_mock.return_value = checkout.as_token_amount
 
         record_token_transfers(
             chain_id=self.w3.eth.chain_id,
