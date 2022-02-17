@@ -10,7 +10,7 @@ from django.test import TestCase
 from hub20.apps.blockchain.models import Block, Transaction
 from hub20.apps.blockchain.signals import block_sealed
 from hub20.apps.blockchain.tests.mocks import BlockMock
-from hub20.apps.core.choices import TRANSFER_STATUS
+from hub20.apps.core.choices import PAYMENT_NETWORKS, TRANSFER_STATUS
 from hub20.apps.core.factories import (
     BlockchainWithdrawalFactory,
     CheckoutFactory,
@@ -21,7 +21,7 @@ from hub20.apps.core.factories import (
     StoreFactory,
     UserAccountFactory,
 )
-from hub20.apps.core.models.accounting import ExternalAddressAccount, Treasury
+from hub20.apps.core.models.accounting import PaymentNetworkAccount
 from hub20.apps.core.models.payments import (
     BlockchainPayment,
     BlockchainPaymentRoute,
@@ -155,7 +155,9 @@ class TransferTestCase(BaseTestCase):
         self.wallet = EthereumAccountFactory()
         self.fee_amount = EtherAmountFactory(amount=Decimal("0.001"))
         self.chain = self.fee_amount.currency.chain
-        self.treasury = Treasury.make()
+        self.treasury = PaymentNetworkAccount.make(PAYMENT_NETWORKS.internal)
+        self.blockchain_account = PaymentNetworkAccount.make(PAYMENT_NETWORKS.blockchain)
+        self.raiden_account = PaymentNetworkAccount.make(PAYMENT_NETWORKS.raiden)
         self.raiden = RaidenFactory()
 
 
@@ -302,17 +304,15 @@ class TransferAccountingTestCase(TransferTestCase):
         transaction = transfer.confirmation.blockchainwithdrawalconfirmation.transaction
         transaction_type = ContentType.objects.get_for_model(transaction)
 
-        external_account = ExternalAddressAccount.objects.filter(address=transfer.address).first()
-
-        self.assertIsNotNone(external_account)
-
-        external_credit = external_account.credits.filter(reference_type=transaction_type).last()
+        blockchain_credit = self.blockchain_account.credits.filter(
+            reference_type=transaction_type
+        ).last()
         treasury_debit = self.treasury.debits.filter(reference_type=transaction_type).last()
 
         self.assertIsNotNone(treasury_debit)
-        self.assertIsNotNone(external_credit)
+        self.assertIsNotNone(blockchain_credit)
 
-        self.assertEqual(treasury_debit.as_token_amount, external_credit.as_token_amount)
+        self.assertEqual(treasury_debit.as_token_amount, blockchain_credit.as_token_amount)
 
     def test_blockchain_transfers_create_fee_entries(self):
         transfer = BlockchainWithdrawalFactory(
@@ -352,17 +352,16 @@ class TransferAccountingTestCase(TransferTestCase):
         transaction_type = ContentType.objects.get_for_model(transaction)
         native_token = transfer.confirmation.blockchainwithdrawalconfirmation.fee.currency
 
-        fee_account = ExternalAddressAccount.get_transaction_fee_account()
         sender_book = transfer.sender.account.get_book(token=native_token)
 
         entry_filters = dict(reference_type=transaction_type, reference_id=transaction.id)
 
         self.assertIsNotNone(sender_book.debits.filter(**entry_filters).last())
-        self.assertIsNotNone(fee_account.credits.filter(**entry_filters).last())
+        self.assertIsNotNone(self.blockchain_account.credits.filter(**entry_filters).last())
 
     @patch.object(RaidenClient, "select_for_transfer")
     @patch.object(RaidenClient, "transfer")
-    def test_raiden_transfers_create_entries_for_account_and_external_address(
+    def test_raiden_transfers_create_entries_for_raiden_account_and_treasury(
         self, raiden_transfer, select_for_transfer
     ):
         transfer = RaidenWithdrawalFactory(
@@ -395,15 +394,10 @@ class TransferAccountingTestCase(TransferTestCase):
 
         self.assertEqual(payment.receiver_address, transfer.address)
 
-        raiden_account = payment.channel.raiden.raiden_account
-        external_address_account, _ = ExternalAddressAccount.objects.get_or_create(
-            address=transfer.address
-        )
-
         transfer_filter = dict(reference_type=transfer_type, reference_id=transfer.id)
 
-        self.assertIsNotNone(raiden_account.debits.filter(**transfer_filter).last())
-        self.assertIsNotNone(external_address_account.credits.filter(**transfer_filter).last())
+        self.assertIsNotNone(self.treasury.debits.filter(**transfer_filter).last())
+        self.assertIsNotNone(self.raiden_account.credits.filter(**transfer_filter).last())
 
 
 __all__ = [
