@@ -15,7 +15,7 @@ from taggit.managers import TaggableManager
 from taggit.models import GenericUUIDTaggedItemBase, TaggedItemBase
 
 from hub20.apps.blockchain.fields import EthereumAddressField
-from hub20.apps.blockchain.models import BaseEthereumAccount, Block, Chain, Transaction
+from hub20.apps.blockchain.models import Chain, Transaction
 
 from . import choices
 from .fields import EthereumTokenAmountField, TokenlistStandardURLField
@@ -46,6 +46,7 @@ class EthereumToken(models.Model):
     native = QueryManager(address=NULL_ADDRESS)
     ERC20tokens = QueryManager(~Q(address=NULL_ADDRESS))
     tradeable = QueryManager(chain__providers__is_active=True)
+    listed = QueryManager(is_listed=True)
 
     @property
     def is_ERC20(self) -> bool:
@@ -345,29 +346,6 @@ class TransferEvent(EthereumTokenValueModel):
         ordering = ("transaction", "log_index")
 
 
-class WalletBalanceManager(models.QuerySet):
-    def history(self, wallet, token):
-        return self.filter(wallet=wallet, currency=token, block__chain_id=token.chain_id).order_by(
-            "-block__number"
-        )
-
-    def current(self, wallet, token):
-        return self.history(wallet, token).first()
-
-
-class WalletBalanceRecord(EthereumTokenValueModel):
-    """
-    Provides a blocktime-series record of balances for any account
-    """
-
-    wallet = models.ForeignKey(
-        BaseEthereumAccount, related_name="balance_records", on_delete=models.CASCADE
-    )
-    block = models.ForeignKey(Block, on_delete=models.CASCADE)
-
-    objects = WalletBalanceManager.as_manager()
-
-
 __all__ = [
     "EthereumToken",
     "EthereumTokenAmount",
@@ -377,5 +355,4 @@ __all__ = [
     "TransferEvent",
     "UserTokenList",
     "WrappedToken",
-    "WalletBalanceRecord",
 ]

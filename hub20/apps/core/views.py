@@ -386,16 +386,3 @@ class AccountingReportView(StatusView):
                 external_addresses=self._get_serialized_book(models.ExternalAddressAccount),
             )
         )
-
-
-# class BalanceSheetWalletViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
-#     permission_classes = (IsAdminUser,)
-#     serializer_class = serializers.WalletBalanceSheetSerializer
-#     lookup_url_kwarg = "address"
-#     lookup_field = "account__address"
-
-#     def get_queryset(self) -> QuerySet:
-#         return models.WalletAccount.objects.all()
-
-#     def get_object(self) -> models.WalletAccount:
-#         return get_object_or_404(models.WalletAccount, account__address=self.kwargs.get("address"))

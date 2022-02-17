@@ -587,20 +587,3 @@ class AccountingBookSerializer(serializers.Serializer):
     total_credit = TokenValueField(read_only=True)
     total_debit = TokenValueField(read_only=True)
     balance = TokenValueField(read_only=True)
-
-
-# class WalletBalanceSheetSerializer(serializers.ModelSerializer):
-#     url = serializers.SerializerMethodField()
-#     address = EthereumAddressField(source="account.address", read_only=True)
-#     balances = AccountingBookSerializer(many=True, read_only=True)
-
-#     def get_url(self, obj):
-#         return reverse(
-#             "accounting-wallets-detail",
-#             kwargs=dict(address=obj.account.address),
-#             request=self.context["request"],
-#         )
-
-#     class Meta:
-#         model = models.WalletAccount
-#         fields = read_only_fields = ("url", "address", "balances")

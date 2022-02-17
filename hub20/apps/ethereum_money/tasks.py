@@ -8,7 +8,6 @@ from web3.exceptions import TransactionNotFound
 from hub20.apps.blockchain.client import make_web3
 from hub20.apps.blockchain.models import (
     BaseEthereumAccount,
-    Block,
     Chain,
     Transaction,
     TransactionDataRecord,
@@ -16,39 +15,9 @@ from hub20.apps.blockchain.models import (
 )
 
 from . import signals
-from .client.web3 import get_account_balance
-from .models import EthereumToken, TokenList, TransferEvent, WalletBalanceRecord
+from .models import EthereumToken, TokenList, TransferEvent
 
 logger = logging.getLogger(__name__)
-
-
-def _get_wallet_balance(wallet: BaseEthereumAccount, token: EthereumToken, block_data):
-    try:
-        provider = Web3Provider.available.get(chain_id=token.chain_id)
-    except Web3Provider.DoesNotExist:
-        logger.warning(f"Can not get balance for {wallet}: no provider available")
-        return
-
-    current_record = WalletBalanceRecord.objects.current(wallet=wallet, token=token)
-    current_block_number = current_record and current_record.block.number
-
-    w3 = make_web3(provider=provider)
-    chain_height = w3.eth.block_number
-
-    if current_block_number is not None and current_block_number >= chain_height:
-        logger.info("Record on {current_block_number} is already recent")
-        return
-
-    balance = get_account_balance(w3=w3, token=token, address=wallet.address)
-
-    block = Block.make(block_data=block_data, chain_id=token.chain_id)
-
-    WalletBalanceRecord.objects.create(
-        wallet=wallet,
-        currency=balance.currency,
-        amount=balance.amount,
-        block=block,
-    )
 
 
 @shared_task
@@ -109,7 +78,6 @@ def record_token_transfers(chain_id, event_data, provider_url):
             amount=amount,
             address=recipient,
         )
-        _get_wallet_balance(wallet=account, token=amount.currency, block_data=block_data)
 
     for account in BaseEthereumAccount.objects.filter(address=recipient):
         logger.debug(
@@ -123,7 +91,6 @@ def record_token_transfers(chain_id, event_data, provider_url):
             amount=amount,
             address=sender,
         )
-        _get_wallet_balance(wallet=account, token=amount.currency, block_data=block_data)
 
 
 @shared_task
@@ -176,7 +143,6 @@ def check_eth_transfers(chain_id, block_data, provider_url):
                 transaction=tx,
                 address=recipient,
             )
-            _get_wallet_balance(wallet=account, token=native_token, block_data=block_data)
 
         for account in BaseEthereumAccount.objects.filter(address=recipient):
             account.transactions.add(tx)
@@ -187,7 +153,6 @@ def check_eth_transfers(chain_id, block_data, provider_url):
                 transaction=tx,
                 address=sender,
             )
-            _get_wallet_balance(wallet=account, token=native_token, block_data=block_data)
 
 
 @shared_task

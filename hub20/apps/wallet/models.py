@@ -1,14 +1,16 @@
+import functools
 import os
 from typing import Optional
 
 import ethereum
 from django.db import models
-from django.db.models import Max
+from django.db.models import Max, Q
 from hdwallet import HDWallet
 from hdwallet.symbols import ETH
 
 from hub20.apps.blockchain.fields import HexField
-from hub20.apps.blockchain.models import BaseEthereumAccount
+from hub20.apps.blockchain.models import BaseEthereumAccount, Block
+from hub20.apps.ethereum_money.models import EthereumTokenValueModel
 
 from .app_settings import HD_WALLET_MNEMONIC, HD_WALLET_ROOT_KEY
 
@@ -70,8 +72,47 @@ class HierarchicalDeterministicWallet(BaseEthereumAccount):
         return cls.objects.aggregate(generation=Max("index")).get("generation")
 
 
+class Wallet(BaseEthereumAccount):
+    def historical_balance(self, token):
+        return self.balance_records.filter(currency=token).order_by("block__number")
+
+    def current_balance(self, token):
+        return self.historical_balance(token).last()
+
+    @property
+    def balances(self):
+        # There has to be a better way to convert a ValuesQuerySet
+        # into a Queryset, but for the moment it will be okay.
+        record_qs = self.balance_records.values("currency").annotate(
+            block__number=Max("block__number")
+        )
+
+        filter_q = functools.reduce(lambda x, y: x | y, [Q(**r) for r in record_qs])
+
+        return self.balance_records.filter(amount__gt=0).filter(filter_q)
+
+    class Meta:
+        proxy = True
+
+
+class WalletBalanceRecord(EthereumTokenValueModel):
+    """
+    Provides a blocktime-series record of balances for any account
+    """
+
+    wallet = models.ForeignKey(
+        BaseEthereumAccount, related_name="balance_records", on_delete=models.CASCADE
+    )
+    block = models.ForeignKey(Block, on_delete=models.CASCADE)
+
+    class Meta:
+        unique_together = ("wallet", "currency", "block")
+
+
 __all__ = [
     "ColdWallet",
     "KeystoreAccount",
     "HierarchicalDeterministicWallet",
+    "Wallet",
+    "WalletBalanceRecord",
 ]
