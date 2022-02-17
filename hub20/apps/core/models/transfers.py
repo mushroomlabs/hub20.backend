@@ -11,7 +11,7 @@ from model_utils.models import TimeStampedModel
 
 from hub20.apps.blockchain.fields import EthereumAddressField
 from hub20.apps.blockchain.models import Transaction, TransactionDataRecord
-from hub20.apps.core.choices import PAYMENT_NETWORKS, TRANSFER_STATUS
+from hub20.apps.core.choices import TRANSFER_STATUS, WITHDRAWAL_NETWORKS
 from hub20.apps.ethereum_money.client import Web3Client
 from hub20.apps.ethereum_money.models import (
     EthereumToken,
@@ -137,13 +137,13 @@ class InternalTransfer(Transfer):
 
 class Withdrawal(Transfer):
     address = EthereumAddressField(db_index=True)
-    payment_network = models.CharField(max_length=64, choices=PAYMENT_NETWORKS)
+    payment_network = models.CharField(max_length=64, choices=WITHDRAWAL_NETWORKS)
 
 
 class BlockchainWithdrawal(Withdrawal):
     def _execute(self):
         try:
-            assert self.payment_network == PAYMENT_NETWORKS.blockchain, "Wrong payment network"
+            assert self.payment_network == WITHDRAWAL_NETWORKS.blockchain, "Wrong payment network"
             web3_client = Web3Client.select_for_transfer(amount=self.amount, address=self.address)
             tx_data = web3_client.transfer(amount=self.as_token_amount, address=self.address)
             BlockchainWithdrawalReceipt.objects.create(transfer=self, transaction_data=tx_data)
@@ -157,7 +157,7 @@ class BlockchainWithdrawal(Withdrawal):
 class RaidenWithdrawal(Withdrawal):
     def _execute(self):
         try:
-            assert self.payment_network == PAYMENT_NETWORKS.raiden, "Wrong payment network"
+            assert self.payment_network == WITHDRAWAL_NETWORKS.raiden, "Wrong payment network"
             raiden_client = RaidenClient.select_for_transfer(
                 amount=self.amount, address=self.address
             )

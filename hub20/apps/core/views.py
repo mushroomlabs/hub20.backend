@@ -380,9 +380,7 @@ class AccountingReportView(StatusView):
     def get(self, request, **kw):
         return Response(
             dict(
-                treasury=self._get_serialized_book(models.Treasury),
-                raiden=self._get_serialized_book(models.RaidenClientAccount),
+                payment_networks=self._get_serialized_book(models.PaymentNetworkAccount),
                 user_accounts=self._get_serialized_book(models.UserAccount),
-                external_addresses=self._get_serialized_book(models.ExternalAddressAccount),
             )
         )
