@@ -15,7 +15,7 @@ from hub20.apps.blockchain.models import (
 )
 
 from . import signals
-from .models import EthereumToken, TokenList
+from .models import EthereumToken, TokenList, TransferEvent
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +51,16 @@ def record_token_transfers(chain_id, event_data, provider_url):
 
         TransactionDataRecord.make(chain_id=chain_id, tx_data=tx_data)
         tx = Transaction.make(chain_id=chain_id, block_data=block_data, tx_receipt=tx_receipt)
+
+        TransferEvent.objects.create(
+            transaction=tx,
+            sender=sender,
+            recipient=recipient,
+            amount=amount.amount,
+            currency=amount.currency,
+            log_index=event_data.logIndex,
+        )
+
     except TransactionNotFound:
         logger.warning(f"Failed to get transaction {event_data.transactionHash.hex()}")
         return
@@ -117,6 +127,13 @@ def check_eth_transfers(chain_id, block_data, provider_url):
             tx_receipt=transaction_receipt,
         )
 
+        TransferEvent.objects.create(
+            transaction=tx,
+            sender=sender,
+            recipient=recipient,
+            amount=amount.amount,
+            currency=amount.currency,
+        )
         for account in BaseEthereumAccount.objects.filter(address=sender):
             account.transactions.add(tx)
             signals.outgoing_transfer_mined.send(

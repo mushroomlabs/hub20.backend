@@ -21,7 +21,7 @@ from hub20.apps.core.factories import (
     StoreFactory,
     UserAccountFactory,
 )
-from hub20.apps.core.models.accounting import ExternalAddressAccount
+from hub20.apps.core.models.accounting import ExternalAddressAccount, Treasury
 from hub20.apps.core.models.payments import (
     BlockchainPayment,
     BlockchainPaymentRoute,
@@ -31,7 +31,7 @@ from hub20.apps.core.models.transfers import RaidenClient, TransferCancellation,
 from hub20.apps.core.settings import app_settings
 from hub20.apps.ethereum_money.factories import (
     Erc20TransactionDataFactory,
-    Erc20TransferFactory,
+    Erc20TransactionFactory,
     EtherAmountFactory,
 )
 from hub20.apps.ethereum_money.signals import outgoing_transfer_mined
@@ -155,7 +155,7 @@ class TransferTestCase(BaseTestCase):
         self.wallet = EthereumAccountFactory()
         self.fee_amount = EtherAmountFactory(amount=Decimal("0.001"))
         self.chain = self.fee_amount.currency.chain
-
+        self.treasury = Treasury.make()
         self.raiden = RaidenFactory()
 
 
@@ -244,7 +244,6 @@ class TransferAccountingTestCase(TransferTestCase):
             currency=self.credit.currency,
             amount=self.credit.amount,
         )
-        treasury = transfer.currency.chain.treasury
         cancellation = TransferCancellation.objects.create(
             transfer=transfer, canceled_by=self.sender
         )
@@ -253,13 +252,13 @@ class TransferAccountingTestCase(TransferTestCase):
             token=self.credit.currency
         )
         self.assertEqual(sender_balance_amount, self.credit)
-        last_treasury_debit = treasury.debits.last()
+        last_treasury_debit = self.treasury.debits.last()
 
         self.assertEqual(last_treasury_debit.reference, cancellation)
 
     @patch.object(Web3Client, "select_for_transfer")
     @patch.object(Web3Client, "transfer")
-    def test_external_transfers_generate_accounting_entries_for_wallet_and_external_address(
+    def test_external_transfers_generate_accounting_entries_for_treasury_and_external_address(
         self, web3_execute_transfer, select_for_transfer
     ):
         transfer = BlockchainWithdrawalFactory(
@@ -284,7 +283,7 @@ class TransferAccountingTestCase(TransferTestCase):
         # without relying on the knowledge from
         # outgoing_transfer_mined.
 
-        payout_tx = Erc20TransferFactory(
+        payout_tx = Erc20TransactionFactory(
             hash=payout_tx_data.hash,
             amount=transfer.as_token_amount,
             recipient=transfer.address,
@@ -303,18 +302,17 @@ class TransferAccountingTestCase(TransferTestCase):
         transaction = transfer.confirmation.blockchainwithdrawalconfirmation.transaction
         transaction_type = ContentType.objects.get_for_model(transaction)
 
-        wallet_account = self.wallet.onchain_account
         external_account = ExternalAddressAccount.objects.filter(address=transfer.address).first()
 
         self.assertIsNotNone(external_account)
 
         external_credit = external_account.credits.filter(reference_type=transaction_type).last()
-        wallet_debit = wallet_account.debits.filter(reference_type=transaction_type).last()
+        treasury_debit = self.treasury.debits.filter(reference_type=transaction_type).last()
 
-        self.assertIsNotNone(wallet_debit)
+        self.assertIsNotNone(treasury_debit)
         self.assertIsNotNone(external_credit)
 
-        self.assertEqual(wallet_debit.as_token_amount, external_credit.as_token_amount)
+        self.assertEqual(treasury_debit.as_token_amount, external_credit.as_token_amount)
 
     def test_blockchain_transfers_create_fee_entries(self):
         transfer = BlockchainWithdrawalFactory(
@@ -332,7 +330,7 @@ class TransferAccountingTestCase(TransferTestCase):
                 web3_transfer_execute.return_value = payout_tx_data
                 transfer.execute()
 
-        payout_tx = Erc20TransferFactory(
+        payout_tx = Erc20TransactionFactory(
             hash=payout_tx_data.hash,
             amount=transfer.as_token_amount,
             recipient=transfer.address,
@@ -352,19 +350,15 @@ class TransferAccountingTestCase(TransferTestCase):
 
         transaction = transfer.confirmation.blockchainwithdrawalconfirmation.transaction
         transaction_type = ContentType.objects.get_for_model(transaction)
-        ETH = transfer.confirmation.blockchainwithdrawalconfirmation.fee.currency
+        native_token = transfer.confirmation.blockchainwithdrawalconfirmation.fee.currency
 
-        treasury_book = self.chain.treasury.get_book(token=ETH)
         fee_account = ExternalAddressAccount.get_transaction_fee_account()
-        wallet_book = self.wallet.onchain_account.get_book(token=ETH)
-        sender_book = transfer.sender.account.get_book(token=ETH)
+        sender_book = transfer.sender.account.get_book(token=native_token)
 
         entry_filters = dict(reference_type=transaction_type, reference_id=transaction.id)
 
-        self.assertIsNotNone(treasury_book.credits.filter(**entry_filters).last())
-        self.assertIsNotNone(wallet_book.debits.filter(**entry_filters).last())
-        self.assertIsNotNone(fee_account.credits.filter(**entry_filters).last())
         self.assertIsNotNone(sender_book.debits.filter(**entry_filters).last())
+        self.assertIsNotNone(fee_account.credits.filter(**entry_filters).last())
 
     @patch.object(RaidenClient, "select_for_transfer")
     @patch.object(RaidenClient, "transfer")

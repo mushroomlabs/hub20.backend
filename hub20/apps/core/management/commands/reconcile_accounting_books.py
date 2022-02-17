@@ -14,7 +14,6 @@ from hub20.apps.core.models.accounting import (
     RaidenClientAccount,
     Treasury,
     UserAccount,
-    WalletAccount,
 )
 from hub20.apps.ethereum_money.client import (
     index_account_erc20_approvals,
@@ -70,19 +69,16 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         accounts = BaseEthereumAccount.objects.all()
+        treasury, _ = Treasury.objects.get_or_create()
         transaction_type = ContentType.objects.get_for_model(Transaction)
 
         for user in User.objects.all():
             UserAccount.objects.get_or_create(user=user)
 
-        for wallet in accounts:
-            WalletAccount.objects.get_or_create(account=wallet)
-
         # Index Transactions
         for provider in Web3Provider.available.all():
             chain = provider.chain
             w3 = make_web3(provider=provider)
-            Treasury.objects.get_or_create(chain=chain)
 
             native_token = EthereumToken.make_native(chain=chain)
             tokens = EthereumToken.ERC20tokens.filter(chain=chain)
@@ -97,10 +93,13 @@ class Command(BaseCommand):
 
             # Native Token Value Transfers
             for account in accounts:
-                wallet_book = account.onchain_account.get_book(token=native_token)
+
+                treasury_book = treasury.get_book(token=native_token)
+                account_transactions = account.transactions.filter(block__chain=chain)
 
                 # Ethereum Transactions Received
-                for tx in account.transactions.filter(to_address=account.address, value__gt=0):
+                for tx in account_transactions.filter(to_address=account.address, value__gt=0):
+
                     amount = native_token.from_wei(tx.value)
                     params = dict(
                         reference_type=transaction_type,
@@ -114,10 +113,10 @@ class Command(BaseCommand):
                     external_address_book = external_address_account.get_book(token=native_token)
 
                     external_address_book.debits.get_or_create(**params)
-                    wallet_book.credits.get_or_create(**params)
+                    treasury_book.credits.get_or_create(**params)
 
                 # Ethereum Transactions Sent
-                for tx in account.transactions.filter(from_address=account.address, value__gt=0):
+                for tx in account_transactions.filter(from_address=account.address, value__gt=0):
                     amount = native_token.from_wei(tx.value)
                     params = dict(
                         reference_type=transaction_type,
@@ -129,10 +128,10 @@ class Command(BaseCommand):
                         address=tx.to_address
                     )
 
-                    external_address_book = external_address_account.get_book(token=ETH)
+                    external_address_book = external_address_account.get_book(token=native_token)
 
                     external_address_book.credits.get_or_create(**params)
-                    wallet_book.debits.get_or_create(**params)
+                    treasury_book.debits.get_or_create(**params)
 
         # Raiden payments
         for raiden in Raiden.objects.all():

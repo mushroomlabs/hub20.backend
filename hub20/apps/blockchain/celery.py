@@ -22,7 +22,6 @@ class Web3Encoder(json.JSONEncoder):
         elif isinstance(obj, Decimal):
             return {"__type__": "decimal", "value": str(obj)}
         else:
-            breakpoint()
             return json.JSONEncoder.default(self, obj)
 
 

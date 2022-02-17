@@ -12,7 +12,6 @@ from django.db.models.query import QuerySet
 from model_utils.models import TimeStampedModel
 
 from hub20.apps.blockchain.fields import EthereumAddressField
-from hub20.apps.blockchain.models import BaseEthereumAccount, Chain
 from hub20.apps.ethereum_money.models import (
     EthereumToken,
     EthereumTokenAmount,
@@ -199,23 +198,32 @@ class DoubleEntryAccountModel(models.Model):
 # We should at the very least have the following equations being satisfied per
 # token, else the site should be considered insolvent:
 #
-#        (I)   Assets = Treasury + Ethereum Accounts + Raiden
+#        (I)   Assets = Ethereum Accounts + Raiden
 #       (II)   Assets >= User Balances
+#      (III) Treasury = Assets - User Balances
 #
 # All of these operations are now defined at the handlers.accounting module.
 #
 #############################################################################
 class Treasury(DoubleEntryAccountModel):
+
     book_relation_attr = "book__treasury"
     token_balance_relation_attr = "books__treasury"
 
-    chain = models.OneToOneField(Chain, on_delete=models.CASCADE)
     books = GenericRelation(
         Book,
         content_type_field="owner_type",
         object_id_field="owner_id",
         related_query_name="treasury",
     )
+
+    @classmethod
+    def make(cls):
+        # We need only one instance of treasury per site.
+        try:
+            return cls.objects.get()
+        except cls.DoesNotExist:
+            return cls.objects.create()
 
 
 class UserAccount(DoubleEntryAccountModel):
@@ -246,21 +254,6 @@ class RaidenClientAccount(DoubleEntryAccountModel):
     )
 
 
-class WalletAccount(DoubleEntryAccountModel):
-    book_relation_attr = "book__wallet"
-    token_balance_relation_attr = "books__wallet"
-
-    account = models.OneToOneField(
-        BaseEthereumAccount, on_delete=models.CASCADE, related_name="onchain_account"
-    )
-    books = GenericRelation(
-        Book,
-        content_type_field="owner_type",
-        object_id_field="owner_id",
-        related_query_name="wallet",
-    )
-
-
 class ExternalAddressAccount(DoubleEntryAccountModel):
     book_relation_attr = "book__address"
     token_balance_relation_attr = "books__address"
@@ -286,7 +279,6 @@ __all__ = [
     "Debit",
     "Treasury",
     "RaidenClientAccount",
-    "WalletAccount",
     "UserAccount",
     "ExternalAddressAccount",
 ]

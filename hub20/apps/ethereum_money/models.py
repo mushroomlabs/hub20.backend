@@ -15,7 +15,7 @@ from taggit.managers import TaggableManager
 from taggit.models import GenericUUIDTaggedItemBase, TaggedItemBase
 
 from hub20.apps.blockchain.fields import EthereumAddressField
-from hub20.apps.blockchain.models import Chain
+from hub20.apps.blockchain.models import Chain, Transaction
 
 from . import choices
 from .fields import EthereumTokenAmountField, TokenlistStandardURLField
@@ -46,6 +46,7 @@ class EthereumToken(models.Model):
     native = QueryManager(address=NULL_ADDRESS)
     ERC20tokens = QueryManager(~Q(address=NULL_ADDRESS))
     tradeable = QueryManager(chain__providers__is_active=True)
+    listed = QueryManager(is_listed=True)
 
     @property
     def is_ERC20(self) -> bool:
@@ -332,12 +333,26 @@ class EthereumTokenAmount:
         return cls(amount=amount, currency=currency)
 
 
+class TransferEvent(EthereumTokenValueModel):
+    transaction = models.ForeignKey(
+        Transaction, on_delete=models.CASCADE, related_name="transfers"
+    )
+    sender = EthereumAddressField()
+    recipient = EthereumAddressField()
+    log_index = models.SmallIntegerField(null=True)
+
+    class Meta:
+        unique_together = ("transaction", "log_index")
+        ordering = ("transaction", "log_index")
+
+
 __all__ = [
     "EthereumToken",
     "EthereumTokenAmount",
     "EthereumTokenValueModel",
     "StableTokenPair",
     "TokenList",
+    "TransferEvent",
     "UserTokenList",
     "WrappedToken",
 ]
