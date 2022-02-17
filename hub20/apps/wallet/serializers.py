@@ -16,10 +16,12 @@ class WalletBalanceSerializer(serializers.ModelSerializer):
         fields = read_only_fields = ("token", "balance", "block")
 
 
-class WalletSerializer(serializers.ModelSerializer):
+class WalletSerializer(serializers.HyperlinkedModelSerializer):
+    url = serializers.HyperlinkedIdentityField(view_name="wallet-detail", lookup_field="address")
+
     address = EthereumAddressField(read_only=True)
     balances = WalletBalanceSerializer(many=True, read_only=True)
 
     class Meta:
         model = models.Wallet
-        fields = read_only_fields = ("address", "balances")
+        fields = read_only_fields = ("url", "address", "balances")
