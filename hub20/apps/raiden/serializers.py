@@ -1,3 +1,4 @@
+from django_celery_results.models import TaskResult
 from raiden_contracts.contract_manager import gas_measurements
 from rest_framework import serializers
 from rest_framework_nested.relations import (
@@ -9,6 +10,7 @@ from rest_framework_nested.serializers import NestedHyperlinkedModelSerializer
 from hub20.apps.blockchain.client import make_web3
 from hub20.apps.blockchain.models import Web3Provider
 from hub20.apps.blockchain.serializers import HexadecimalField
+from hub20.apps.ethereum_money.client import get_account_balance
 from hub20.apps.ethereum_money.models import EthereumTokenAmount
 from hub20.apps.ethereum_money.serializers import (
     EthereumTokenSerializer,
@@ -20,6 +22,7 @@ from hub20.apps.ethereum_money.typing import TokenAmount
 from . import models
 from .client.blockchain import get_service_token, get_service_token_contract
 from .client.node import RaidenClient
+from .tasks import make_udc_deposit
 
 
 class ChainField(serializers.PrimaryKeyRelatedField):
@@ -43,16 +46,39 @@ class TokenNetworkSerializer(serializers.ModelSerializer):
         read_only_fields = ("url", "address", "token")
 
 
-class ServiceDepositSerializer(serializers.ModelSerializer):
-    url = serializers.HyperlinkedIdentityField(view_name="service-deposit-detail")
+class ManagementTaskSerializer(serializers.ModelSerializer):
+    name = serializers.CharField(source="task_name")
+    created = serializers.DateTimeField(source="date_created")
+    completed = serializers.DateTimeField(source="date_done")
+
+    class Meta:
+        model = TaskResult
+        fields = read_only_fields = ("name", "status", "created", "completed")
+
+
+class ManagementOrderSerializer(serializers.ModelSerializer):
     raiden = serializers.HyperlinkedRelatedField(
         view_name="raiden-detail", queryset=models.Raiden.objects.all()
     )
-    transaction = HexadecimalField(read_only=True, source="result.transaction.hash")
-    chain = ChainField()
-    token = EthereumTokenSerializer(source="currency", read_only=True)
+
+    class Meta:
+        model = models.RaidenManagementOrder
+        fields = ("raiden", "task_result")
+        read_only_fields = "task_result"
+
+
+class ServiceDepositSerializer(serializers.ModelSerializer):
+    url = NestedHyperlinkedIdentityField(
+        view_name="service-deposit-detail",
+        parent_lookup_kwargs={
+            "raiden_pk": "raiden_id",
+        },
+    )
+    raiden = serializers.HyperlinkedRelatedField(
+        view_name="raiden-detail", queryset=models.Raiden.objects.all()
+    )
     amount = TokenValueField()
-    error = serializers.CharField(source="error.message", read_only=True)
+    result = ManagementTaskSerializer(source="task_result", read_only=True)
 
     def validate_amount(self, value):
         if value <= 0:
@@ -61,19 +87,16 @@ class ServiceDepositSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, data):
-        chain = data.pop("chain")
-        w3 = make_web3(provider=chain.provider)
-        token = get_service_token(w3=w3)
         raiden = data["raiden"]
 
-        if chain != raiden.chain:
-            raise serializers.ValidationError(
-                f"{raiden} does not seem to be connected to chain {chain.id}"
-            )
+        if self.Meta.model.objects.filter(raiden=raiden, task_result__status="PENDING").exists():
+            raise serializers.ValidationError("Another similar operation is pending execution")
 
-        contract = get_service_token_contract(w3=w3)
+        w3 = make_web3(provider=raiden.chain.provider)
+        token = get_service_token(w3=w3)
+
         deposit_amount = EthereumTokenAmount(currency=token, amount=data["amount"])
-        balance = token.from_wei(contract.functions.balanceOf(raiden.address).call())
+        balance = get_account_balance(w3=w3, token=token, address=raiden.address)
 
         if balance < deposit_amount:
             raise serializers.ValidationError(f"Insufficient balance: {balance}")
@@ -81,18 +104,24 @@ class ServiceDepositSerializer(serializers.ModelSerializer):
         return data
 
     def create(self, validated_data):
-        request = self.context.get("request")
+        raiden = validated_data["raiden"]
+        amount = validated_data["amount"]
 
-        chain = validated_data.pop("chain")
-        w3 = make_web3(provider=chain.provider)
-        token = get_service_token(w3=w3)
+        w3 = make_web3(provider=raiden.chain.provider)
+        service_token = get_service_token(w3=w3)
 
-        return self.Meta.model.objects.create(user=request.user, currency=token, **validated_data)
+        task = make_udc_deposit.delay(raiden_url=raiden.url, amount=amount)
+        result = TaskResult.objects.get_task(task.id)
+        result.save()
+
+        return self.Meta.model.objects.create(
+            raiden=raiden, amount=amount, currency=service_token, task_result=result
+        )
 
     class Meta:
         model = models.UserDepositContractOrder
-        fields = ("url", "created", "raiden", "amount", "token", "chain", "transaction", "error")
-        read_only_fields = ("url", "created", "raiden", "token", "transaction", "error")
+        fields = ("url", "created", "raiden", "amount", "result")
+        read_only_fields = ("url", "created", "result")
 
 
 class ChannelSerializer(NestedHyperlinkedModelSerializer):
@@ -156,6 +185,9 @@ class ChannelDepositSerializer(ChannelManagementSerializer):
         view_name="raiden-channel-deposit-detail",
         parent_lookup_kwargs={"raiden_pk": "channel__raiden_id", "channel_pk": "channel_id"},
     )
+
+    def create(self, validated_data):
+        breakpoint()
 
     class Meta:
         model = models.ChannelDepositOrder

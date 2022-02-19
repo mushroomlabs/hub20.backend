@@ -19,6 +19,8 @@ from hub20.apps.ethereum_money.models import EthereumTokenAmount
 from hub20.apps.raiden.exceptions import RaidenConnectionError, RaidenPaymentError
 from hub20.apps.raiden.models import Channel, Payment, Raiden, TokenNetwork
 
+from . import get_service_deposit_balance
+
 User = get_user_model()
 
 logger = logging.getLogger(__name__)
@@ -89,6 +91,10 @@ class RaidenClient:
     def raiden_token_list_endpoint(self) -> str:
         return f"{self.raiden_root_endpoint}/tokens"
 
+    @property
+    def raiden_udc_endpoint(self) -> str:
+        return f"{self.raiden_root_endpoint}/user_deposit"
+
     def channel_endpoint(self, channel: Channel) -> str:
         raiden_endpoint = self.raiden_root_endpoint
         return f"{raiden_endpoint}/channels/{channel.token.address}/{channel.partner_address}"
@@ -130,6 +136,11 @@ class RaidenClient:
             return response.get("status")
         except RaidenConnectionError:
             return "offline"
+
+    def make_user_deposit(self, total_deposit_amount: EthereumTokenAmount):
+        return _make_request(
+            self.raiden_udc_endpoint, method="POST", total_deposit=total_deposit_amount.as_wei
+        )
 
     def join_token_network(self, token_network: TokenNetwork, amount: EthereumTokenAmount):
         url = self.token_network_endpoint(token_network=token_network)

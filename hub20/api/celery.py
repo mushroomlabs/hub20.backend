@@ -55,8 +55,10 @@ class Hub20CeleryConfig:
             "schedule": timedelta(seconds=30),
         },
     }
+    result_backend = "django-db"
     task_always_eager = "HUB20_TEST" in os.environ
     task_eager_propagates = "HUB20_TEST" in os.environ
+    task_ignore_result = True
     task_serializer = "web3"
     accept_content = ["web3", "json"]
 

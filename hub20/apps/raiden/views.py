@@ -1,5 +1,5 @@
 from django.db.models.query import QuerySet
-from rest_framework import generics, mixins, status, viewsets
+from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.mixins import CreateModelMixin, ListModelMixin, RetrieveModelMixin
 from rest_framework.permissions import IsAdminUser
@@ -54,17 +54,13 @@ class ChannelWithdrawalViewSet(
     queryset = models.ChannelWithdrawOrder.objects.all()
 
 
-class ServiceDepositMixin(BaseRaidenViewMixin):
+class ServiceDepositViewSet(
+    BaseRaidenViewMixin, GenericViewSet, ListModelMixin, CreateModelMixin, RetrieveModelMixin
+):
     serializer_class = serializers.ServiceDepositSerializer
-    queryset = models.UserDepositContractOrder.objects.all()
 
-
-class ServiceDepositListView(ServiceDepositMixin, generics.ListCreateAPIView):
-    pass
-
-
-class ServiceDepositDetailView(ServiceDepositMixin, generics.RetrieveAPIView):
-    pass
+    def get_queryset(self, *args, **kw):
+        return models.UserDepositContractOrder.objects.filter(raiden_id=self.kwargs["raiden_pk"])
 
 
 class TokenNetworkViewMixin:

@@ -7,17 +7,13 @@ from django.contrib.auth import get_user_model
 from django.contrib.postgres.fields import ArrayField
 from django.db import models
 from django.db.models import F, Max
+from django_celery_results.models import TaskResult
 from model_utils.choices import Choices
 from model_utils.managers import InheritanceManager, QueryManager
 from model_utils.models import StatusModel, TimeStampedModel
 
 from hub20.apps.blockchain.fields import EthereumAddressField, Uint256Field
-from hub20.apps.blockchain.models import (
-    BaseEthereumAccount,
-    Chain,
-    Transaction,
-    TransactionDataRecord,
-)
+from hub20.apps.blockchain.models import BaseEthereumAccount, Chain, Transaction
 from hub20.apps.blockchain.validators import uri_parsable_scheme_validator
 from hub20.apps.ethereum_money.models import (
     EthereumToken,
@@ -275,13 +271,17 @@ class Payment(models.Model):
         unique_together = ("channel", "identifier", "sender_address", "receiver_address")
 
 
-class RaidenManagementOrder(TimeStampedModel):
-    raiden = models.ForeignKey(Raiden, on_delete=models.CASCADE)
-    user = models.ForeignKey(User, on_delete=models.PROTECT)
-    transaction_data = models.ForeignKey(
-        TransactionDataRecord, on_delete=models.PROTECT, related_name="raiden_operations"
-    )
+class UserDeposit(models.Model):
+    raiden = models.OneToOneField(Raiden, related_name="udc", on_delete=models.CASCADE)
+    token = models.ForeignKey(EthereumToken, related_name="user_deposit", on_delete=models.CASCADE)
+    balance = EthereumTokenAmountField()
 
+
+class RaidenManagementOrder(TimeStampedModel):
+    raiden = models.ForeignKey(Raiden, related_name="management_orders", on_delete=models.CASCADE)
+    task_result = models.OneToOneField(
+        TaskResult, related_name="raiden_management_order", on_delete=models.CASCADE
+    )
     objects = InheritanceManager()
 
 
@@ -305,26 +305,7 @@ class ChannelWithdrawOrder(RaidenManagementOrder):
 
 
 class UserDepositContractOrder(RaidenManagementOrder, EthereumTokenValueModel):
-    chain = models.ForeignKey(Chain, related_name="user_deposit_orders", on_delete=models.CASCADE)
-
-
-class RaidenManagementOrderResult(TimeStampedModel):
-    order = models.ForeignKey(
-        RaidenManagementOrder, on_delete=models.CASCADE, related_name="results"
-    )
-    transaction = models.ForeignKey(
-        Transaction, on_delete=models.CASCADE, related_name="raiden_successful_transactions"
-    )
-
-
-class RaidenManagementOrderError(TimeStampedModel):
-    order = models.ForeignKey(
-        RaidenManagementOrder, on_delete=models.CASCADE, related_name="errors"
-    )
-    message = models.TextField(blank=True)
-    transaction = models.ForeignKey(
-        Transaction, on_delete=models.CASCADE, related_name="raiden_failed_transactions"
-    )
+    pass
 
 
 __all__ = [
@@ -333,12 +314,11 @@ __all__ = [
     "TokenNetwork",
     "Channel",
     "Payment",
+    "UserDeposit",
     "RaidenManagementOrder",
     "JoinTokenNetworkOrder",
     "LeaveTokenNetworkOrder",
     "ChannelDepositOrder",
     "ChannelWithdrawOrder",
     "UserDepositContractOrder",
-    "RaidenManagementOrderResult",
-    "RaidenManagementOrderError",
 ]

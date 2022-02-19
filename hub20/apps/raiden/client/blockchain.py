@@ -113,58 +113,10 @@ def mint_tokens(w3: Web3, account: EthereumAccount_T, amount: EthereumTokenAmoun
     )
 
 
-def make_service_deposit(w3: Web3, account: EthereumAccount_T, amount: EthereumTokenAmount):
-    token = amount.currency
-
-    on_chain_balance = get_account_balance(w3=w3, token=token, address=account.address)
-
-    if amount > on_chain_balance:
-        raise InsufficientBalanceError(
-            f"Current balance of {on_chain_balance.formatted} is insufficient"
-        )
-
+def get_service_total_deposit(w3: Web3, raiden: Raiden) -> EthereumTokenAmount:
     user_deposit_contract = get_user_deposit_contract(w3=w3)
-    service_token_address = to_checksum_address(user_deposit_contract.functions.token().call())
-
-    if service_token_address != token.address:
-        raise ValueError(
-            f"Deposit must be in {service_token_address}, {token.symbol} is {token.address}"
-        )
-
-    token_proxy = w3.eth.contract(address=token.address, abi=EIP20_ABI)
-    current_deposit_amount = token.from_wei(
-        user_deposit_contract.functions.total_deposit(account.address).call()
-    )
-
-    total_deposit = current_deposit_amount + amount
-
-    old_allowance = token_proxy.functions.allowance(
-        account.address, user_deposit_contract.address
-    ).call()
-    if old_allowance > 0:
-        send_transaction(
-            w3=w3,
-            contract_function=token_proxy.functions.approve,
-            account=account,
-            contract_args=(user_deposit_contract.address, 0),
-            gas=GAS_REQUIRED_FOR_APPROVE,
-        )
-
-    send_transaction(
-        w3=w3,
-        contract_function=token_proxy.functions.approve,
-        account=account,
-        contract_args=(user_deposit_contract.address, total_deposit.as_wei),
-        gas=GAS_REQUIRED_FOR_APPROVE,
-    )
-
-    send_transaction(
-        w3=w3,
-        account=account,
-        contract_function=user_deposit_contract.functions.deposit,
-        contract_args=(account.address, total_deposit.as_wei),
-        gas=GAS_REQUIRED_FOR_DEPOSIT,
-    )
+    token = get_service_token(w3=w3)
+    return token.from_wei(user_deposit_contract.functions.effectiveBalance(raiden.address).call())
 
 
 def get_service_deposit_balance(w3: Web3, raiden: Raiden) -> EthereumTokenAmount:

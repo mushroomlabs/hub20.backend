@@ -8,10 +8,11 @@ from hub20.apps.blockchain.client import make_web3
 from hub20.apps.blockchain.models import Transaction, TransactionDataRecord, Web3Provider
 from hub20.apps.ethereum_money.client import get_account_balance
 from hub20.apps.ethereum_money.models import EthereumTokenAmount
+from hub20.apps.ethereum_money.typing import TokenAmount_T
 from hub20.apps.raiden import models
-from hub20.apps.raiden.client.blockchain import make_service_deposit
-from hub20.apps.raiden.client.node import RaidenClient
+from hub20.apps.raiden.client import RaidenClient, get_service_token, get_service_total_deposit
 from hub20.apps.raiden.exceptions import InsufficientBalanceError
+from hub20.apps.raiden.models import Raiden
 
 logger = logging.getLogger(__name__)
 
@@ -45,54 +46,25 @@ def check_token_network_channel_events(chain_id, event_data, provider_url):
         logger.warning(f"Failed to get information for Tx {event_data.transactionHash.hex()}")
 
 
-@shared_task
-def check_order_results(chain_id, block_data, provider_url):
-    tx_hashes = [tx["hash"] for tx in block_data["transactions"]]
-    open_order = models.RaidenManagementOrder.objects.filter(
-        result__transaction__isnull=True, transaction_hash__in=tx_hashes
-    ).first()
+@shared_task(
+    bind=True, name="udc_deposit", ignore_result=False, throws=(InsufficientBalanceError,)
+)
+def make_udc_deposit(self, raiden_url: str, amount: TokenAmount_T):
+    raiden = Raiden.objects.get(url=raiden_url)
+    raiden_client = RaidenClient(raiden_node=raiden)
+    w3 = make_web3(provider=raiden.chain.provider)
+    service_token = get_service_token(w3=w3)
 
-    if not open_order:
-        return
+    onchain_balance = get_account_balance(w3=w3, token=service_token, address=raiden.address)
+    deposit_token_amount = EthereumTokenAmount(currency=service_token, amount=amount)
 
-    provider = Web3Provider.objects.get(url=provider_url)
-    w3 = make_web3(provider=provider)
+    if onchain_balance < deposit_token_amount:
+        raise InsufficientBalanceError(f"On chain balance for {raiden.address} is not enough")
 
-    try:
-        transaction_receipt = w3.eth.get_transaction_receipt(open_order.transaction_hash)
-    except TransactionNotFound:
-        return
+    current_deposit = get_service_total_deposit(w3=w3, raiden=raiden)
+    new_total_deposit = current_deposit + deposit_token_amount
 
-    tx = Transaction.make(
-        chain_id=chain_id,
-        block_data=block_data,
-        tx_receipt=transaction_receipt,
-    )
-
-    successful = bool(transaction_receipt.status)
-
-    model_class = (
-        models.RaidenManagerOrderResult if successful else models.RaidenManagementOrderError
-    )
-
-    return model_class.objects.create(order=open_order, transaction=tx)
-
-
-@shared_task
-def make_udc_deposit(order_id: int):
-    order = models.UserDepositContractOrder.objects.filter(id=order_id).first()
-
-    if not order:
-        logging.warning(f"UDC Order {order_id} not found")
-        return
-
-    w3 = make_web3(provider=order.currency.chain.provider)
-    token_amount = order.as_token_amount
-
-    try:
-        make_service_deposit(w3=w3, account=order.raiden, amount=token_amount)
-    except InsufficientBalanceError as exc:
-        return models.RaidenManagementOrderError.objects.create(order=order, message=str(exc))
+    return raiden_client.make_user_deposit(total_deposit_amount=new_total_deposit)
 
 
 @shared_task
@@ -181,4 +153,3 @@ celery_pubsub.subscribe(
 celery_pubsub.subscribe(
     "blockchain.event.token_network_channel_closed.mined", check_token_network_channel_events
 )
-celery_pubsub.subscribe("blockchain.transaction.mined", check_order_results)
