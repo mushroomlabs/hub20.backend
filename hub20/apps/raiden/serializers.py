@@ -9,19 +9,16 @@ from rest_framework_nested.serializers import NestedHyperlinkedModelSerializer
 
 from hub20.apps.blockchain.client import make_web3
 from hub20.apps.blockchain.models import Web3Provider
-from hub20.apps.blockchain.serializers import HexadecimalField
 from hub20.apps.ethereum_money.client import get_account_balance
 from hub20.apps.ethereum_money.models import EthereumTokenAmount
 from hub20.apps.ethereum_money.serializers import (
-    EthereumTokenSerializer,
     HyperlinkedEthereumTokenSerializer,
     TokenValueField,
 )
 from hub20.apps.ethereum_money.typing import TokenAmount
 
 from . import models
-from .client.blockchain import get_service_token, get_service_token_contract
-from .client.node import RaidenClient
+from .client import RaidenClient, get_service_token
 from .tasks import make_udc_deposit
 
 
@@ -36,7 +33,8 @@ class TokenNetworkField(serializers.RelatedField):
 
 class TokenNetworkSerializer(serializers.ModelSerializer):
     url = serializers.HyperlinkedIdentityField(
-        view_name="token-network-detail", lookup_field="address"
+        view_name="token-network-detail",
+        lookup_field="address",
     )
     token = HyperlinkedEthereumTokenSerializer()
 
@@ -228,11 +226,20 @@ class RaidenSerializer(serializers.ModelSerializer):
         view_name="blockchain:chain-detail", read_only=True
     )
     channels = ChannelSerializer(many=True)
+    token_networks = TokenNetworkSerializer(many=True)
     status = serializers.HyperlinkedIdentityField(view_name="raiden-status")
 
     class Meta:
         model = models.Raiden
-        fields = read_only_fields = ("url", "id", "status", "chain", "address", "channels")
+        fields = read_only_fields = (
+            "url",
+            "id",
+            "status",
+            "chain",
+            "address",
+            "token_networks",
+            "channels",
+        )
 
 
 class RaidenStatusSerializer(serializers.ModelSerializer):
@@ -273,35 +280,40 @@ class RaidenStatusSerializer(serializers.ModelSerializer):
 
 
 class JoinTokenNetworkOrderSerializer(serializers.ModelSerializer):
-    token_network = serializers.HyperlinkedRelatedField(
-        view_name="token-network-detail", lookup_field="address", read_only=True
+    url = NestedHyperlinkedIdentityField(
+        view_name="raiden-token-network-detail",
+        lookup_field="address",
+        parent_lookup_kwargs={
+            "raiden_pk": "raiden_id",
+        },
     )
 
-    def get_token_network(self):
-        view = self.context.get("view")
-        return view and view.get_object()
+    raiden = serializers.HyperlinkedRelatedField(view_name="raiden-detail", read_only=True)
+    token_network = serializers.HyperlinkedRelatedField(
+        view_name="token-network-detail",
+        lookup_field="address",
+        queryset=models.TokenNetwork.objects.all(),
+    )
+    result = ManagementTaskSerializer(source="task_result", read_only=True)
 
-    def create(self, validated_data):
-        request = self.context["request"]
-        token_network = self.get_token_network()
+    def validate(self, validated_data):
+        token_network = validated_data["token_network"]
+        raiden = validated_data["raiden"]
 
-        return self.Meta.model.objects.create(
-            raiden=self.raiden, token_network=token_network, user=request.user, **validated_data
-        )
+        if token_network.chain_id != raiden.chain_id:
+            raise serializers.ValidationError(
+                f"Token network {token_network.address} is on {token_network.chain.name}"
+                f" and Raiden at {raiden.url} is on {raiden.chain.name}"
+            )
 
-    def validate(self, attrs):
-        attrs = super().validate(attrs)
-        token_network = self.get_token_network()
-
-        assert isinstance(self.raiden, models.Raiden)
-        if token_network in self.raiden.token_networks:
+        if token_network in raiden.token_networks:
             raise serializers.ValidationError(
                 f"Already joined token network {token_network.address}"
             )
 
-        return attrs
+        return validated_data
 
     class Meta:
         model = models.JoinTokenNetworkOrder
-        fields = ("id", "created", "token_network", "amount")
-        read_only_fields = ("id", "created", "token_network")
+        fields = ("url", "created", "raiden", "token_network", "amount", "result")
+        read_only_fields = ("url", "created", "raiden", "result")

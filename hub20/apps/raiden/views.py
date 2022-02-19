@@ -1,12 +1,39 @@
 from django.db.models.query import QuerySet
-from rest_framework import mixins, status, viewsets
+from django.shortcuts import get_object_or_404
+from django_filters import rest_framework as filters
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.mixins import CreateModelMixin, ListModelMixin, RetrieveModelMixin
+from rest_framework.mixins import (
+    CreateModelMixin,
+    DestroyModelMixin,
+    ListModelMixin,
+    RetrieveModelMixin,
+)
 from rest_framework.permissions import IsAdminUser
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
 
+from hub20.apps.blockchain.models import Chain
+
 from . import models, serializers
+
+
+class TokenNetworkFilter(filters.FilterSet):
+    chain_id = filters.ModelChoiceFilter(
+        label="chain", method="filter_by_chain", queryset=Chain.active.all()
+    )
+    connected = filters.BooleanFilter(label="connected", method="filter_connected")
+
+    def filter_connected(self, queryset, name, value):
+        return queryset.exclude(channel__isnull=value)
+
+    def filter_by_chain(self, queryset, name, value):
+        return queryset.filter(token__chain_id=value)
+
+    class Meta:
+        model = models.TokenNetwork
+        ordering_fields = ("chain_id", "token__name")
+        fields = ("chain_id", "connected")
 
 
 class BaseRaidenViewMixin:
@@ -63,37 +90,43 @@ class ServiceDepositViewSet(
         return models.UserDepositContractOrder.objects.filter(raiden_id=self.kwargs["raiden_pk"])
 
 
-class TokenNetworkViewMixin:
+class TokenNetworkViewMixin(
+    viewsets.GenericViewSet, ListModelMixin, RetrieveModelMixin, DestroyModelMixin
+):
     permission_classes = (IsAdminUser,)
     serializer_class = serializers.TokenNetworkSerializer
+
+    def get_queryset(self) -> QuerySet:
+        return models.TokenNetwork.objects.all()
+
+
+class TokenNetworkViewSet(TokenNetworkViewMixin):
     lookup_field = "address"
     lookup_url_kwarg = "address"
-    queryset: QuerySet = models.TokenNetwork.objects.all()
+    filterset_class = TokenNetworkFilter
+    filter_backends = (filters.DjangoFilterBackend,)
 
 
-class TokenNetworkViewSet(
-    TokenNetworkViewMixin,
-    mixins.ListModelMixin,
-    mixins.RetrieveModelMixin,
-    mixins.DestroyModelMixin,
+class RaidenTokenNetworkViewSet(
     viewsets.GenericViewSet,
+    ListModelMixin,
+    RetrieveModelMixin,
+    DestroyModelMixin,
+    CreateModelMixin,
 ):
+    serializer_class = serializers.JoinTokenNetworkOrderSerializer
+
+    def get_queryset(self) -> QuerySet:
+        raiden = self.get_raiden()
+        return models.JoinTokenNetworkOrder.objects.filter(raiden=raiden)
+
+    def get_raiden(self):
+        return get_object_or_404(models.Raiden, id=self.kwargs["raiden_pk"])
+
     def destroy(self, request, *args, **kw):
-        raiden = models.Raiden.objects.first()
+        raiden = self.get_raiden()
 
-        if raiden:
-            models.LeaveTokenNetworkOrder.objects.create(
-                raiden=raiden, user=request.user, token_network=self.get_object()
-            )
+        models.LeaveTokenNetworkOrder.objects.create(
+            raiden=raiden, user=request.user, token_network=self.get_object()
+        )
         return Response(status=status.HTTP_204_NO_CONTENT)
-
-    @action(
-        detail=True, methods=["post"], serializer_class=serializers.JoinTokenNetworkOrderSerializer
-    )
-    def join(self, request, address=None):
-        serializer = self.get_serializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        else:
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
