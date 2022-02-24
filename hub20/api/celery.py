@@ -54,9 +54,15 @@ class Hub20CeleryConfig:
             "task": "hub20.apps.blockchain.tasks.refresh_max_priority_fee",
             "schedule": timedelta(seconds=30),
         },
+        "refresh-wallet-balances": {
+            "task": "hub20.apps.wallet.tasks.update_all_wallet_balances",
+            "schedule": crontab(minute=0),
+        },
     }
+    result_backend = "django-db"
     task_always_eager = "HUB20_TEST" in os.environ
     task_eager_propagates = "HUB20_TEST" in os.environ
+    task_ignore_result = True
     task_serializer = "web3"
     accept_content = ["web3", "json"]
 

@@ -33,6 +33,7 @@ THIRD_PARTY_APPS = [
     "dj_rest_auth",
     "dj_rest_auth.registration",
     "django_celery_beat",
+    "django_celery_results",
     "django_filters",
     "djmoney",
     "drf_link_header_pagination",
