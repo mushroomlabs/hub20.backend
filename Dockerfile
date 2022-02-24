@@ -1,5 +1,5 @@
 # Start with a Python image.
-FROM python:3.8
+FROM python:3.8 AS hub20_base
 
 ENV PYTHONUNBUFFERED 1
 
@@ -17,3 +17,7 @@ WORKDIR /app
 
 # Install our requirements.
 RUN pip install --no-cache-dir -e /app
+
+FROM hub20_base AS hub20_dev
+
+RUN pip install ipython
