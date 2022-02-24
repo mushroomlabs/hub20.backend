@@ -90,9 +90,7 @@ class ServiceDepositViewSet(
         return models.UserDepositContractOrder.objects.filter(raiden_id=self.kwargs["raiden_pk"])
 
 
-class TokenNetworkViewMixin(
-    viewsets.GenericViewSet, ListModelMixin, RetrieveModelMixin, DestroyModelMixin
-):
+class TokenNetworkViewMixin(viewsets.GenericViewSet, ListModelMixin, RetrieveModelMixin):
     permission_classes = (IsAdminUser,)
     serializer_class = serializers.TokenNetworkSerializer
 
@@ -116,12 +114,12 @@ class RaidenTokenNetworkViewSet(
 ):
     serializer_class = serializers.JoinTokenNetworkOrderSerializer
 
+    def get_raiden(self):
+        return get_object_or_404(models.Raiden, id=self.kwargs["raiden_pk"])
+
     def get_queryset(self) -> QuerySet:
         raiden = self.get_raiden()
         return models.JoinTokenNetworkOrder.objects.filter(raiden=raiden)
-
-    def get_raiden(self):
-        return get_object_or_404(models.Raiden, id=self.kwargs["raiden_pk"])
 
     def destroy(self, request, *args, **kw):
         raiden = self.get_raiden()

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 from typing import Optional
+from urllib.parse import urlparse
 
 from django.contrib.auth import get_user_model
 from django.contrib.postgres.fields import ArrayField
@@ -22,7 +23,9 @@ from hub20.apps.ethereum_money.models import (
     EthereumTokenValueModel,
 )
 
-CHANNEL_STATUSES = Choices("opened", "settling", "settled", "unusable", "closed", "closing")
+CHANNEL_STATUSES = Choices(
+    "opened", "waiting_for_settle", "settling", "settled", "unusable", "closed", "closing"
+)
 User = get_user_model()
 
 raiden_url_validator = uri_parsable_scheme_validator(("http", "https"))
@@ -115,6 +118,10 @@ class Raiden(models.Model):
     @property
     def address(self):
         return self.account.address
+
+    @property
+    def hostname(self):
+        return urlparse(self.url).hostname
 
     @property
     def token_networks(self):
@@ -214,10 +221,7 @@ class Channel(StatusModel):
         return channel
 
     class Meta:
-        unique_together = (
-            ("raiden", "token_network", "partner_address"),
-            ("raiden", "token_network", "identifier"),
-        )
+        unique_together = (("raiden", "token_network", "identifier"),)
 
 
 class Payment(models.Model):
@@ -274,6 +278,7 @@ class Payment(models.Model):
 class UserDeposit(models.Model):
     raiden = models.OneToOneField(Raiden, related_name="udc", on_delete=models.CASCADE)
     token = models.ForeignKey(EthereumToken, related_name="user_deposit", on_delete=models.CASCADE)
+    total_deposit = EthereumTokenAmountField()
     balance = EthereumTokenAmountField()
 
 

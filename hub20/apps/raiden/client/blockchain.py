@@ -20,9 +20,8 @@ from hub20.apps.blockchain.client import make_web3, send_transaction
 from hub20.apps.blockchain.models import Web3Provider
 from hub20.apps.blockchain.typing import EthereumAccount_T
 from hub20.apps.ethereum_money.abi import EIP20_ABI
-from hub20.apps.ethereum_money.client import get_account_balance, make_token
+from hub20.apps.ethereum_money.client import make_token
 from hub20.apps.ethereum_money.models import EthereumToken, EthereumTokenAmount
-from hub20.apps.raiden.exceptions import InsufficientBalanceError
 from hub20.apps.raiden.models import Raiden, TokenNetwork
 
 GAS_REQUIRED_FOR_DEPOSIT: int = 200_000
@@ -116,7 +115,7 @@ def mint_tokens(w3: Web3, account: EthereumAccount_T, amount: EthereumTokenAmoun
 def get_service_total_deposit(w3: Web3, raiden: Raiden) -> EthereumTokenAmount:
     user_deposit_contract = get_user_deposit_contract(w3=w3)
     token = get_service_token(w3=w3)
-    return token.from_wei(user_deposit_contract.functions.effectiveBalance(raiden.address).call())
+    return token.from_wei(user_deposit_contract.functions.total_deposit(raiden.address).call())
 
 
 def get_service_deposit_balance(w3: Web3, raiden: Raiden) -> EthereumTokenAmount:
