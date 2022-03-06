@@ -8,12 +8,14 @@ import requests
 from django.contrib.auth import get_user_model
 from django.db import models
 from django.db.models import Q, Sum
+from django.utils.translation import gettext_lazy as _
 from model_utils.managers import QueryManager
 from model_utils.models import TimeStampedModel
 from taggit.managers import TaggableManager
+from taggit.models import GenericUUIDTaggedItemBase, TaggedItemBase
 
 from hub20.apps.blockchain.fields import EthereumAddressField
-from hub20.apps.blockchain.models import Chain
+from hub20.apps.blockchain.models import Chain, Transaction
 
 from . import choices
 from .fields import EthereumTokenAmountField, TokenlistStandardURLField
@@ -22,6 +24,12 @@ from .typing import TokenAmount, TokenAmount_T, Wei
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
+
+
+class UUIDTaggedItem(GenericUUIDTaggedItemBase, TaggedItemBase):
+    class Meta:
+        verbose_name = _("Tag")
+        verbose_name_plural = _("Tags")
 
 
 class EthereumToken(models.Model):
@@ -38,6 +46,7 @@ class EthereumToken(models.Model):
     native = QueryManager(address=NULL_ADDRESS)
     ERC20tokens = QueryManager(~Q(address=NULL_ADDRESS))
     tradeable = QueryManager(chain__providers__is_active=True)
+    listed = QueryManager(is_listed=True)
 
     @property
     def is_ERC20(self) -> bool:
@@ -145,7 +154,7 @@ class AbstractTokenListModel(models.Model):
     tokens = models.ManyToManyField(
         EthereumToken, related_name="%(app_label)s_%(class)s_tokenlists"
     )
-    keywords = TaggableManager()
+    keywords = TaggableManager(through=UUIDTaggedItem)
 
     def __str__(self):
         return self.name
@@ -324,12 +333,26 @@ class EthereumTokenAmount:
         return cls(amount=amount, currency=currency)
 
 
+class TransferEvent(EthereumTokenValueModel):
+    transaction = models.ForeignKey(
+        Transaction, on_delete=models.CASCADE, related_name="transfers"
+    )
+    sender = EthereumAddressField()
+    recipient = EthereumAddressField()
+    log_index = models.SmallIntegerField(null=True)
+
+    class Meta:
+        unique_together = ("transaction", "log_index")
+        ordering = ("transaction", "log_index")
+
+
 __all__ = [
     "EthereumToken",
     "EthereumTokenAmount",
     "EthereumTokenValueModel",
     "StableTokenPair",
     "TokenList",
+    "TransferEvent",
     "UserTokenList",
     "WrappedToken",
 ]

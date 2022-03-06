@@ -2,19 +2,19 @@ from __future__ import annotations
 
 import datetime
 from typing import Optional
+from urllib.parse import urlparse
 
 from django.contrib.auth import get_user_model
 from django.contrib.postgres.fields import ArrayField
 from django.db import models
 from django.db.models import F, Max
-from ethereum.utils import checksum_encode
+from django_celery_results.models import TaskResult
 from model_utils.choices import Choices
 from model_utils.managers import InheritanceManager, QueryManager
 from model_utils.models import StatusModel, TimeStampedModel
 
-from hub20.apps.blockchain.fields import EthereumAddressField, HexField, Uint256Field
-from hub20.apps.blockchain.models import BaseEthereumAccount, Chain, Transaction, Web3Provider
-from hub20.apps.blockchain.typing import Address
+from hub20.apps.blockchain.fields import EthereumAddressField, Uint256Field
+from hub20.apps.blockchain.models import BaseEthereumAccount, Chain, Transaction
 from hub20.apps.blockchain.validators import uri_parsable_scheme_validator
 from hub20.apps.ethereum_money.models import (
     EthereumToken,
@@ -23,7 +23,9 @@ from hub20.apps.ethereum_money.models import (
     EthereumTokenValueModel,
 )
 
-CHANNEL_STATUSES = Choices("opened", "settling", "settled", "unusable", "closed", "closing")
+CHANNEL_STATUSES = Choices(
+    "opened", "waiting_for_settle", "settling", "settled", "unusable", "closed", "closing"
+)
 User = get_user_model()
 
 raiden_url_validator = uri_parsable_scheme_validator(("http", "https"))
@@ -106,13 +108,20 @@ class TokenNetworkChannelEvent(models.Model):
         unique_together = ("channel", "transaction")
 
 
-class Raiden(BaseEthereumAccount):
+class Raiden(models.Model):
     url = RaidenURLField(unique=True)
-    web3_provider = models.ForeignKey(Web3Provider, null=True, on_delete=models.SET_NULL)
+    account = models.ForeignKey(
+        BaseEthereumAccount, related_name="raiden_nodes", on_delete=models.CASCADE
+    )
+    chain = models.OneToOneField(Chain, related_name="raiden_node", on_delete=models.PROTECT)
 
     @property
-    def private_key(self):
-        return None
+    def address(self):
+        return self.account.address
+
+    @property
+    def hostname(self):
+        return urlparse(self.url).hostname
 
     @property
     def token_networks(self):
@@ -123,10 +132,6 @@ class Raiden(BaseEthereumAccount):
     @property
     def open_channels(self):
         return self.channels.filter(status=Channel.STATUS.opened)
-
-    @property
-    def chain(self) -> Optional[Chain]:
-        return self.web3_provider and self.web3_provider.chain
 
     @property
     def payments(self):
@@ -140,13 +145,8 @@ class Raiden(BaseEthereumAccount):
     def payments_sent(self):
         return Payment.sent.filter(channel__raiden=self)
 
-    @classmethod
-    def generate(cls, address: Address, url: str):
-        raiden, _ = cls.objects.get_or_create(address=checksum_encode(address).hex(), url=url)
-        return raiden
-
     def __str__(self):
-        return f"Raiden @ {self.url} ({self.address})"
+        return f"Raiden @ {self.url} (Chain #{self.chain_id})"
 
 
 class Channel(StatusModel):
@@ -221,10 +221,7 @@ class Channel(StatusModel):
         return channel
 
     class Meta:
-        unique_together = (
-            ("raiden", "token_network", "partner_address"),
-            ("raiden", "token_network", "identifier"),
-        )
+        unique_together = (("raiden", "token_network", "identifier"),)
 
 
 class Payment(models.Model):
@@ -278,11 +275,19 @@ class Payment(models.Model):
         unique_together = ("channel", "identifier", "sender_address", "receiver_address")
 
 
+class UserDeposit(models.Model):
+    raiden = models.OneToOneField(Raiden, related_name="udc", on_delete=models.CASCADE)
+    token = models.ForeignKey(EthereumToken, related_name="user_deposit", on_delete=models.CASCADE)
+    total_deposit = EthereumTokenAmountField()
+    balance = EthereumTokenAmountField()
+
+
 class RaidenManagementOrder(TimeStampedModel):
-    raiden = models.ForeignKey(Raiden, on_delete=models.CASCADE)
-    user = models.ForeignKey(User, on_delete=models.PROTECT)
+    raiden = models.ForeignKey(Raiden, related_name="management_orders", on_delete=models.CASCADE)
+    task_result = models.OneToOneField(
+        TaskResult, related_name="raiden_management_order", on_delete=models.CASCADE
+    )
     objects = InheritanceManager()
-    transaction_hash = HexField(max_length=64, unique=True, null=True)
 
 
 class JoinTokenNetworkOrder(RaidenManagementOrder):
@@ -305,22 +310,7 @@ class ChannelWithdrawOrder(RaidenManagementOrder):
 
 
 class UserDepositContractOrder(RaidenManagementOrder, EthereumTokenValueModel):
-    chain = models.ForeignKey(Chain, related_name="user_deposit_orders", on_delete=models.CASCADE)
-
-
-class RaidenManagementOrderResult(TimeStampedModel):
-    order = models.OneToOneField(
-        RaidenManagementOrder, on_delete=models.CASCADE, related_name="result"
-    )
-    transaction = models.OneToOneField(Transaction, null=True, on_delete=models.SET_NULL)
-
-
-class RaidenManagementOrderError(TimeStampedModel):
-    order = models.OneToOneField(
-        RaidenManagementOrder, on_delete=models.CASCADE, related_name="error"
-    )
-    message = models.TextField(null=True, blank=True)
-    transaction = models.OneToOneField(Transaction, null=True, on_delete=models.SET_NULL)
+    pass
 
 
 __all__ = [
@@ -329,12 +319,11 @@ __all__ = [
     "TokenNetwork",
     "Channel",
     "Payment",
+    "UserDeposit",
     "RaidenManagementOrder",
     "JoinTokenNetworkOrder",
     "LeaveTokenNetworkOrder",
     "ChannelDepositOrder",
     "ChannelWithdrawOrder",
     "UserDepositContractOrder",
-    "RaidenManagementOrderResult",
-    "RaidenManagementOrderError",
 ]

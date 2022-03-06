@@ -12,6 +12,7 @@ from django.utils import timezone
 from model_utils.managers import InheritanceManager, QueryManager
 from web3 import Web3
 from web3.datastructures import AttributeDict
+from web3.types import BlockData, TxData, TxReceipt
 
 from .app_settings import START_BLOCK_NUMBER
 from .fields import EthereumAddressField, HexField, Web3ProviderURLField
@@ -115,7 +116,7 @@ class TransactionDataRecord(AbstractTransactionRecord):
     data = HStoreField()
 
     @classmethod
-    def make(cls, chain_id: int, tx_data: AttributeDict, force=False):
+    def make(cls, chain_id: int, tx_data: TxData, force=False):
         action = cls.objects.update_or_create if force else cls.objects.get_or_create
         data, _ = action(
             chain_id=chain_id,
@@ -165,8 +166,8 @@ class Transaction(AbstractTransactionRecord):
     def make(
         cls,
         chain_id: int,
-        tx_receipt: AttributeDict,
-        block_data: AttributeDict,
+        tx_receipt: TxReceipt,
+        block_data: BlockData,
         force=False,
     ):
         block = Block.make(chain_id=chain_id, block_data=block_data)
@@ -197,7 +198,7 @@ class NativeToken(AbstractTokenInfo):
 
 
 class BaseEthereumAccount(models.Model):
-    address = EthereumAddressField(unique=True, db_index=True)
+    address = EthereumAddressField(unique=True, db_index=True, blank=False)
     transactions = models.ManyToManyField(Transaction)
     objects = InheritanceManager()
 

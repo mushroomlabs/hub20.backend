@@ -11,15 +11,14 @@ from django.db.models.functions import Coalesce
 from django.db.models.query import QuerySet
 from model_utils.models import TimeStampedModel
 
-from hub20.apps.blockchain.fields import EthereumAddressField
-from hub20.apps.blockchain.models import BaseEthereumAccount, Chain
 from hub20.apps.ethereum_money.models import (
     EthereumToken,
     EthereumTokenAmount,
     EthereumTokenAmountField,
     EthereumTokenValueModel,
 )
-from hub20.apps.raiden.models import Raiden
+
+from ..choices import PAYMENT_NETWORKS
 
 logger = logging.getLogger(__name__)
 
@@ -78,8 +77,8 @@ class Debit(BookEntry):
 
 
 class DoubleEntryAccountModel(models.Model):
-    book_relation_attr = None
-    token_balance_relation_attr = None
+    book_relation_attr: Optional[str] = None
+    token_balance_relation_attr: Optional[str] = None
     objects = DoubleEntryAccountModelQuerySet.as_manager()
 
     @property
@@ -171,7 +170,7 @@ class DoubleEntryAccountModel(models.Model):
 # system have their funds accounted for.
 #
 #
-#      Ethereum Accounts               Raiden Client
+#      Blockchain Account               Raiden Network Acounts
 #              +                           +
 #              |                           |
 #              |       +----------+        |
@@ -179,18 +178,19 @@ class DoubleEntryAccountModel(models.Model):
 #                      | Treasury |
 #              +------>+          +<-------+
 #              |       +----+-----+        |
-#              |                           |
-#              +                           |
-#   User Balances                     External Addresses
+#              |            ^              |
+#              +            |              +
+#             User        User            User
 #
 #
-# The funds from Ethereum Accounts and Raiden Clients are managed by the
-# treasury. Every blockchain transaction or payment received through the raiden
-# network counts as a credit for the treasury and a debit from the originating
-# external address (which can be regular accounts or smart contracts). The
-# Treasury forwards along any credit received to the wallet that was the target
-# of the transaction, and in this way we can also keep the balance of each
-# wallet without having to query the blockchain every time.
+
+# Each type of payment network (blockchain, raiden) has its own
+# account. We do not need to make separate accounts for each chain,
+# because the chain information is managed by the relationship with
+# the token. Transfers made to/from the networks should count as
+# debits/credits to the treasury (and the credit/debit to the
+# counterparty network)
+
 #
 # User funds are accounted in a similar manner. Transfers done by the user
 # should be treated as a credit to the treasury, and payments related to
@@ -199,23 +199,31 @@ class DoubleEntryAccountModel(models.Model):
 # We should at the very least have the following equations being satisfied per
 # token, else the site should be considered insolvent:
 #
-#        (I)   Assets = Treasury + Ethereum Accounts + Raiden
+#        (I)   Assets = Ethereum Accounts + Raiden
 #       (II)   Assets >= User Balances
+#      (III) Treasury = Assets - User Balances
 #
 # All of these operations are now defined at the handlers.accounting module.
 #
 #############################################################################
-class Treasury(DoubleEntryAccountModel):
-    book_relation_attr = "book__treasury"
-    token_balance_relation_attr = "books__treasury"
+class PaymentNetworkAccount(DoubleEntryAccountModel):
 
-    chain = models.OneToOneField(Chain, on_delete=models.CASCADE)
+    book_relation_attr = "book__network"
+    token_balance_relation_attr = "books__network"
+
+    payment_network = models.CharField(max_length=100, choices=PAYMENT_NETWORKS, unique=True)
+
     books = GenericRelation(
         Book,
         content_type_field="owner_type",
         object_id_field="owner_id",
-        related_query_name="treasury",
+        related_query_name="network",
     )
+
+    @classmethod
+    def make(cls, network):
+        account, _ = cls.objects.get_or_create(payment_network=network)
+        return account
 
 
 class UserAccount(DoubleEntryAccountModel):
@@ -233,60 +241,11 @@ class UserAccount(DoubleEntryAccountModel):
     )
 
 
-class RaidenClientAccount(DoubleEntryAccountModel):
-    book_relation_attr = "book__raiden"
-    token_balance_relation_attr = "books__raiden"
-
-    raiden = models.OneToOneField(Raiden, on_delete=models.CASCADE, related_name="raiden_account")
-    books = GenericRelation(
-        Book,
-        content_type_field="owner_type",
-        object_id_field="owner_id",
-        related_query_name="raiden",
-    )
-
-
-class WalletAccount(DoubleEntryAccountModel):
-    book_relation_attr = "book__wallet"
-    token_balance_relation_attr = "books__wallet"
-
-    account = models.OneToOneField(
-        BaseEthereumAccount, on_delete=models.CASCADE, related_name="onchain_account"
-    )
-    books = GenericRelation(
-        Book,
-        content_type_field="owner_type",
-        object_id_field="owner_id",
-        related_query_name="wallet",
-    )
-
-
-class ExternalAddressAccount(DoubleEntryAccountModel):
-    book_relation_attr = "book__address"
-    token_balance_relation_attr = "books__address"
-
-    address = EthereumAddressField(unique=True)
-    books = GenericRelation(
-        Book,
-        content_type_field="owner_type",
-        object_id_field="owner_id",
-        related_query_name="address",
-    )
-
-    @classmethod
-    def get_transaction_fee_account(cls):
-        account, _ = cls.objects.get_or_create(address=EthereumToken.NULL_ADDRESS)
-        return account
-
-
 __all__ = [
     "Book",
     "BookEntry",
     "Credit",
     "Debit",
-    "Treasury",
-    "RaidenClientAccount",
-    "WalletAccount",
+    "PaymentNetworkAccount",
     "UserAccount",
-    "ExternalAddressAccount",
 ]

@@ -26,7 +26,7 @@ class Command(BaseCommand):
             logger.warning(f"Chain {chain_id} already exists. Aborting...")
             return
 
-        provider_url = options["provider_url"]
+        provider_url = options["provider"]
         if provider_url:
             w3 = get_web3(provider_url=provider_url)
 

@@ -5,6 +5,10 @@ from django.core.management.base import BaseCommand
 from django.utils.module_loading import import_string
 
 from hub20.apps.blockchain.client import event_streams as blockchain_streams
+from hub20.apps.core.integrations.web3 import (
+    process_pending_transfers_in_open_routes,
+    process_transfers_in_open_routes,
+)
 from hub20.apps.ethereum_money.client import event_streams as token_event_streams
 from hub20.apps.raiden.client import event_streams as raiden_event_streams
 from hub20.apps.raiden.client.node import sync_channels, sync_payments
@@ -18,11 +22,10 @@ BLOCKCHAIN_STREAMS = [
     blockchain_streams.process_mined_blocks,
     blockchain_streams.process_pending_transactions,
     token_event_streams.process_token_transfer_events,
-    token_event_streams.process_pending_token_transfers,
     raiden_event_streams.process_channel_events,
 ]
 
-INTEGRATION_STREAMS = []
+INTEGRATION_STREAMS = [process_pending_transfers_in_open_routes, process_transfers_in_open_routes]
 
 RAIDEN_STREAMS = [sync_channels, sync_payments]
 

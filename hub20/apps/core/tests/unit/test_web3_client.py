@@ -31,8 +31,6 @@ class PaymentTransferTestCase(BaseTestCase):
 
         self.assertIsNotNone(route)
 
-        make_web3_mock
-
         transaction_params = dict(
             blockNumber=checkout.currency.chain.highest_block,
             recipient=route.account.address,

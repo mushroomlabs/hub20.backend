@@ -81,6 +81,23 @@ class AccountDebitEntryList(generics.ListAPIView):
         return self.request.user.account.debits.all()
 
 
+class DepositViewSet(GenericViewSet, ListModelMixin, CreateModelMixin, RetrieveModelMixin):
+    permission_classes = (IsAuthenticated,)
+    serializer_class = serializers.HyperlinkedDepositSerializer
+    filterset_class = DepositFilter
+    filter_backends = (
+        OrderingFilter,
+        DjangoFilterBackend,
+    )
+    ordering = "-created"
+
+    def get_queryset(self) -> QuerySet:
+        return self.request.user.deposit_set.all()
+
+    def get_object(self) -> models.Deposit:
+        return get_object_or_404(models.Deposit, pk=self.kwargs.get("pk"), user=self.request.user)
+
+
 class BaseDepositView:
     permission_classes = (IsAuthenticated,)
     serializer_class = serializers.DepositSerializer
@@ -137,6 +154,8 @@ class TokenBrowserViewSet(TokenViewSet):
     def get_serializer_class(self):
         if self.action == "balance":
             return serializers.HyperlinkedTokenBalanceSerializer
+        elif self.action == "routes":
+            return serializers.TokenRouteDescriptorSerializer
 
         return super().get_serializer_class()
 
@@ -170,24 +189,32 @@ class TokenBrowserViewSet(TokenViewSet):
         except AttributeError:
             raise Http404
 
+    @action(detail=True, permission_classes=(IsAuthenticated,))
+    def routes(self, request, **kwargs):
+        """
+        Returns list of all routes that can be used for deposits/withdrawals in the hub
+        """
+        token = self.get_object()
+        serializer = self.get_serializer(instance=token)
+        return Response(serializer.data)
 
-class TransferListView(generics.ListCreateAPIView):
+
+class TransferViewSet(GenericViewSet, ListModelMixin, CreateModelMixin, RetrieveModelMixin):
     permission_classes = (IsAuthenticated,)
-    serializer_class = serializers.TransferSerializer
+    serializer_class = serializers.InternalTransferSerializer
 
     def get_queryset(self) -> QuerySet:
-        return self.request.user.transfers_sent.all()
+        return models.InternalTransfer.objects.filter(sender=self.request.user)
 
 
-class TransferView(generics.RetrieveAPIView):
+class WithdrawalViewSet(GenericViewSet, ListModelMixin, CreateModelMixin, RetrieveModelMixin):
     permission_classes = (IsAuthenticated,)
-    serializer_class = serializers.TransferSerializer
+    serializer_class = serializers.WithdrawalSerializer
 
-    def get_object(self):
-        try:
-            return models.Transfer.objects.get(pk=self.kwargs.get("pk"), sender=self.request.user)
-        except models.Transfer.DoesNotExist:
-            raise Http404
+    def get_queryset(self) -> QuerySet:
+        return self.request.user.transfers_sent.filter(
+            internaltransfer__isnull=True
+        ).select_subclasses()
 
 
 class TokenBalanceListView(generics.ListAPIView):
@@ -270,6 +297,8 @@ class StoreViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
 class UserStoreViewSet(ModelViewSet):
     permission_classes = (IsStoreOwner,)
     serializer_class = serializers.StoreEditorSerializer
+    filter_backends = (OrderingFilter,)
+    ordering = "id"
 
     def get_queryset(self) -> QuerySet:
         try:
@@ -351,23 +380,7 @@ class AccountingReportView(StatusView):
     def get(self, request, **kw):
         return Response(
             dict(
-                treasury=self._get_serialized_book(models.Treasury),
-                wallets=self._get_serialized_book(models.WalletAccount),
-                raiden=self._get_serialized_book(models.RaidenClientAccount),
+                payment_networks=self._get_serialized_book(models.PaymentNetworkAccount),
                 user_accounts=self._get_serialized_book(models.UserAccount),
-                external_addresses=self._get_serialized_book(models.ExternalAddressAccount),
             )
         )
-
-
-class BalanceSheetWalletViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
-    permission_classes = (IsAdminUser,)
-    serializer_class = serializers.WalletBalanceSheetSerializer
-    lookup_url_kwarg = "address"
-    lookup_field = "account__address"
-
-    def get_queryset(self) -> QuerySet:
-        return models.WalletAccount.objects.all()
-
-    def get_object(self) -> models.WalletAccount:
-        return get_object_or_404(models.WalletAccount, account__address=self.kwargs.get("address"))

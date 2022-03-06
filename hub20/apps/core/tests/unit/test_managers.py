@@ -1,14 +1,14 @@
 import pytest
 from django.test import TestCase
 
-from hub20.apps.core.factories import Erc20TokenPaymentOrderFactory, TransferFactory
+from hub20.apps.core.factories import Erc20TokenPaymentOrderFactory, InternalTransferFactory
 from hub20.apps.core.models import (
     BlockchainPaymentRoute,
     PaymentConfirmation,
     PaymentOrder,
     RaidenPaymentRoute,
     Transfer,
-    TransferExecution,
+    TransferConfirmation,
 )
 from hub20.apps.ethereum_money.tests.base import add_token_to_account
 from hub20.apps.raiden.factories import ChannelFactory
@@ -70,20 +70,20 @@ class PaymentOrderManagerTestCase(BaseTestCase):
 
 class TransferManagerTestCase(BaseTestCase):
     def test_pending_query_manager(self):
-        self.transfer = TransferFactory()
+        self.transfer = InternalTransferFactory()
 
         self.assertTrue(Transfer.pending.exists())
 
-        # Executed transfers are no longer pending
-        TransferExecution.objects.create(transfer=self.transfer)
-        self.assertTrue(Transfer.executed.exists())
+        # Confirmed transfers are no longer pending
+        TransferConfirmation.objects.create(transfer=self.transfer)
+        self.assertTrue(Transfer.confirmed.exists())
         self.assertFalse(Transfer.pending.exists())
 
         # Another transfer shows up, and already confirmed transfers are out
-        another_transfer = TransferFactory()
+        another_transfer = InternalTransferFactory()
         self.assertTrue(Transfer.pending.exists())
         self.assertEqual(Transfer.pending.count(), 1)
-        self.assertEqual(Transfer.pending.first(), another_transfer)
+        self.assertEqual(Transfer.pending.select_subclasses().first(), another_transfer)
 
 
 __all__ = ["PaymentOrderManagerTestCase", "TransferManagerTestCase"]

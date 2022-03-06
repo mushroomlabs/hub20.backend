@@ -10,7 +10,7 @@ from .payments import Erc20TokenPaymentOrderFactory
 class StoreFactory(factory.django.DjangoModelFactory):
     owner = factory.SubFactory(UserFactory)
     name = factory.Sequence(lambda n: f"Store #{n:02}")
-    url = factory.Sequence(lambda n: f"https://store#{n:02}.example.com")
+    url = factory.Sequence(lambda n: f"https://store-{n:02}.example.com")
     accepted_token_list = factory.SubFactory(
         UserTokenListFactory, user=factory.SelfAttribute("..owner")
     )

@@ -1,40 +1,50 @@
-import getpass
 import logging
+import sys
+from decimal import Decimal
 
-import ethereum
 from django.core.management.base import BaseCommand
-from eth_utils import to_checksum_address
+from django_celery_results.models import TaskResult
 
 from hub20.apps.blockchain.client import make_web3
-from hub20.apps.blockchain.models import Web3Provider
-from hub20.apps.ethereum_money.models import EthereumTokenAmount, KeystoreAccount
-from hub20.apps.raiden.client.blockchain import get_service_token, make_service_deposit
+from hub20.apps.raiden.client import get_service_token
+from hub20.apps.raiden.models import Raiden, UserDepositContractOrder
+from hub20.apps.raiden.tasks import make_udc_deposit
 
 logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
-    help = "Deposits RDN at Raiden Service Contract"
+    help = "Deposits RDN at UserDeposit Contract"
 
     def add_arguments(self, parser):
-        parser.add_argument("-a", "--account", required=True, type=str)
-        parser.add_argument("--amount", default=1000, type=int)
-        parser.add_argument("--chain-id", "-c", dest="chain_id", required=True, type=int)
+        parser.add_argument("-r", "--raiden", required=True, type=str)
+        parser.add_argument("-a", "--amount", required=True, type=Decimal)
 
     def handle(self, *args, **options):
-        address = to_checksum_address(options["account"])
-        account = KeystoreAccount.objects.filter(address=address).first()
 
-        if not account:
-            private_key = getpass.getpass(f"Private Key for {address} required: ")
-            generated_address = to_checksum_address(ethereum.utils.privtoaddr(private_key.strip()))
-            assert generated_address == address, "Private Key does not match"
-            account = KeystoreAccount(address=address, private_key=private_key)
+        try:
+            raiden_url = options["raiden"]
+            raiden = Raiden.objects.get(url=raiden_url)
+        except Raiden.DoesNotExist:
+            logger.info(f"No raiden defined at {raiden_url}")
+            sys.exit(-1)
 
-        provider = Web3Provider.available.get(chain_id=options["chain_id"])
-        w3 = make_web3(provider=provider)
+        w3 = make_web3(provider=raiden.chain.provider)
+        rdn = get_service_token(w3=w3)
+        deposit_amount = options["amount"]
 
-        token = get_service_token(w3=w3)
+        if UserDepositContractOrder.objects.filter(task_result__status="PENDING").exists():
+            logger.info("Already has pending UDC tasks. Wait or mark them as failed")
+            return
 
-        amount = EthereumTokenAmount(amount=options["amount"], currency=token)
-        make_service_deposit(w3=w3, account=account, amount=amount)
+        task = make_udc_deposit.delay(raiden_url=raiden_url, amount=deposit_amount)
+
+        result = TaskResult.objects.get_task(task.id)
+        result.save()
+
+        UserDepositContractOrder.objects.create(
+            raiden=raiden,
+            amount=deposit_amount,
+            currency=rdn,
+            task_result=result,
+        )

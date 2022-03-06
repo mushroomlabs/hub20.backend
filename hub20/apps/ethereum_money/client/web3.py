@@ -5,33 +5,20 @@ from django.contrib.auth import get_user_model
 from eth_utils import to_checksum_address
 from ethereum.abi import ContractTranslator
 from web3 import Web3
-from web3._utils.events import get_event_data
-from web3.exceptions import LogTopicError, MismatchedABI
+from web3.datastructures import AttributeDict
+from web3.exceptions import TransactionNotFound
 
 from hub20.apps.blockchain.client import make_web3
 from hub20.apps.blockchain.factories.base import FAKER
-from hub20.apps.blockchain.models import BaseEthereumAccount, Chain
+from hub20.apps.blockchain.models import BaseEthereumAccount, Chain, TransactionDataRecord
 from hub20.apps.blockchain.typing import Address, EthereumAccount_T
 from hub20.apps.ethereum_money.abi import EIP20_ABI
 from hub20.apps.ethereum_money.app_settings import TRANSFER_GAS_LIMIT
 from hub20.apps.ethereum_money.models import EthereumToken, EthereumTokenAmount
-from hub20.apps.ethereum_money.typing import EthereumClient_T
+from hub20.apps.ethereum_money.typing import Web3Client_T
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
-
-
-def get_transaction_events(transaction_receipt, event_abi):
-    w3 = Web3()
-    events = []
-    for log in transaction_receipt.logs:
-        try:
-            event = get_event_data(w3.codec, event_abi, log)
-            events.append(event)
-        except (MismatchedABI, LogTopicError) as exc:
-            tx_hash = transaction_receipt.transactionHash.hex()
-            logger.info(f"{exc} when getting events from tx {tx_hash}")
-    return events
 
 
 def encode_transfer_data(recipient_address, amount: EthereumTokenAmount):
@@ -89,7 +76,7 @@ def make_token(w3: Web3, address) -> EthereumToken:
     return EthereumToken.make(chain=chain, address=address, **token_data)
 
 
-class EthereumClient:
+class Web3Client:
     def __init__(self, account: EthereumAccount_T, w3: Optional[Web3] = None) -> None:
         self.account = account
 
@@ -117,11 +104,21 @@ class EthereumClient:
             transaction_params.update({"to": recipient, "value": amount.as_wei})
         return transaction_params
 
-    def transfer(self, amount: EthereumTokenAmount, address, *args, **kw):
+    def transfer(self, amount: EthereumTokenAmount, address, *args, **kw) -> TransactionDataRecord:
         w3 = make_web3(provider=amount.currency.chain.provider)
-        transaction_data = self.build_transfer_transaction(recipient=address, amount=amount)
-        signed_tx = self.sign_transaction(transaction_data=transaction_data, w3=w3)
-        return w3.eth.sendRawTransaction(signed_tx.rawTransaction)
+        transfer_transaction_data = self.build_transfer_transaction(
+            recipient=address, amount=amount
+        )
+        signed_tx = self.sign_transaction(transaction_data=transfer_transaction_data, w3=w3)
+        chain_id = w3.eth.chain_id
+        tx_hash = w3.eth.sendRawTransaction(signed_tx.rawTransaction)
+        try:
+            tx_data = w3.eth.get_transaction(tx_hash)
+            return TransactionDataRecord.make(chain_id=chain_id, tx_data=tx_data, force=True)
+        except TransactionNotFound:
+            return TransactionDataRecord.make(
+                chain_id=chain_id, tx_data=AttributeDict(transfer_transaction_data)
+            )
 
     def sign_transaction(self, transaction_data, w3: Web3, *args, **kw):
         if not hasattr(self.account, "private_key"):
@@ -133,12 +130,7 @@ class EthereumClient:
         return get_account_balance(w3=w3, token=token, address=self.account.address)
 
     @classmethod
-    def select_for_transfer(
-        cls,
-        amount: EthereumTokenAmount,
-        receiver: Optional[User] = None,
-        address: Optional[Address] = None,
-    ) -> Optional[EthereumClient_T]:
+    def select_for_transfer(cls, amount: EthereumTokenAmount, address: Address) -> Web3Client_T:
 
         chain = amount.currency.chain
         w3 = make_web3(provider=chain.provider)
@@ -161,7 +153,8 @@ class EthereumClient:
 
             if eth_balance >= transfer_fee and token_balance >= amount:
                 return cls(account=account, w3=w3)
-        return None
+        else:
+            raise ValueError("No account with enough funds for this transfer")
 
     @classmethod
     def estimate_transfer_fees(cls, *args, **kw) -> EthereumTokenAmount:
@@ -170,7 +163,6 @@ class EthereumClient:
 
 
 __all__ = [
-    "get_transaction_events",
     "encode_transfer_data",
     "get_transfer_gas_estimate",
     "get_estimate_fee",
@@ -178,5 +170,5 @@ __all__ = [
     "get_account_balance",
     "get_token_information",
     "make_token",
-    "EthereumClient",
+    "Web3Client",
 ]

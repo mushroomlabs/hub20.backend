@@ -13,6 +13,7 @@ from hub20.apps.ethereum_money.models import (
     EthereumTokenAmount,
     StableTokenPair,
     TokenList,
+    TransferEvent,
     UserTokenList,
     WrappedToken,
 )
@@ -103,20 +104,42 @@ class Erc20TransactionDataFactory(TransactionDataFactory):
             "blockNumber": obj.block_number,
             "blockHash": obj.block_hash,
             "gasUsed": obj.gas_used,
-            "logs": [encode_transfer_data(obj.to_address, obj.amount)],
+            "logs": [encode_transfer_data(obj.recipient, obj.amount)],
         }
     )
 
     class Params:
+        recipient = factory.Faker("ethereum_address")
         gas_used = factory.fuzzy.FuzzyInteger(50000, 200000)
         amount = factory.SubFactory(Erc20TokenAmountFactory)
+        to_address = factory.LazyAttribute(lambda obj: obj.amount.currency.address)
 
 
-class Erc20TransferFactory(TransactionFactory):
+class Erc20TransactionFactory(TransactionFactory):
     class Params:
         recipient = factory.Faker("ethereum_address")
         amount = factory.SubFactory(Erc20TokenAmountFactory)
         to_address = factory.LazyAttribute(lambda obj: obj.amount.currency.address)
+
+
+class Erc20TransferEventFactory(factory.django.DjangoModelFactory):
+    transaction = factory.SubFactory(
+        Erc20TransactionFactory,
+        amount=factory.SelfAttribute("..transfer_amount"),
+        recipient=factory.SelfAttribute("..recipient"),
+        to_address=factory.SelfAttribute("..sender"),
+    )
+    amount = factory.SelfAttribute("transfer_amount.amount")
+    currency = factory.SelfAttribute("transfer_amount.currency")
+    recipient = factory.Faker("ethereum_address")
+    sender = factory.Faker("ethereum_address")
+    log_index = 0
+
+    class Meta:
+        model = TransferEvent
+
+    class Params:
+        transfer_amount = factory.SubFactory(Erc20TokenAmountFactory)
 
 
 class BaseTokenListFactory(factory.django.DjangoModelFactory):
@@ -152,7 +175,9 @@ __all__ = [
     "Erc20TokenValueModelFactory",
     "Erc20TokenAmountFactory",
     "EtherAmountFactory",
-    "Erc20TransferFactory",
+    "Erc20TransactionDataFactory",
+    "Erc20TransactionFactory",
+    "Erc20TransferEventFactory",
     "TokenListFactory",
     "WrappedEtherFactory",
     "WrappedTokenFactory",

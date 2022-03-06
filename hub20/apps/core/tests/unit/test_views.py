@@ -51,6 +51,31 @@ class UserStoreViewTestCase(TestCase):
         response = self.client.get(url)
         self.assertEqual(response.status_code, 403)
 
+    def test_checkout_webhook_url_is_not_required_to_update(self):
+        url = reverse("user-store-detail", kwargs={"pk": self.store.pk})
+        self.client.force_authenticate(user=self.store.owner)
+        response = self.client.get(url)
+
+        data = response.data
+        data.pop("checkout_webhook_url", None)
+        data["name"] = "Store without webhook"
+
+        response = self.client.put(url, data)
+        self.assertEqual(response.status_code, 200)
+
+    def test_checkout_webhook_url_is_not_required_to_create(self):
+        url = reverse("user-store-list")
+        self.client.force_authenticate(user=self.store.owner)
+        response = self.client.get(url)
+
+        data = response.data[0]
+        data.pop("checkout_webhook_url", None)
+        data["name"] = "New Store without webhook"
+        data["site_url"] = "http://cloned.stored.example.com"
+
+        response = self.client.post(url, data)
+        self.assertEqual(response.status_code, 201)
+
 
 class UserViewTestCase(TestCase):
     def setUp(self):
@@ -126,9 +151,10 @@ class TransferTestCase(TestCase):
 
     def test_no_balance_returns_error(self):
         response = self.client.post(
-            reverse("transfer-list"),
+            reverse("user-withdrawal-list"),
             {
                 "address": self.target_address,
+                "payment_network": "blockchain",
                 "amount": 10,
                 "token": reverse(
                     "token-detail",
@@ -154,9 +180,10 @@ class TransferTestCase(TestCase):
         )
 
         response = self.client.post(
-            reverse("transfer-list"),
+            reverse("user-withdrawal-list"),
             {
                 "address": self.target_address,
+                "payment_network": "blockchain",
                 "amount": TRANSFER_AMOUNT,
                 "token": reverse(
                     "token-detail",
