@@ -67,7 +67,35 @@ services:
     <<: *backend_service
     command: celery -A hub20.api beat -l info -S django
 
-  # Background command to listen and publish to events from different networks
-  event_publisher:
+  # Services to run background to listen and process different event streams
+  process_stream_mined_blocks:
     <<: *backend_service
-    command: django-admin run_event_streams
+    command: django-admin run_stream_processor hub20.apps.blockchain.client.event_streams.process_mined_blocks
+
+  process_stream_pending_transactions:
+    <<: *backend_service
+    command: django-admin run_stream_processor hub20.apps.blockchain.client.event_streams.process_pending_transactions
+
+  process_stream_token_transfer_indexer:
+    <<: *backend_service
+    command: django-admin run_stream_processor hub20.apps.ethereum_money.client.event_streams.process_token_transfer_events
+
+  process_stream_raiden_channel_event_indexer:
+    <<: *backend_service
+    command: django-admin run_stream_processor hub20.apps.raiden.client.event_streams.process_channel_events
+
+  process_stream_raiden_channel_sync:
+    <<: *backend_service
+    command: django-admin run_stream_processor hub20.apps.raiden.client.node.sync_channels
+
+  process_stream_raiden_payment_sync:
+    <<: *backend_service
+    command: django-admin run_stream_processor hub20.apps.raiden.client.node.sync_payments
+
+  process_stream_open_route_transfers:
+    <<: *backend_service
+    command: django-admin run_stream_processor hub20.apps.core.integrations.web3.process_transfers_in_open_routes
+
+  process_stream_pending_open_route_transfers:
+    <<: *backend_service
+    command: django-admin run_stream_processor hub20.apps.core.integrations.web3.process_pending_transfers_in_open_routes

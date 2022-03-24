@@ -1,8 +1,7 @@
-import asyncio
 import logging
+import time
 
 import celery_pubsub
-from asgiref.sync import sync_to_async
 from raiden_contracts.constants import CONTRACT_TOKEN_NETWORK
 from raiden_contracts.contract_manager import ContractManager, contracts_precompiled_path
 from web3 import Web3
@@ -31,20 +30,12 @@ def get_token_network_events(w3: Web3, event, start_block: int, end_block: int):
             logger.debug("Failed to get event from log")
 
 
-def get_providers_on_raiden_networks():
-    return Web3Provider.available.filter(chain__tokens__tokennetwork__isnull=False).select_related(
-        "chain"
-    )
-
-
-async def process_channel_events():
+def process_channel_events():
     indexer_name = "raiden:token_network_channels"
 
     while True:
-        providers = await sync_to_async(list)(get_providers_on_raiden_networks())
-        for provider in providers:
-            event_indexer = await sync_to_async(EventIndexer.make)(provider.chain_id, indexer_name)
-
+        for provider in Web3Provider.available.filter(chain__tokens__tokennetwork__isnull=False):
+            event_indexer = EventIndexer.make(provider.chain_id, indexer_name)
             w3 = make_web3(provider=provider)
             contract = w3.eth.contract(abi=TOKEN_NETWORK_CONTRACT_ABI)
 
@@ -57,7 +48,7 @@ async def process_channel_events():
             for event_data in get_token_network_events(
                 w3, contract.events.ChannelOpened, last_processed, to_block
             ):
-                await sync_to_async(celery_pubsub.publish)(
+                celery_pubsub.publish(
                     "blockchain.event.token_network_channel_opened.mined",
                     chain_id=w3.eth.chain_id,
                     event_data=event_data,
@@ -67,7 +58,7 @@ async def process_channel_events():
             for event_data in get_token_network_events(
                 w3, contract.events.ChannelClosed, last_processed, to_block
             ):
-                await sync_to_async(celery_pubsub.publish)(
+                celery_pubsub.publish(
                     "blockchain.event.token_network_channel_closed.mined",
                     chain_id=w3.eth.chain_id,
                     event_data=event_data,
@@ -75,8 +66,8 @@ async def process_channel_events():
                 )
 
             event_indexer.last_block = to_block
-            await sync_to_async(event_indexer.save)()
-        await asyncio.sleep(BLOCK_CREATION_INTERVAL)
+            event_indexer.save()
+        time.sleep(BLOCK_CREATION_INTERVAL)
 
 
 __all__ = ["process_channel_events"]
