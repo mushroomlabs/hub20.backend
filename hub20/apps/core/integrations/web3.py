@@ -1,8 +1,7 @@
-import asyncio
 import logging
+import time
 
 import celery_pubsub
-from asgiref.sync import sync_to_async
 from django.core.cache import cache
 
 from hub20.apps.blockchain.client import BLOCK_CREATION_INTERVAL, make_web3
@@ -14,18 +13,16 @@ from hub20.apps.ethereum_money.models import EthereumToken
 logger = logging.getLogger(__name__)
 
 
-async def process_transfers_in_open_routes():
+def process_transfers_in_open_routes():
     CACHE_KEY = "TRANSACTIONS_FOR_OPEN_ROUTES"
 
     logger.debug("Checking for token transfers in open routes")
     while True:
-        open_routes = await sync_to_async(list)(
-            BlockchainPaymentRoute.objects.open().select_related(
-                "deposit",
-                "deposit__currency",
-                "deposit__currency__chain",
-                "account",
-            )
+        open_routes = BlockchainPaymentRoute.objects.open().select_related(
+            "deposit",
+            "deposit__currency",
+            "deposit__currency__chain",
+            "account",
         )
 
         for route in open_routes:
@@ -37,7 +34,7 @@ async def process_transfers_in_open_routes():
             if not token.is_ERC20:
                 continue
 
-            provider = await sync_to_async(Web3Provider.active.filter(chain=token.chain).first)()
+            provider = Web3Provider.active.filter(chain=token.chain).first()
 
             if not provider:
                 logger.warning(
@@ -60,37 +57,35 @@ async def process_transfers_in_open_routes():
 
                     key = f"{CACHE_KEY}:{tx_hash}"
 
-                    if await sync_to_async(cache.get)(key):
+                    if cache.get(key):
                         logger.debug(f"Transfer event in tx {tx_hash} has already been published")
 
                         continue
 
                     logger.debug(f"Publishing transfer event from tx {tx_hash}")
-                    await sync_to_async(celery_pubsub.publish)(
+                    celery_pubsub.publish(
                         "blockchain.event.token_transfer.mined",
                         chain_id=w3.eth.chain_id,
                         event_data=transfer_event,
                         provider_url=provider.url,
                     )
-                    await sync_to_async(cache.set)(key, True, timeout=BLOCK_CREATION_INTERVAL * 2)
+                    cache.set(key, True, timeout=BLOCK_CREATION_INTERVAL * 2)
             except ValueError as exc:
                 logger.warning(f"Can not get transfer logs from {provider.hostname}: {exc}")
         else:
-            await asyncio.sleep(1)
+            time.sleep(BLOCK_CREATION_INTERVAL)
 
 
-async def process_pending_transfers_in_open_routes():
+def process_pending_transfers_in_open_routes():
     CACHE_KEY = "PENDING_TRANSACTIONS_FOR_OPEN_ROUTES"
 
     logger.debug("Checking for pending token transfers in open routes")
     while True:
-        open_routes = await sync_to_async(list)(
-            BlockchainPaymentRoute.objects.open().select_related(
-                "deposit",
-                "deposit__currency",
-                "deposit__currency__chain",
-                "account",
-            )
+        open_routes = BlockchainPaymentRoute.objects.open().select_related(
+            "deposit",
+            "deposit__currency",
+            "deposit__currency__chain",
+            "account",
         )
 
         for route in open_routes:
@@ -102,7 +97,7 @@ async def process_pending_transfers_in_open_routes():
             if not token.is_ERC20:
                 continue
 
-            provider = await sync_to_async(Web3Provider.active.filter(chain=token.chain).first)()
+            provider = Web3Provider.active.filter(chain=token.chain).first()
 
             if not provider:
                 logger.warning(
@@ -125,18 +120,18 @@ async def process_pending_transfers_in_open_routes():
 
                     key = f"{CACHE_KEY}:{tx_hash}"
 
-                    if await sync_to_async(cache.get)(key):
+                    if cache.get(key):
                         logger.debug(f"Broadcast of tx {tx_hash} has already been notified")
                         continue
 
-                    await sync_to_async(celery_pubsub.publish)(
+                    celery_pubsub.publish(
                         "blockchain.event.token_transfer.broadcast",
                         chain_id=w3.eth.chain_id,
                         event_data=transfer_event,
                         provider_url=provider.url,
                     )
-                    await sync_to_async(cache.set)(key, True, timeout=BLOCK_CREATION_INTERVAL * 2)
+                    cache.set(key, True, timeout=BLOCK_CREATION_INTERVAL * 2)
             except ValueError as exc:
                 logger.warning(f"Can not get transfer logs from {provider.hostname}: {exc}")
         else:
-            await asyncio.sleep(1)
+            time.sleep(1)

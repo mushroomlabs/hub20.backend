@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import asyncio
 import logging
+import time
 from datetime import datetime
 from types import FunctionType
 from typing import Any, Dict, List, Optional, Union
 
 import requests
-from asgiref.sync import sync_to_async
 from django.contrib.auth import get_user_model
 from django.utils.timezone import make_aware
 from ethereum.utils import checksum_encode
@@ -236,34 +235,27 @@ class RaidenClient:
         return raiden_node and cls(raiden_node=raiden_node)
 
 
-def raiden_periodic_response_handler(period=2):
-    def decorator(handler):
-        async def wrapper(*args, **kw):
-            raiden_nodes = await sync_to_async(list)(Raiden.objects.all())
-            raiden_clients = [RaidenClient(raiden_node=raiden) for raiden in raiden_nodes]
-
-            while True:
-                for raiden_client in raiden_clients:
-                    try:
-                        logger.debug(f"Running {handler.__name__} for {raiden_client.raiden.url}")
-                        await sync_to_async(handler)(raiden_client=raiden_client, *args, **kw)
-                    except RaidenConnectionError as exc:
-                        logger.error(f"Failed to connect to raiden node: {exc}")
-                    except Exception as exc:
-                        logger.exception(f"Error on {handler.__name__}: {exc}")
-
-                await asyncio.sleep(period)
-
-        return wrapper
-
-    return decorator
+def sync_channels():
+    while True:
+        for raiden_client in [RaidenClient(raiden_node=raiden) for raiden in Raiden.objects.all()]:
+            try:
+                logger.debug(f"Running channel sync for {raiden_client.raiden.url}")
+                raiden_client.get_channels()
+            except RaidenConnectionError as exc:
+                logger.error(f"Failed to connect to raiden node: {exc}")
+            except Exception as exc:
+                logger.exception(f"Error on channel sync: {exc}")
+        time.sleep(60)
 
 
-@raiden_periodic_response_handler(period=60)
-def sync_channels(raiden_client: RaidenClient, **kw):
-    raiden_client.get_channels()
-
-
-@raiden_periodic_response_handler()
-def sync_payments(raiden_client: RaidenClient, **kw):
-    raiden_client.get_new_payments()
+def sync_payments():
+    while True:
+        for raiden_client in [RaidenClient(raiden_node=raiden) for raiden in Raiden.objects.all()]:
+            try:
+                logger.debug(f"Running payment sync for {raiden_client.raiden.url}")
+                raiden_client.get_new_payments()
+            except RaidenConnectionError as exc:
+                logger.error(f"Failed to connect to raiden node: {exc}")
+            except Exception as exc:
+                logger.exception(f"Error on payment sync: {exc}")
+        time.sleep(2)
