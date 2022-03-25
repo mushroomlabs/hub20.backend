@@ -14,8 +14,6 @@ x-envvars: &ci_environment
     HUB20_EMAIL_MAILER_ADDRESS: noreply@hub20.example.com
     HUB20_EMAIL_BACKEND: django.core.mail.backends.console.EmailBackend
     HUB20_SECRET_KEY: base-hub20-secret-key
-    HUB20_BLOCKCHAIN_NETWORK_ID: 5
-    HUB20_ETHEREUM_HD_WALLET_ROOT_KEY: deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef
 
 services:
   db:
@@ -33,7 +31,7 @@ services:
         while ! nc -w 1 -z db 5432; do sleep 0.5; done;
         django-admin migrate;
         django-admin collectstatic --noinput
-        uvicorn hub20.api.asgi:application --port 80 --host 0.0.0.0 --root-path="/api" --reload --reload-dir /app/hub20
+        uvicorn hub20.api.asgi:application --port 80 --host 0.0.0.0 --reload --reload-dir /app/hub20
       "
     build:
       context: ../../

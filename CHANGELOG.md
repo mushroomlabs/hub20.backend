@@ -3,7 +3,7 @@
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.2] - 2022-03-25
 
 ### Added
  - API Endpoint to list Token Networks, optionally filtered by chain
@@ -20,6 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
    joining/leaving token network) are done through the Raiden Node and
    the celery tasks are tracked. The results are stored on the
    database.
+
+ - All event processors that worked with asyncio have been changed
+   into traditional management commands. The `run_event_streams`
+   command was renamed to `run_stream_processor` and takes one single
+   callable name as a parameter.
 
 
 ## [0.4.0] - 2022-01-31

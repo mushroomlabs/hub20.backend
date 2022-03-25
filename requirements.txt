@@ -142,7 +142,6 @@ django==4.0
     #   django-money
     #   django-redis
     #   django-taggit
-    #   django-timezone-field
     #   djangorestframework
     #   drf-nested-routers
     #   drf-yasg
@@ -176,7 +175,7 @@ django-smtp-ssl==1.0
     # via -r requirements.in
 django-taggit==2.1.0
     # via -r requirements.in
-django-timezone-field==4.2.1
+django-timezone-field==4.2.3
     # via django-celery-beat
 djangorestframework==3.13.1
     # via
