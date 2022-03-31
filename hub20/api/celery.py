@@ -8,6 +8,7 @@ from kombu.serialization import register
 
 from hub20.apps.blockchain.celery import web3_deserializer, web3_serializer
 
+BLOCK_CREATION_INTERVAL = 12
 NODE_HEALTH_CHECK_INTERVAL = 15
 
 
@@ -57,6 +58,34 @@ class Hub20CeleryConfig:
         "refresh-wallet-balances": {
             "task": "hub20.apps.wallet.tasks.update_all_wallet_balances",
             "schedule": crontab(minute=0),
+        },
+        "index-token-transfer-events": {
+            "task": "hub20.apps.ethereum_money.tasks.index_token_transfer_events",
+            "schedule": timedelta(seconds=BLOCK_CREATION_INTERVAL),
+        },
+        "index-raiden-open-channel-events": {
+            "task": "hub20.apps.raiden.tasks.index_raiden_channel_open_events",
+            "schedule": timedelta(seconds=BLOCK_CREATION_INTERVAL),
+        },
+        "index-raiden-close-channel-events": {
+            "task": "hub20.apps.raiden.tasks.index_raiden_channel_close_events",
+            "schedule": timedelta(seconds=BLOCK_CREATION_INTERVAL),
+        },
+        "sync-raiden-channels": {
+            "task": "hub20.apps.raiden.tasks.sync_channels",
+            "schedule": crontab(minute="*/5"),
+        },
+        "sync-raiden-payments": {
+            "task": "hub20.apps.raiden.tasks.sync_payments",
+            "schedule": timedelta(seconds=2),
+        },
+        "process-mined-blocks": {
+            "task": "hub20.apps.blockchain.tasks.process_mined_blocks",
+            "schedule": timedelta(seconds=BLOCK_CREATION_INTERVAL),
+        },
+        "check-payments-in-open-routes": {
+            "task": "hub20.apps.core.tasks.check_payments_in_open_routes",
+            "schedule": timedelta(seconds=BLOCK_CREATION_INTERVAL),
         },
     }
     result_backend = "django-db"

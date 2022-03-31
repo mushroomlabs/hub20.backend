@@ -140,7 +140,7 @@ CACHES = {
 # channel layers, we use the same server in the default configuration
 
 # Celery configuration
-CELERY_BROKER_URL = os.getenv("HUB20_BROKER_URL", "redis://redis:6379/0")
+CELERY_BROKER_URL = os.getenv("HUB20_BROKER_URL", "amqp://rabbitmq:5672/")
 
 
 # This needs to be set up if you don't have a front-end proxy server

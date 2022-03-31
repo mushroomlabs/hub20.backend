@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import time
 from datetime import datetime
 from types import FunctionType
 from typing import Any, Dict, List, Optional, Union
@@ -233,29 +232,3 @@ class RaidenClient:
         raiden_node = Raiden.objects.first()
 
         return raiden_node and cls(raiden_node=raiden_node)
-
-
-def sync_channels():
-    while True:
-        for raiden_client in [RaidenClient(raiden_node=raiden) for raiden in Raiden.objects.all()]:
-            try:
-                logger.debug(f"Running channel sync for {raiden_client.raiden.url}")
-                raiden_client.get_channels()
-            except RaidenConnectionError as exc:
-                logger.error(f"Failed to connect to raiden node: {exc}")
-            except Exception as exc:
-                logger.exception(f"Error on channel sync: {exc}")
-        time.sleep(60)
-
-
-def sync_payments():
-    while True:
-        for raiden_client in [RaidenClient(raiden_node=raiden) for raiden in Raiden.objects.all()]:
-            try:
-                logger.debug(f"Running payment sync for {raiden_client.raiden.url}")
-                raiden_client.get_new_payments()
-            except RaidenConnectionError as exc:
-                logger.error(f"Failed to connect to raiden node: {exc}")
-            except Exception as exc:
-                logger.exception(f"Error on payment sync: {exc}")
-        time.sleep(2)
