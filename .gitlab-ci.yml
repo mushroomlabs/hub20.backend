@@ -43,10 +43,6 @@ test:
     - pip install -e .
     - pytest
 
-  only:
-    - develop
-    - branches
-
 
 build_python_package:
   image: python:3.8
@@ -73,9 +69,8 @@ publish_python_package:
     - pip install twine
     - twine upload dist/* --non-interactive
 
-  only:
-    - master
-
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /v^\d+\.\d+\.\d+/'
 
 build_docker_image:
   image: docker:19
@@ -87,8 +82,11 @@ build_docker_image:
     - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
 
   script:
-    - docker build --pull --target hub20_base -t "$CI_REGISTRY_IMAGE" .
-    - docker push "$CI_REGISTRY_IMAGE"
+    - DOCKER_TAG=${CI_COMMIT_TAG:-latest}
+    - echo "Building and publishing ${CI_REGISTRY_IMAGE}:${DOCKER_TAG}"
+    - docker build --pull --target hub20_base -t "${CI_REGISTRY_IMAGE}" .
+    - docker push "${CI_REGISTRY_IMAGE}:${DOCKER_TAG}"
 
   only:
     - master
+    - tags
