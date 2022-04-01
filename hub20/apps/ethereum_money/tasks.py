@@ -3,21 +3,77 @@ import logging
 import celery_pubsub
 from celery import shared_task
 from django.db.models import Q
-from web3.exceptions import TransactionNotFound
+from web3 import Web3
+from web3._utils.events import get_event_data
+from web3._utils.filters import construct_event_filter_params
+from web3.exceptions import LogTopicError, TransactionNotFound
 
-from hub20.apps.blockchain.client import make_web3
+from hub20.apps.blockchain.app_settings import BLOCK_SCAN_RANGE
+from hub20.apps.blockchain.client import BLOCK_CREATION_INTERVAL, make_web3
 from hub20.apps.blockchain.models import (
     BaseEthereumAccount,
     Chain,
+    EventIndexer,
     Transaction,
     TransactionDataRecord,
     Web3Provider,
 )
+from hub20.apps.blockchain.tasks import stream_processor_lock
+from hub20.apps.ethereum_money.abi import EIP20_ABI
 
 from . import signals
 from .models import EthereumToken, TokenList, TransferEvent
 
 logger = logging.getLogger(__name__)
+
+
+@shared_task(bind=True)
+def index_token_transfer_events(self):
+    indexer_name = "ethereum_money:token_transfers"
+
+    for provider in Web3Provider.available.select_related("chain"):
+        event_indexer = EventIndexer.make(provider.chain_id, indexer_name)
+        w3: Web3 = make_web3(provider=provider)
+
+        current_block = w3.eth.block_number
+
+        contract = w3.eth.contract(abi=EIP20_ABI)
+        abi = contract.events.Transfer._get_event_abi()
+
+        # The more the indexer is behind, the more time it will have to keep the lock
+        lock_ttl = max(BLOCK_CREATION_INTERVAL, current_block - event_indexer.last_block)
+
+        with stream_processor_lock(provider, self.app.oid, lock_ttl) as acquired:
+            if acquired:
+                while event_indexer.last_block <= current_block:
+                    last_processed = event_indexer.last_block
+
+                    from_block = last_processed
+                    to_block = min(current_block, from_block + BLOCK_SCAN_RANGE)
+
+                    logger.debug(
+                        f"Getting {indexer_name} events between {from_block} and {to_block}"
+                    )
+
+                    _, event_filter_params = construct_event_filter_params(
+                        abi, w3.codec, fromBlock=from_block, toBlock=to_block
+                    )
+                    for log in w3.eth.get_logs(event_filter_params):
+                        try:
+                            event = get_event_data(w3.codec, abi, log)
+                            celery_pubsub.publish(
+                                "blockchain.event.token_transfer.mined",
+                                chain_id=w3.eth.chain_id,
+                                event_data=event,
+                                provider_url=provider.url,
+                            )
+                        except LogTopicError:
+                            pass
+                        except Exception:
+                            logger.exception("Unknown error when processing transfer log")
+
+                    event_indexer.last_block = to_block
+                    event_indexer.save()
 
 
 @shared_task

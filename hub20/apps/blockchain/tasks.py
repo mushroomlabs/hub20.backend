@@ -1,20 +1,73 @@
 import logging
+from contextlib import contextmanager
+from hashlib import md5
 
 import celery_pubsub
 from celery import shared_task
+from django.core.cache import cache
 from django.db.transaction import atomic
 from requests.exceptions import ConnectionError
+from web3 import Web3
 
 from .analytics import MAX_PRIORITY_FEE_TRACKER, get_historical_block_data
+from .app_settings import BLOCK_SCAN_RANGE
 from .client import inspect_web3, make_web3
 from .models import BaseEthereumAccount, Block, Transaction, Web3Provider
 from .signals import block_sealed
 
 logger = logging.getLogger(__name__)
 
-# Tasks that are meant to be run periodically (no arguments)
+
+@contextmanager
+def stream_processor_lock(provider, oid, timeout):
+    lock_id = md5(provider.url).hexdigest()
+
+    # cache.add fails if the key already exists
+    status = cache.add(lock_id, oid, timeout)
+    try:
+        yield status
+    finally:
+        # release lock if we are the ones that acquired it
+        if status:
+            cache.delete(lock_id)
 
 
+# Tasks that are processing event logs from the blockchain (should
+# have only one at a time)
+@shared_task(bind=True)
+def process_mined_blocks(self):
+    # Conservatively, we can process 10 blocks per second, so let's give
+    # double the time for the lock
+
+    # TODO: make the timeout specific to the chain average block time
+    lock_ttl = (2 * BLOCK_SCAN_RANGE) / 10
+
+    for provider in Web3Provider.available.select_related("chain"):
+        with stream_processor_lock(provider, self.app.oid, lock_ttl) as acquired:
+            if acquired:
+                chain = provider.chain
+                w3: Web3 = make_web3(provider=provider)
+                logger.info(f"Getting blocks for {chain.name}")
+                current_block = w3.eth.block_number
+                start = chain.highest_block
+                stop = min(current_block, chain.highest_block + BLOCK_SCAN_RANGE)
+                for block_number in range(start, stop):
+                    logger.debug(f"Getting block #{block_number} from {chain}")
+                    block_data = w3.eth.get_block(block_number, full_transactions=True)
+                    block_number = block_data.number
+                    logger.info(f"Processing block #{block_number} on {provider}")
+                    celery_pubsub.publish(
+                        "blockchain.mined.block",
+                        chain_id=w3.eth.chain_id,
+                        block_data=block_data,
+                        provider_url=provider.url,
+                    )
+                    chain.highest_block = block_number
+                    logger.debug(f"Updating chain height to {block_number}")
+                chain.save()
+
+
+# Tasks that are meant to be run periodically
 @shared_task
 def reset_inactive_providers():
     Web3Provider.objects.filter(is_active=False).update(synced=False, connected=False)

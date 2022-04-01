@@ -1,13 +1,20 @@
+x-hub20-web-services: &backend_web_service
+  depends_on:
+    - db
+    - redis
+
+x-hub20-background-services: &backend_celery_service
+  depends_on:
+    - db
+    - redis
+    - rabbitmq
+
+
 x-hub20: &backend_service
   image: "hub20:${TAG-latest}"
   build:
     context: .
-  restart: unless-stopped
-  depends_on:
-    redis:
-      condition: service_healthy
-    db:
-      condition: service_healthy
+  restart: on-failure
 
 services:
   db:
@@ -16,15 +23,15 @@ services:
       test: ["CMD", "pg_isready", "-U", "${HUB20_DATABASE_NAME:-hub20}"]
       interval: 5s
       retries: 5
-    restart: unless-stopped
 
-    # Make sure if to match the HUB20_DATABASE_* variables defined above
+    # Make sure to match the HUB20_DATABASE_* variables
+
     environment:
       POSTGRES_DB: "${HUB20_DATABASE_NAME:-hub20}"
       POSTGRES_USER: "${HUB20_DATABASE_USER:-hub20}"
       POSTGRES_PASSWORD: "${HUB20_DATABASE_PASSWORD:-hub20_pass}"
 
-  # Redis for cache, session engine, celery and channels transport
+  # Redis for cache, session engine, channels transport
   redis:
     image: redis:latest
     healthcheck:
@@ -32,12 +39,21 @@ services:
       interval: 5s
       timeout: 30s
       retries: 50
-    restart: unless-stopped
+
+  # RabbitMQ for executing message queue/task management
+  rabbitmq:
+    image: bitnami/rabbitmq:latest
+
+    # Make sure to match the HUB20_QUEUE_* variables
+    environment:
+      RABBITMQ_USERNAME: "${HUB20_BROKER_USER:-hub20}"
+      RABBITMQ_PASSWORD: "${HUB20_BROKER_PASSWORD:-hub20_pass}"
 
   # services that run off the base image
   # Admin backend
   admin:
     <<: *backend_service
+    <<: *backend_web_service
     environment:
       HUB20_URLCONF_MODULE: hub20.admin.urls
 
@@ -50,6 +66,7 @@ services:
   # Web API
   web:
     <<: *backend_service
+    <<: *backend_web_service
     command: >
       /bin/bash -c '
         django-admin migrate;
@@ -60,42 +77,22 @@ services:
   # Celery app
   celery:
     <<: *backend_service
+    <<: *backend_celery_service
     command: celery -A hub20.api worker -l info -E
 
   # Celery beat (periodic tasks)
   celery_beat:
     <<: *backend_service
+    <<: *backend_celery_service
     command: celery -A hub20.api beat -l info -S django
 
-  # Services to run background to listen and process different event streams
-  process_stream_mined_blocks:
-    <<: *backend_service
-    command: django-admin run_stream_processor hub20.apps.blockchain.client.event_streams.process_mined_blocks
+  # # Services to run background to listen and process different event streams
+  # process_stream_pending_transactions:
+  #   <<: *backend_service
+  #   <<: *backend_celery_service
+  #   command: django-admin run_stream_processor hub20.apps.blockchain.client.event_streams.process_pending_transactions --interval 2
 
-  process_stream_pending_transactions:
-    <<: *backend_service
-    command: django-admin run_stream_processor hub20.apps.blockchain.client.event_streams.process_pending_transactions
-
-  process_stream_token_transfer_indexer:
-    <<: *backend_service
-    command: django-admin run_stream_processor hub20.apps.ethereum_money.client.event_streams.process_token_transfer_events
-
-  process_stream_raiden_channel_event_indexer:
-    <<: *backend_service
-    command: django-admin run_stream_processor hub20.apps.raiden.client.event_streams.process_channel_events
-
-  process_stream_raiden_channel_sync:
-    <<: *backend_service
-    command: django-admin run_stream_processor hub20.apps.raiden.client.node.sync_channels
-
-  process_stream_raiden_payment_sync:
-    <<: *backend_service
-    command: django-admin run_stream_processor hub20.apps.raiden.client.node.sync_payments
-
-  process_stream_open_route_transfers:
-    <<: *backend_service
-    command: django-admin run_stream_processor hub20.apps.core.integrations.web3.process_transfers_in_open_routes
-
-  process_stream_pending_open_route_transfers:
-    <<: *backend_service
-    command: django-admin run_stream_processor hub20.apps.core.integrations.web3.process_pending_transfers_in_open_routes
+  # process_stream_pending_open_route_transfers:
+  #   <<: *backend_service
+  #   <<: *backend_celery_service
+  #   command: django-admin run_stream_processor hub20.apps.core.integrations.web3.process_pending_transfers_in_open_routes
