@@ -45,7 +45,7 @@ class EthereumToken(models.Model):
     objects = models.Manager()
     native = QueryManager(address=NULL_ADDRESS)
     ERC20tokens = QueryManager(~Q(address=NULL_ADDRESS))
-    tradeable = QueryManager(chain__providers__is_active=True)
+    tradeable = QueryManager(Q(chain__providers__is_active=True) & Q(is_listed=True))
     listed = QueryManager(is_listed=True)
 
     @property
@@ -88,7 +88,7 @@ class EthereumToken(models.Model):
             chain=chain,
             address=cls.NULL_ADDRESS,
             defaults=dict(
-                is_listed=True,
+                is_listed=False,
                 name=chain.native_token.name,
                 decimals=chain.native_token.decimals,
                 symbol=chain.native_token.symbol,

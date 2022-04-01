@@ -7,7 +7,7 @@ from eth_utils import is_address
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter, SearchFilter
-from rest_framework.mixins import CreateModelMixin, ListModelMixin, RetrieveModelMixin
+from rest_framework.mixins import ListModelMixin, RetrieveModelMixin
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet, ModelViewSet
@@ -49,7 +49,7 @@ class TokenFilter(filters.FilterSet):
         fields = ("chain_id", "symbol", "address", "listed", "native", "stable_tokens", "fiat")
 
 
-class BaseTokenViewSet(GenericViewSet, ListModelMixin, CreateModelMixin, RetrieveModelMixin):
+class BaseTokenViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
     serializer_class = serializers.HyperlinkedEthereumTokenSerializer
     filterset_class = TokenFilter
     filter_backends = (

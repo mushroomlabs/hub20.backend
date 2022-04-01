@@ -57,22 +57,13 @@ services:
     environment:
       HUB20_URLCONF_MODULE: hub20.admin.urls
 
-    command: >
-      /bin/bash -c '
-        django-admin collectstatic --noinput
-        uvicorn hub20.api.asgi:application --port 80 --host 0.0.0.0
-      '
+    command: uvicorn hub20.api.asgi:application --port 80 --host 0.0.0.0
 
   # Web API
   web:
     <<: *backend_service
     <<: *backend_web_service
-    command: >
-      /bin/bash -c '
-        django-admin migrate;
-        django-admin collectstatic --noinput
-        uvicorn hub20.api.asgi:application --port 80 --host 0.0.0.0
-      '
+    command: uvicorn hub20.api.asgi:application --port 80 --host 0.0.0.0
 
   # Celery app
   celery:
