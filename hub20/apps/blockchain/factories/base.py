@@ -170,7 +170,6 @@ class Web3ProviderFactory(factory.django.DjangoModelFactory):
     synced = False
 
     class Meta:
-
         model = Web3Provider
         django_get_or_create = ("chain",)
 

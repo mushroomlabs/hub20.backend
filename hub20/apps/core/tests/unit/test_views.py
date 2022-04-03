@@ -1,7 +1,7 @@
 from decimal import Decimal
 
 from django.test import TestCase
-from django.urls import reverse
+from rest_framework.reverse import reverse
 from rest_framework.test import APIClient
 
 from hub20.apps.blockchain.factories import FAKER
@@ -112,6 +112,31 @@ class UserViewTestCase(TestCase):
         self.assertEqual(len(email_query_response.data), 2)
 
 
+class TokenManagementViewTestCase(TestCase):
+    def setUp(self):
+        self.token = Erc20TokenFactory()
+        self.user = factories.UserFactory()
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+    def test_user_can_not_create_new_token(self):
+        response = self.client.post(
+            reverse("token-list"), data={"chain_id": self.token.chain_id, "address": "0xdeadbeef"}
+        )
+        self.assertEqual(response.status_code, 405)
+
+    def test_user_can_add_existing_token_to_personal_list(self):
+        token_data_response = self.client.get(
+            reverse(
+                "token-detail",
+                kwargs={"chain_id": self.token.chain_id, "address": self.token.address},
+            )
+        )
+        token_url = token_data_response.data["url"]
+        response = self.client.post(reverse("user-token-list"), data={"token": token_url})
+        self.assertEqual(response.status_code, 201)
+
+
 class TokenBalanceViewTestCase(TestCase):
     def setUp(self):
         self.token = Erc20TokenFactory()
@@ -141,7 +166,7 @@ class TokenBalanceViewTestCase(TestCase):
         self.assertEqual(Decimal(response.data["amount"]), 10)
 
 
-class TransferTestCase(TestCase):
+class TransferViewTestCase(TestCase):
     def setUp(self):
         self.user = factories.UserFactory()
         self.client = APIClient()
@@ -245,4 +270,11 @@ class CheckoutViewTestCase(TestCase):
         self.assertTrue("block" in payment)
 
 
-__all__ = ["StoreViewTestCase", "CheckoutViewTestCase"]
+__all__ = [
+    "StoreViewTestCase",
+    "UserStoreViewTestCase",
+    "UserViewTestCase",
+    "TokenBalanceViewTestCase",
+    "TransferViewTestCase",
+    "CheckoutViewTestCase",
+]

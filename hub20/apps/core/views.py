@@ -312,7 +312,7 @@ class UserStoreViewSet(ModelViewSet):
         return store
 
 
-class UserTokenViewSet(BaseTokenViewSet, DestroyModelMixin):
+class UserTokenViewSet(BaseTokenViewSet, CreateModelMixin, DestroyModelMixin):
     permission_classes = (IsAuthenticated,)
     serializer_class = serializers.UserTokenSerializer
 
