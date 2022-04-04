@@ -8,6 +8,7 @@ from django.core.cache import cache
 from django.db.transaction import atomic
 from requests.exceptions import ConnectionError
 from web3 import Web3
+from web3.exceptions import ExtraDataLengthError
 
 from .analytics import MAX_PRIORITY_FEE_TRACKER, get_historical_block_data
 from .app_settings import BLOCK_SCAN_RANGE
@@ -44,28 +45,31 @@ def process_mined_blocks(self):
     lock_ttl = (2 * BLOCK_SCAN_RANGE) / 10
 
     for provider in Web3Provider.available.select_related("chain"):
-        with stream_processor_lock(provider, self.app.oid, lock_ttl) as acquired:
-            if acquired:
-                chain = provider.chain
-                w3: Web3 = make_web3(provider=provider)
-                logger.info(f"Getting blocks for {chain.name}")
-                current_block = w3.eth.block_number
-                start = chain.highest_block
-                stop = min(current_block, chain.highest_block + BLOCK_SCAN_RANGE)
-                for block_number in range(start, stop):
-                    logger.debug(f"Getting block #{block_number} from {chain}")
-                    block_data = w3.eth.get_block(block_number, full_transactions=True)
-                    block_number = block_data.number
-                    logger.info(f"Processing block #{block_number} on {provider}")
-                    celery_pubsub.publish(
-                        "blockchain.mined.block",
-                        chain_id=w3.eth.chain_id,
-                        block_data=block_data,
-                        provider_url=provider.url,
-                    )
-                    chain.highest_block = block_number
-                    logger.debug(f"Updating chain height to {block_number}")
-                chain.save()
+        try:
+            with stream_processor_lock(provider, self.app.oid, lock_ttl) as acquired:
+                if acquired:
+                    chain = provider.chain
+                    w3: Web3 = make_web3(provider=provider)
+                    logger.info(f"Getting blocks for {chain.name}")
+                    current_block = w3.eth.block_number
+                    start = chain.highest_block
+                    stop = min(current_block, chain.highest_block + BLOCK_SCAN_RANGE)
+                    for block_number in range(start, stop):
+                        logger.debug(f"Getting block #{block_number} from {chain}")
+                        block_data = w3.eth.get_block(block_number, full_transactions=True)
+                        block_number = block_data.number
+                        logger.info(f"Processing block #{block_number} on {provider}")
+                        celery_pubsub.publish(
+                            "blockchain.mined.block",
+                            chain_id=w3.eth.chain_id,
+                            block_data=block_data,
+                            provider_url=provider.url,
+                        )
+                        chain.highest_block = block_number
+                        logger.debug(f"Updating chain height to {block_number}")
+                    chain.save()
+        except ExtraDataLengthError:
+            logger.error(f"Failed to get block info from {provider.hostname}")
 
 
 # Tasks that are meant to be run periodically
@@ -124,7 +128,7 @@ def check_providers_are_synced():
         try:
             w3 = make_web3(provider=provider)
             is_synced = bool(not w3.eth.syncing)
-        except ValueError:
+        except (ValueError, AttributeError):
             # The node does not support the eth_syncing method. Assume healthy.
             is_synced = True
         except ConnectionError:
