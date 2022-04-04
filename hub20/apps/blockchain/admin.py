@@ -2,11 +2,36 @@ from typing import Optional
 
 from django import forms
 from django.contrib import admin
+from django.db.models import Q
 from django.http import HttpRequest
+from django.utils.translation import gettext_lazy as _
 
 from . import models
 from .typing import EthereumAccount_T
 from .validators import web3_url_validator
+
+
+class ConnectedChainTokenListFilter(admin.SimpleListFilter):
+    title = _("connected chain")
+
+    parameter_name = "connected"
+
+    def lookups(self, request, model_admin):
+        return (
+            ("yes", "Yes"),
+            ("no", "No"),
+        )
+
+    def queryset(self, request, queryset):
+        selection = self.value()
+
+        if selection is None:
+            return queryset
+
+        connected_q = Q(providers__is_active=True)
+
+        filter_type = queryset.filter if selection == "yes" else queryset.exclude
+        return filter_type(connected_q)
 
 
 class Web3URLField(forms.URLField):
@@ -23,7 +48,7 @@ Web3ProviderForm = forms.modelform_factory(
 @admin.register(models.Chain)
 class ChainAdmin(admin.ModelAdmin):
     list_display = ("id", "name", "is_mainnet", "provider")
-    list_filter = ("is_mainnet",)
+    list_filter = ("is_mainnet", ConnectedChainTokenListFilter)
     readonly_fields = ("highest_block",)
     search_fields = ("name", "id")
 

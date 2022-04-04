@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - admin: new filters for list of tokens
   - admin: new filters for list of stable tokens
   - admin: actions to list/de-list tokens
+  - admin: new filter for listing chains (active providers only)
 
 ### Changed
 
