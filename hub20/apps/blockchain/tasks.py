@@ -20,7 +20,8 @@ logger = logging.getLogger(__name__)
 
 @contextmanager
 def stream_processor_lock(provider, oid, timeout):
-    lock_id = md5(provider.url).hexdigest()
+    logger.info(f"Getting lock for {provider.url}")
+    lock_id = md5(provider.url.encode()).hexdigest()
 
     # cache.add fails if the key already exists
     status = cache.add(lock_id, oid, timeout)

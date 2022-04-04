@@ -64,11 +64,11 @@ class Hub20CeleryConfig:
             "schedule": timedelta(seconds=BLOCK_CREATION_INTERVAL),
         },
         "index-raiden-open-channel-events": {
-            "task": "hub20.apps.raiden.tasks.index_raiden_channel_open_events",
+            "task": "hub20.apps.raiden.tasks.index_channel_open_events",
             "schedule": timedelta(seconds=BLOCK_CREATION_INTERVAL),
         },
         "index-raiden-close-channel-events": {
-            "task": "hub20.apps.raiden.tasks.index_raiden_channel_close_events",
+            "task": "hub20.apps.raiden.tasks.index_channel_close_events",
             "schedule": timedelta(seconds=BLOCK_CREATION_INTERVAL),
         },
         "sync-raiden-channels": {

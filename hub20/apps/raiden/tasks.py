@@ -74,8 +74,8 @@ def index_channel_open_events(self):
                             provider_url=provider.url,
                         )
 
-                event_indexer.last_block = to_block
-                event_indexer.save()
+                    event_indexer.last_block = to_block
+                    event_indexer.save()
 
 
 @shared_task(bind=True)
@@ -114,8 +114,8 @@ def index_channel_close_events(self):
                             provider_url=provider.url,
                         )
 
-                event_indexer.last_block = to_block
-                event_indexer.save()
+                    event_indexer.last_block = to_block
+                    event_indexer.save()
 
 
 @shared_task
