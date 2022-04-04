@@ -42,8 +42,7 @@ class Command(BaseCommand):
         provider = Web3Provider.available.get(chain_id=options["chain_id"])
         w3 = make_web3(provider=provider)
 
-        is_mainnet = provider.chain_id == 1
-        if is_mainnet:
+        if not provider.chain.is_testnet:
             logger.error("Can only mint tokens on testnets")
             return
 

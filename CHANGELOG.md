@@ -11,14 +11,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - admin: new filters for list of stable tokens
   - admin: actions to list/de-list tokens
   - admin: new filter for listing chains (active providers only)
+  - blockchain app: add model for chain metadata, to determine if is
+    test network/rollup/sidechain
 
 ### Changed
-
-  - erc20: tokens are not listed by default. Hub Operators need to list them through the admin
+  - blockchain (tasks): RPC providers for rollups/sidechains do not
+    need to rely on peer count to determine if it is online
+  - erc20: tokens are not listed by default. Hub Operators need to
+    list them through the admin
 
 ### Removed
-
-  - erc20 (API): users are no longer able to add new tokens (potential security risk)
+  - blockchain (models): removed is_mainnet field from Chain.
+  - erc20 (API): users are no longer able to add new tokens (potential
+    security risk)
 
 
 ## [0.4.2] - 2022-03-25

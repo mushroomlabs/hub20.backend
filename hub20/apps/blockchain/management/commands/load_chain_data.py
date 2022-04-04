@@ -31,7 +31,6 @@ class Command(BaseCommand):
                     id=chain_data.chainId,
                     defaults=dict(
                         name=chain_data.name,
-                        is_mainnet=(chain_data.network == "mainnet"),
                         highest_block=0,
                     ),
                 )

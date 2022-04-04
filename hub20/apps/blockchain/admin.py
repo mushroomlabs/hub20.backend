@@ -11,7 +11,7 @@ from .typing import EthereumAccount_T
 from .validators import web3_url_validator
 
 
-class ConnectedChainTokenListFilter(admin.SimpleListFilter):
+class ConnectedChainListFilter(admin.SimpleListFilter):
     title = _("connected chain")
 
     parameter_name = "connected"
@@ -34,6 +34,67 @@ class ConnectedChainTokenListFilter(admin.SimpleListFilter):
         return filter_type(connected_q)
 
 
+class TestChainListFilter(admin.SimpleListFilter):
+    title = _("testnets")
+
+    parameter_name = "testnet"
+
+    def lookups(self, request, model_admin):
+        return (
+            models.Chain.objects.filter(testnets__isnull=False)
+            .distinct()
+            .values_list("id", "name")
+        )
+
+    def queryset(self, request, queryset):
+        selection = self.value()
+
+        if selection is None:
+            return queryset
+
+        return models.Chain.objects.filter(info__testing_for=selection)
+
+
+class RollupListFilter(admin.SimpleListFilter):
+    title = _("rollups")
+
+    parameter_name = "rollup"
+
+    def lookups(self, request, model_admin):
+        return (
+            models.Chain.objects.filter(rollups__isnull=False).distinct().values_list("id", "name")
+        )
+
+    def queryset(self, request, queryset):
+        selection = self.value()
+
+        if selection is None:
+            return queryset
+
+        return models.Chain.objects.filter(info__rollup_for=selection)
+
+
+class SidechainListFilter(admin.SimpleListFilter):
+    title = _("sidechains")
+
+    parameter_name = "sidechain"
+
+    def lookups(self, request, model_admin):
+        return (
+            models.Chain.objects.filter(sidechains__isnull=False)
+            .distinct()
+            .values_list("id", "name")
+        )
+
+    def queryset(self, request, queryset):
+        selection = self.value()
+
+        if selection is None:
+            return queryset
+
+        return models.Chain.objects.filter(info__sidechain_for=selection)
+
+
 class Web3URLField(forms.URLField):
     default_validators = [web3_url_validator]
 
@@ -45,12 +106,25 @@ Web3ProviderForm = forms.modelform_factory(
 )
 
 
+class ChainMetadataInline(admin.StackedInline):
+    model = models.ChainMetadata
+    autocomplete_fields = fields = ("testing_for", "rollup_for", "sidechain_for")
+    fk_name = "chain"
+
+
 @admin.register(models.Chain)
 class ChainAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "is_mainnet", "provider")
-    list_filter = ("is_mainnet", ConnectedChainTokenListFilter)
+    list_display = ("id", "name", "provider")
+    list_filter = (
+        ConnectedChainListFilter,
+        TestChainListFilter,
+        RollupListFilter,
+        SidechainListFilter,
+    )
     readonly_fields = ("highest_block",)
     search_fields = ("name", "id")
+
+    inlines = [ChainMetadataInline]
 
 
 @admin.register(models.Web3Provider)

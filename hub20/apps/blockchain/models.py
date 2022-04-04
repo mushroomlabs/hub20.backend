@@ -27,7 +27,6 @@ def serialize_web3_data(data: AttributeDict):
 class Chain(models.Model):
     id = models.PositiveBigIntegerField(primary_key=True)
     name = models.CharField(max_length=128, default="EVM-compatible network")
-    is_mainnet = models.BooleanField(default=True)
     highest_block = models.PositiveIntegerField()
     objects = models.Manager()
     active = QueryManager(providers__is_active=True)
@@ -40,11 +39,40 @@ class Chain(models.Model):
     def synced(self):
         return self.provider.synced and self.provider.is_active
 
+    @property
+    def is_testnet(self):
+        return self.info.testing_for is not None
+
+    @property
+    def is_rollup(self):
+        return self.info.rollup_for is not None
+
+    @property
+    def is_sidechain(self):
+        return self.info.sidechain_for is not None
+
+    @property
+    def is_scaling_network(self):
+        return self.is_rollup or self.is_sidechain
+
     def __str__(self):
         return f"{self.name} ({self.id})"
 
     class Meta:
         ordering = ("id",)
+
+
+class ChainMetadata(models.Model):
+    chain = models.OneToOneField(Chain, related_name="info", on_delete=models.CASCADE)
+    testing_for = models.ForeignKey(
+        Chain, null=True, blank=True, related_name="testnets", on_delete=models.CASCADE
+    )
+    rollup_for = models.ForeignKey(
+        Chain, null=True, blank=True, related_name="rollups", on_delete=models.CASCADE
+    )
+    sidechain_for = models.ForeignKey(
+        Chain, null=True, blank=True, related_name="sidechains", on_delete=models.CASCADE
+    )
 
 
 class Block(models.Model):
