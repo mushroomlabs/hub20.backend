@@ -352,5 +352,5 @@ class JoinTokenNetworkOrderSerializer(ManagementOrderSerializer):
 
     class Meta:
         model = models.JoinTokenNetworkOrder
-        fields = ("url", "created", "raiden", "token_network", "amount", "result")
-        read_only_fields = ("url", "created", "raiden", "result")
+        fields = ("url", "created", "raiden", "token_network", "amount", "task_result")
+        read_only_fields = ("url", "created", "raiden", "task_result")
