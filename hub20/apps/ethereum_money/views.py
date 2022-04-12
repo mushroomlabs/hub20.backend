@@ -19,7 +19,6 @@ from . import models, serializers, tasks
 
 class TokenFilter(filters.FilterSet):
     chain_id = filters.ModelChoiceFilter(queryset=Chain.active.all())
-    listed = filters.BooleanFilter(label="listed", method="filter_listed")
     native = filters.BooleanFilter(label="native", method="filter_native")
     stable_tokens = filters.BooleanFilter(label="stable", method="filter_stable_tokens")
     fiat = filters.CharFilter(label="fiat", method="filter_fiat")
@@ -29,9 +28,6 @@ class TokenFilter(filters.FilterSet):
         q_symbol = Q(symbol__iexact=value)
         q_chain_name = Q(chain__name__icontains=value)
         return queryset.filter(q_name | q_symbol | q_chain_name)
-
-    def filter_listed(self, queryset, name, value):
-        return queryset.exclude(ethereum_money_tokenlist_tokenlists__isnull=value)
 
     def filter_native(self, queryset, name, value):
         filtered_qs = queryset.filter if value else queryset.exclude
@@ -46,7 +42,7 @@ class TokenFilter(filters.FilterSet):
     class Meta:
         model = models.EthereumToken
         ordering_fields = ("symbol", "chain_id")
-        fields = ("chain_id", "symbol", "address", "listed", "native", "stable_tokens", "fiat")
+        fields = ("chain_id", "symbol", "address", "native", "stable_tokens", "fiat")
 
 
 class BaseTokenViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):

@@ -41,7 +41,7 @@ TOKENLIST_JSON_SCHEMA = {
             "type": "string",
             "description": "The unique identifier of a tag",
             "minLength": 1,
-            "maxLength": 10,
+            "maxLength": 100,
             "pattern": "^[\\w]+$",
             "examples": ["compound", "stablecoin"],
         },
@@ -112,7 +112,7 @@ TOKENLIST_JSON_SCHEMA = {
                     "description": "The name of the tag",
                     "pattern": "^[ \\w]+$",
                     "minLength": 1,
-                    "maxLength": 20,
+                    "maxLength": 40,
                 },
                 "description": {
                     "type": "string",

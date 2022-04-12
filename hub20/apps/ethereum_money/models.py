@@ -79,16 +79,15 @@ class EthereumToken(models.Model):
         return " - ".join(components)
 
     def from_wei(self, wei_amount: Wei) -> EthereumTokenAmount:
-        value = TokenAmount(wei_amount) / (10 ** self.decimals)
+        value = TokenAmount(wei_amount) / (10**self.decimals)
         return EthereumTokenAmount(amount=value, currency=self)
 
     @classmethod
     def make_native(cls, chain: Chain):
-        token, _ = cls.objects.update_or_create(
+        token, _ = cls.objects.get_or_create(
             chain=chain,
             address=cls.NULL_ADDRESS,
             defaults=dict(
-                is_listed=False,
                 name=chain.native_token.name,
                 decimals=chain.native_token.decimals,
                 symbol=chain.native_token.symbol,
@@ -270,7 +269,7 @@ class EthereumTokenAmount:
 
     @property
     def as_wei(self) -> Wei:
-        return Wei(self.amount * (10 ** self.currency.decimals))
+        return Wei(self.amount * (10**self.currency.decimals))
 
     @property
     def as_hex(self) -> str:

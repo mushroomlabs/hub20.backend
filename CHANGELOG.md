@@ -19,11 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     need to rely on peer count to determine if it is online
   - erc20: tokens are not listed by default. Hub Operators need to
     list them through the admin
+  - erc20 (API): only shows listed tokens (the ones approved by operator)
+  - erc20 (tokenlist.org schema): polygon chain uses long tags, increased MaxLength
 
 ### Removed
   - blockchain (models): removed is_mainnet field from Chain.
   - erc20 (API): users are no longer able to add new tokens (potential
     security risk)
+  - erc20 (API) Removed "listed" filter from token list endpoint.
 
 ### Fixed
   - Avoid celery flooding task server with periodic tasks
