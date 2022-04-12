@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - erc20 (API): users are no longer able to add new tokens (potential
     security risk)
 
+### Fixed
+  - Avoid celery flooding task server with periodic tasks
+
 
 ## [0.4.2] - 2022-03-25
 
