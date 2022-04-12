@@ -102,14 +102,18 @@ def check_providers_are_connected():
         logger.info(f"Checking status from {provider.hostname}")
         try:
             w3 = make_web3(provider=provider)
-            is_online = w3.isConnected() and (
+            is_connected = w3.isConnected()
+            is_online = is_connected and (
                 provider.chain.is_scaling_network or w3.net.peer_count > 0
             )
         except ConnectionError:
             is_online = False
         except ValueError:
             # The node does not support the peer count method. Assume healthy.
-            is_online = w3.isConnected()
+            is_online = is_connected
+        except Exception as exc:
+            logger.error(f"Could not check {provider.hostname}: {exc}")
+            continue
 
         if provider.connected and not is_online:
             logger.info(f"Node {provider.hostname} went offline")
