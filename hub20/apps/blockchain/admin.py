@@ -101,20 +101,21 @@ class Web3URLField(forms.URLField):
 
 Web3ProviderForm = forms.modelform_factory(
     model=models.Web3Provider,
-    fields=["chain", "url", "is_active", "connected", "synced"],
+    fields=["chain", "url", "max_block_scan_range", "is_active", "connected", "synced"],
     field_classes={"url": Web3URLField},
 )
 
 
 class ChainMetadataInline(admin.StackedInline):
     model = models.ChainMetadata
-    autocomplete_fields = fields = ("testing_for", "rollup_for", "sidechain_for")
+    autocomplete_fields = ("testing_for", "rollup_for", "sidechain_for")
+    fields = ("short_name", "testing_for", "rollup_for", "sidechain_for")
     fk_name = "chain"
 
 
 @admin.register(models.Chain)
 class ChainAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "provider")
+    list_display = ("name", "short_name", "id", "provider")
     list_filter = (
         ConnectedChainListFilter,
         TestChainListFilter,
@@ -131,7 +132,13 @@ class ChainAdmin(admin.ModelAdmin):
 class Web3ProviderAdmin(admin.ModelAdmin):
     form = Web3ProviderForm
 
-    list_display = ("hostname", "chain", "is_active", "connected", "synced")
+    list_display = (
+        "hostname",
+        "chain",
+        "is_active",
+        "connected",
+        "synced",
+    )
     list_filter = ("is_active", "connected", "synced")
     readonly_fields = ("connected", "synced")
     search_fields = ("url", "chain__name")
@@ -141,6 +148,7 @@ class Web3ProviderAdmin(admin.ModelAdmin):
 class BlockchainExplorerAdmin(admin.ModelAdmin):
     list_display = ("name", "url", "standard")
     list_filter = ("standard",)
+    search_fields = ("url", "chain__name")
 
 
 @admin.register(models.BaseEthereumAccount)

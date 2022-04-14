@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - admin: new filter for listing chains (active providers only)
   - blockchain app: add model for chain metadata, to determine if is
     test network/rollup/sidechain
+  - checkout (API): added endpoint to create new route from checkout
+  - payment order (models): add "reference" field
 
 ### Changed
   - blockchain (tasks): RPC providers for rollups/sidechains do not
@@ -20,13 +22,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - erc20: tokens are not listed by default. Hub Operators need to
     list them through the admin
   - erc20 (API): only shows listed tokens (the ones approved by operator)
-  - erc20 (tokenlist.org schema): polygon chain uses long tags, increased MaxLength
+  - erc20 (tokenlist.org schema): polygon chain uses long tags,
+    increased MaxLength
+  - deposit/payment order: routes are no longer created automatically.
+  - checkout: Checkout instance points to payment order (instead of
+    deriving from it)
 
 ### Removed
   - blockchain (models): removed is_mainnet field from Chain.
   - erc20 (API): users are no longer able to add new tokens (potential
     security risk)
-  - erc20 (API) Removed "listed" filter from token list endpoint.
+  - erc20 (API): removed "listed" filter from token list endpoint.
+  - checkout: removed external_identifier field, as it is serving the
+    same purpose as payment order "reference"
 
 ### Fixed
   - Avoid celery flooding task server with periodic tasks
@@ -62,13 +70,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
  - Support for connections with multiple chains
  - Support for connections with multiple raiden nodes
- - Blockchain endpoint status now provide information about estimated gas fees
- - Ability for hub operators to import [token lists](https://tokenlists.org)
+ - Blockchain endpoint status now provide information about estimated
+   gas fees
+ - Ability for hub operators to import [token
+   lists](https://tokenlists.org)
  - Ability for users to define which users they want to track
  - Faceted / Filtered search for tokens
- - API endpoints to provide meta-data about any token (whether
-   is a stable token or not, if it is wrapper for another contract)
-   and current information in relation to the blockchain status (cost to make a transfer)
+ - API endpoints to provide meta-data about any token (whether is a
+   stable token or not, if it is wrapper for another contract) and
+   current information in relation to the blockchain status (cost to
+   make a transfer)
 
 ### Changed
  - Improved process that listens and handles blockchain events.

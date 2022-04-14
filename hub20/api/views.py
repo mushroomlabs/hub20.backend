@@ -3,7 +3,11 @@ from rest_framework.response import Response
 from rest_framework.reverse import reverse_lazy
 from rest_framework.views import APIView
 
+from hub20.apps.blockchain.models import Chain
+
 from . import VERSION
+
+RAIDEN_DESCRIPTION = "Enables instant and ultra-cheap transfers of ERC20 tokens"
 
 
 class IndexView(APIView):
@@ -22,5 +26,24 @@ class IndexView(APIView):
                 "tokens_url": reverse_lazy("token-list", request=request),
                 "users_url": reverse_lazy("users-list", request=request),
                 "version": VERSION,
+            }
+        )
+
+
+class NetworkIndexView(APIView):
+    """
+    Description of all payment networks supported by this hub
+    """
+
+    permission_classes = (AllowAny,)
+
+    def get(self, request, **kw):
+        active_chains = Chain.active.all()
+        return Response(
+            {
+                "blockchains": [
+                    dict(name=c.name, code=c.short_name, id=c.id) for c in active_chains
+                ],
+                "offchain": [dict(name="Raiden", code="raiden", description=RAIDEN_DESCRIPTION)],
             }
         )

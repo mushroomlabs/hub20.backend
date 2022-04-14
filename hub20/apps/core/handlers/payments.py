@@ -6,13 +6,7 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.utils import timezone
 
-from hub20.apps.blockchain.models import (
-    BaseEthereumAccount,
-    Block,
-    Chain,
-    Transaction,
-    TransactionDataRecord,
-)
+from hub20.apps.blockchain.models import Block, Chain, Transaction, TransactionDataRecord
 from hub20.apps.blockchain.signals import block_sealed
 from hub20.apps.core import tasks
 from hub20.apps.core.choices import PAYMENT_NETWORKS
@@ -25,14 +19,13 @@ from hub20.apps.core.models import (
     InternalPayment,
     Payment,
     PaymentConfirmation,
-    PaymentOrder,
     RaidenPayment,
     RaidenPaymentRoute,
 )
 from hub20.apps.core.settings import app_settings
 from hub20.apps.core.signals import payment_received
 from hub20.apps.ethereum_money.signals import incoming_transfer_broadcast, incoming_transfer_mined
-from hub20.apps.raiden.models import Payment as RaidenNodePayment, Raiden
+from hub20.apps.raiden.models import Payment as RaidenNodePayment
 from hub20.apps.raiden.signals import raiden_payment_received
 from hub20.apps.wallet import get_wallet_model
 
@@ -65,7 +58,8 @@ def _check_for_blockchain_payment_confirmations(block_number):
 
 
 def _publish_block_created_event(chain_id, block_number):
-    for checkout in Checkout.objects.with_blockchain_route(block_number):
+    routes = BlockchainPaymentRoute.objects.in_chain(chain_id).open(block_number=block_number)
+    for checkout in Checkout.objects.filter(order__routes__in=routes):
         logger.debug(
             f"Scheduling publish event for checkout {checkout.id}: block #{block_number} created"
         )
@@ -146,7 +140,7 @@ def on_incoming_transfer_broadcast_send_notification_to_open_checkouts(sender, *
     if not route:
         return
 
-    checkout = Checkout.objects.with_blockchain_route().filter(routes=route).first()
+    checkout = Checkout.objects.filter(order__routes=route).first()
 
     if checkout:
         tasks.publish_checkout_event.delay(
@@ -179,49 +173,6 @@ def on_raiden_payment_received_check_raiden_payments(sender, **kw):
             currency=raiden_payment.token,
             payment=raiden_payment,
         )
-
-
-@receiver(post_save, sender=Deposit)
-@receiver(post_save, sender=PaymentOrder)
-@receiver(post_save, sender=Checkout)
-def on_order_created_set_blockchain_route(sender, **kw):
-
-    if not kw["created"]:
-        return
-
-    deposit = kw["instance"]
-    chain = deposit.currency.chain
-    chain.refresh_from_db()
-    if chain.synced:
-        payment_window = BlockchainPaymentRoute.calculate_payment_window(chain)
-
-        busy_routes = BlockchainPaymentRoute.objects.open().filter(
-            deposit__currency=deposit.currency
-        )
-        available_accounts = BaseEthereumAccount.objects.exclude(blockchain_routes__in=busy_routes)
-
-        account = available_accounts.order_by("?").first() or Wallet.generate()
-
-        BlockchainPaymentRoute.objects.create(
-            account=account, deposit=deposit, chain=chain, payment_window=payment_window
-        )
-    else:
-        logger.warning("Failed to create blockchain route. Chain data not synced")
-
-
-@receiver(post_save, sender=Deposit)
-@receiver(post_save, sender=PaymentOrder)
-@receiver(post_save, sender=Checkout)
-def on_order_created_set_raiden_route(sender, **kw):
-
-    if not kw["created"]:
-        return
-
-    deposit = kw["instance"]
-    raiden = Raiden.objects.first()
-
-    if raiden and raiden.open_channels.filter(token_network__token=deposit.currency).exists():
-        raiden.payment_routes.create(deposit=deposit)
 
 
 @receiver(block_sealed, sender=Block)
@@ -264,9 +215,9 @@ def on_block_added_publish_expired_blockchain_routes(sender, **kw):
 def on_blockchain_payment_received_send_notification(sender, **kw):
     payment = kw["payment"]
 
-    deposit = Deposit.objects.filter(routes__payment=payment).first()
+    deposit = Deposit.objects.filter(routes__payments=payment).first()
 
-    checkout = Checkout.objects.filter(routes__payment=payment).first()
+    checkout = Checkout.objects.filter(order__routes__payments=payment).first()
 
     payment_data = dict(
         amount=str(payment.amount),
@@ -300,7 +251,9 @@ def on_off_chain_payment_create_confirmation(sender, **kw):
 def on_blockchain_payment_received_call_checkout_webhooks(sender, **kw):
     pay = kw["payment"]
 
-    for checkout_id in Checkout.objects.filter(routes__payment=pay).values_list("id", flat=True):
+    for checkout_id in Checkout.objects.filter(order__routes__payments=pay).values_list(
+        "id", flat=True
+    ):
         tasks.call_checkout_webhook.delay(checkout_id)
 
 
@@ -308,7 +261,7 @@ def on_blockchain_payment_received_call_checkout_webhooks(sender, **kw):
 def on_payment_confirmed_call_checkout_webhooks(sender, **kw):
     confirmation = kw["instance"]
 
-    checkouts = Checkout.objects.filter(routes__payment__confirmation=confirmation)
+    checkouts = Checkout.objects.filter(order__routes__payments__confirmation=confirmation)
     for checkout_id in checkouts.values_list("id", flat=True):
         tasks.call_checkout_webhook.delay(checkout_id)
 
@@ -324,7 +277,7 @@ def on_payment_confirmed_publish_checkout(sender, **kw):
     if not payment:
         return
 
-    checkouts = Checkout.objects.filter(routes__payment=payment)
+    checkouts = Checkout.objects.filter(order__routes__payments=payment)
     checkout_id = checkouts.values_list("id", flat=True).first()
 
     if checkout_id is None:
@@ -357,8 +310,6 @@ __all__ = [
     "on_incoming_transfer_broadcast_send_notification_to_active_sessions",
     "on_incoming_transfer_broadcast_send_notification_to_open_checkouts",
     "on_raiden_payment_received_check_raiden_payments",
-    "on_order_created_set_blockchain_route",
-    "on_order_created_set_raiden_route",
     "on_block_added_publish_expired_blockchain_routes",
     "on_block_created_check_confirmed_payments",
     "on_block_sealed_check_confirmed_payments",

@@ -1,0 +1,2 @@
+class RoutingError(Exception):
+    pass

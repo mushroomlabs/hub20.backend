@@ -5,6 +5,7 @@ from django.test import TestCase
 
 from hub20.apps.blockchain.tests.mocks import BlockMock, Web3Mock
 from hub20.apps.core.factories import CheckoutFactory
+from hub20.apps.core.models import BlockchainPaymentRoute
 from hub20.apps.ethereum_money.tasks import record_token_transfers
 from hub20.apps.ethereum_money.tests.mocks import (
     Erc20LogFilterMock,
@@ -27,14 +28,14 @@ class PaymentTransferTestCase(BaseTestCase):
     def test_can_detect_erc20_transfers(self, make_web3_mock, MockWeb3Provider):
 
         checkout = CheckoutFactory()
-        route = checkout.routes.select_subclasses().first()
+        route = BlockchainPaymentRoute.make(deposit=checkout.order)
 
         self.assertIsNotNone(route)
 
         transaction_params = dict(
-            blockNumber=checkout.currency.chain.highest_block,
+            blockNumber=checkout.order.currency.chain.highest_block,
             recipient=route.account.address,
-            amount=checkout.as_token_amount,
+            amount=checkout.order.as_token_amount,
         )
 
         tx_data = Erc20TransferDataMock(**transaction_params)
@@ -51,7 +52,7 @@ class PaymentTransferTestCase(BaseTestCase):
 
         event_data = Erc20LogFilterMock(
             transactionHash=tx_data.hash,
-            amount=checkout.as_token_amount,
+            amount=checkout.order.as_token_amount,
             recipient=route.account.address,
         )
 
@@ -66,7 +67,7 @@ class PaymentTransferTestCase(BaseTestCase):
             provider_url=self.w3.provider.endpoint_uri,
         )
 
-        self.assertEqual(checkout.status, checkout.STATUS.paid)
+        self.assertEqual(checkout.order.status, checkout.order.STATUS.paid)
 
 
 __all__ = ["PaymentTransferTestCase"]

@@ -1,5 +1,6 @@
 from django.urls import path
 from rest_framework.routers import SimpleRouter
+from rest_framework_nested.routers import NestedSimpleRouter
 
 from hub20.apps.ethereum_money.api import TokenRouter
 from hub20.apps.ethereum_money.views import TokenListViewSet, UserTokenListViewSet
@@ -39,6 +40,12 @@ transfer_router = TransferRouter(trailing_slash=False)
 transfer_router.register("my/transfers", views.TransferViewSet, basename="user-transfer")
 transfer_router.register("my/withdrawals", views.WithdrawalViewSet, basename="user-withdrawal")
 
+checkout_router = NestedSimpleRouter(router, "checkout", lookup="checkout")
+checkout_router.register("routes", views.CheckoutRoutesViewSet, basename="checkout-routes")
+
+deposit_router = NestedSimpleRouter(router, "my/deposits", lookup="deposit")
+deposit_router.register("routes", views.DepositRoutesViewSet, basename="deposit-routes")
+
 
 urlpatterns = (
     [
@@ -50,18 +57,14 @@ urlpatterns = (
             views.TokenBalanceView.as_view(),
             name="balance-detail",
         ),
-        path("payment/orders", views.PaymentOrderListView.as_view(), name="payment-order-list"),
-        path(
-            "payment/order/<uuid:pk>",
-            views.PaymentOrderView.as_view(),
-            name="payment-order-detail",
-        ),
         path("accounting/report", views.AccountingReportView.as_view(), name="accounting-report"),
         path("my/settings", views.UserPreferencesView.as_view(), name="user-preferences"),
     ]
     + router.urls
     + token_router.urls
     + transfer_router.urls
+    + checkout_router.urls
+    + deposit_router.urls
 )
 
 

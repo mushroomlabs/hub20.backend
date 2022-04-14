@@ -2,14 +2,18 @@ from typing import Dict
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from ipware import get_client_ip
+from django.db.models import Q
+from django.utils import timezone
 from rest_framework import serializers
 from rest_framework.reverse import reverse
+from rest_framework_nested.relations import NestedHyperlinkedIdentityField
+from rest_framework_nested.serializers import NestedHyperlinkedModelSerializer
 
 from hub20.apps.blockchain.serializers import EthereumAddressField, HexadecimalField
 from hub20.apps.ethereum_money.models import EthereumToken, EthereumTokenAmount
 from hub20.apps.ethereum_money.serializers import (
     EthereumTokenSerializer,
+    HyperlinkedEthereumTokenSerializer,
     HyperlinkedRelatedTokenField,
     HyperlinkedTokenIdentityField,
     HyperlinkedTokenMixin,
@@ -17,8 +21,15 @@ from hub20.apps.ethereum_money.serializers import (
 )
 
 from . import models
+from .exceptions import RoutingError
 
 User = get_user_model()
+
+PAYMENT_ROUTE_TYPES = models.PaymentRoute.__subclasses__()
+
+
+PAYMENT_ROUTE_CHOICES = (c.NETWORK for c in PAYMENT_ROUTE_TYPES)
+DEPOSIT_ROUTE_CHOICES = (c.NETWORK for c in PAYMENT_ROUTE_TYPES if c.NETWORK != "internal")
 
 
 class UserRelatedField(serializers.SlugRelatedField):
@@ -197,37 +208,53 @@ class TransferConfirmationSerializer(serializers.ModelSerializer):
 
 
 class PaymentRouteSerializer(serializers.ModelSerializer):
-    type = serializers.CharField(source="name", read_only=True)
+    network = serializers.SerializerMethodField()
+
+    def get_network(self, obj):
+        return obj.network
+
+    class Meta:
+        model = models.PaymentRoute
+        fields = ("id", "identifier", "network", "is_expired", "is_open", "is_used")
+        read_only_fields = ("id", "network", "identifier", "is_expired", "is_open", "is_used")
+
+    @staticmethod
+    def get_route_model(network: str):
+        """
+        Selects the model (subclass) of PaymentRoute model to use
+        """
+        return {m.NETWORK: m for m in models.PaymentRoute.__subclasses__()}[network]
 
     @staticmethod
     def get_serializer_class(route):
-        return {
-            models.InternalPaymentRoute: InternalPaymentRouteSerializer,
-            models.BlockchainPaymentRoute: BlockchainPaymentRouteSerializer,
-            models.RaidenPaymentRoute: RaidenPaymentRouteSerializer,
-        }.get(type(route), PaymentRouteSerializer)
+        """
+        Finds which derived serializer to use for the route, based on the
+        model in `Meta`
+        """
+        return {c.Meta.model: c for c in PaymentRouteSerializer.__subclasses__()}.get(
+            type(route), PaymentRouteSerializer
+        )
 
 
 class InternalPaymentRouteSerializer(PaymentRouteSerializer):
     class Meta:
         model = models.InternalPaymentRoute
-        fields = read_only_fields = ("recipient", "type")
+        fields = read_only_fields = ("recipient",)
 
 
 class BlockchainPaymentRouteSerializer(PaymentRouteSerializer):
     address = EthereumAddressField(source="account.address", read_only=True)
-    network_id = serializers.IntegerField(source="order.chain_id", read_only=True)
-    start_block = serializers.IntegerField(source="start_block_number", read_only=True)
     expiration_block = serializers.IntegerField(source="expiration_block_number", read_only=True)
 
     class Meta:
         model = models.BlockchainPaymentRoute
-        fields = read_only_fields = (
+        fields = PaymentRouteSerializer.Meta.fields + (
             "address",
-            "network_id",
-            "start_block",
             "expiration_block",
-            "type",
+        )
+        read_only_fields = PaymentRouteSerializer.Meta.read_only_fields + (
+            "address",
+            "expiration_block",
         )
 
 
@@ -236,7 +263,14 @@ class RaidenPaymentRouteSerializer(PaymentRouteSerializer):
 
     class Meta:
         model = models.RaidenPaymentRoute
-        fields = read_only_fields = ("address", "expiration_time", "identifier", "type")
+        fields = PaymentRouteSerializer.Meta.fields + (
+            "address",
+            "expiration_time",
+        )
+        read_only_fields = PaymentRouteSerializer.Meta.read_only_fields + (
+            "address",
+            "expiration_time",
+        )
 
 
 class PaymentSerializer(serializers.ModelSerializer):
@@ -244,6 +278,16 @@ class PaymentSerializer(serializers.ModelSerializer):
     url = serializers.HyperlinkedIdentityField(view_name="payments-detail")
     currency = EthereumTokenSerializer()
     confirmed = serializers.BooleanField(source="is_confirmed", read_only=True)
+
+    @staticmethod
+    def get_serializer_class(payment):
+        """
+        Finds which derived serializer to use for the payment, based on the
+        model in `Meta`
+        """
+        return {c.Meta.model: c for c in PaymentSerializer.__subclasses__()}.get(
+            type(payment), PaymentSerializer
+        )
 
     class Meta:
         model = models.Payment
@@ -315,11 +359,8 @@ class DepositSerializer(serializers.ModelSerializer):
 
     def get_payments(self, obj):
         def get_payment_serializer(payment):
-            return {
-                models.InternalPayment: InternalPaymentSerializer,
-                models.BlockchainPayment: BlockchainPaymentSerializer,
-                models.RaidenPayment: RaidenPaymentSerializer,
-            }.get(type(payment), PaymentSerializer)(payment, context=self.context)
+            serializer_class = PaymentSerializer.get_serializer_class(payment)
+            return serializer_class(payment, context=self.context)
 
         return [get_payment_serializer(payment).data for payment in obj.payments]
 
@@ -345,31 +386,58 @@ class HyperlinkedDepositSerializer(DepositSerializer):
         read_only_fields = DepositSerializer.Meta.read_only_fields
 
 
-class PaymentOrderSerializer(DepositSerializer):
+class DepositRouteSerializer(NestedHyperlinkedModelSerializer, PaymentRouteSerializer):
+    url = NestedHyperlinkedIdentityField(
+        view_name="deposit-routes-detail",
+        parent_lookup_kwargs={
+            "deposit_pk": "deposit_id",
+        },
+    )
+    deposit = serializers.HyperlinkedRelatedField(view_name="user-deposit-detail", read_only=True)
+    network = serializers.ChoiceField(choices=list(DEPOSIT_ROUTE_CHOICES))
+
+    def _get_deposit(self):
+        view = self.context["view"]
+        return models.Deposit.objects.filter(pk=view.kwargs["deposit_pk"]).first()
+
+    def validate(self, data):
+        network = data["network"]
+        route_type = PaymentRouteSerializer.get_route_model(network)
+
+        deposit = self._get_deposit()
+
+        if route_type.objects.filter(deposit=deposit).available().exists():
+            raise serializers.ValidationError(f"Already has valid route for {network} deposits")
+
+        if not route_type.is_usable_for_token(deposit.currency):
+            raise serializers.ValidationError(
+                f"Can not make {network} deposits with {deposit.currency.name}"
+            )
+
+        return data
+
+    def create(self, validated_data):
+        network = validated_data["network"]
+        route_type = PaymentRouteSerializer.get_route_model(network)
+        deposit = self._get_deposit()
+        try:
+            return route_type.make(deposit)
+        except RoutingError:
+            raise serializers.ValidationError(f"Failed to get {network} payment route")
+
+    class Meta:
+        model = models.PaymentRoute
+        fields = ("url", "deposit", "network") + PaymentRouteSerializer.Meta.fields
+        read_only_fields = ("url", "deposit") + PaymentRouteSerializer.Meta.read_only_fields
+
+
+class PaymentOrderSerializer(serializers.ModelSerializer):
+    token = HyperlinkedRelatedTokenField(source="currency")
     amount = TokenValueField()
 
     class Meta:
         model = models.PaymentOrder
-        fields = DepositSerializer.Meta.fields + ("amount",)
-        read_only_fields = DepositSerializer.Meta.read_only_fields
-
-
-class HttpPaymentOrderSerializer(PaymentOrderSerializer):
-    url = serializers.HyperlinkedIdentityField(view_name="payment-order-detail")
-
-    class Meta:
-        model = PaymentOrderSerializer.Meta.model
-        fields = PaymentOrderSerializer.Meta.fields + ("url",)
-        read_only_fields = PaymentOrderSerializer.Meta.read_only_fields
-
-
-class PaymentOrderReadSerializer(PaymentOrderSerializer):
-    url = serializers.HyperlinkedIdentityField(view_name="payment-order-detail")
-
-    class Meta:
-        model = PaymentOrderSerializer.Meta.model
-        fields = PaymentOrderSerializer.Meta.fields + ("url",)
-        read_only_fields = PaymentOrderSerializer.Meta.read_only_fields
+        fields = ("token", "amount", "reference")
 
 
 class PaymentConfirmationSerializer(serializers.ModelSerializer):
@@ -387,39 +455,77 @@ class PaymentConfirmationSerializer(serializers.ModelSerializer):
         fields = read_only_fields = ("created", "token", "amount", "route")
 
 
-class CheckoutSerializer(PaymentOrderSerializer):
+class CheckoutSerializer(serializers.ModelSerializer):
     store = serializers.PrimaryKeyRelatedField(queryset=models.Store.objects.all())
+    token = HyperlinkedRelatedTokenField(source="invoice.currency", write_only=True)
+    amount = TokenValueField(source="invoice.amount", write_only=True)
+    reference = serializers.CharField(source="invoice.reference", write_only=True, allow_null=True)
+    invoice = PaymentOrderSerializer(source="order", read_only=True)
+
+    routes = serializers.SerializerMethodField()
+    payments = serializers.SerializerMethodField()
+
+    def get_routes(self, obj):
+        def get_route_serializer(route):
+            serializer_class = PaymentRouteSerializer.get_serializer_class(route)
+            return serializer_class(route, context=self.context)
+
+        return [get_route_serializer(route).data for route in obj.order.routes.select_subclasses()]
+
+    def get_payments(self, obj):
+        def get_payment_serializer(payment):
+            serializer_class = PaymentSerializer.get_serializer_class(payment)
+            return serializer_class(payment, context=self.context)
+
+        return [get_payment_serializer(payment).data for payment in obj.order.payments]
 
     def validate(self, data):
-        currency = data["currency"]
+        order = data["invoice"]
         store = data["store"]
+        currency = order["currency"]
         if currency not in store.accepted_currencies.all():
-            raise serializers.ValidationError(f"{currency.symbol} is not accepted at {store.name}")
+            raise serializers.ValidationError(f"{currency.name} is not accepted at {store.name}")
 
         return data
 
     def create(self, validated_data):
         request = self.context.get("request")
-        client_ip, _ = get_client_ip(request)
         store = validated_data.pop("store")
+        order_data = validated_data.pop("invoice")
 
         with transaction.atomic():
-            return models.Checkout.objects.create(
-                store=store,
+            order = models.PaymentOrder.objects.create(
                 user=store.owner,
                 session_key=request.session.session_key,
-                requester_ip=client_ip,
-                **validated_data,
+                **order_data,
+            )
+            return models.Checkout.objects.create(
+                store=store,
+                order=order,
             )
 
     class Meta:
         model = models.Checkout
-        fields = PaymentOrderSerializer.Meta.fields + (
+        fields = (
+            "id",
+            "created",
+            "expires_on",
             "store",
-            "external_identifier",
+            "invoice",
+            "payments",
+            "routes",
+            "voucher",
+            "token",
+            "amount",
+            "reference",
+        )
+        read_only_fields = (
+            "id",
+            "created",
+            "expires_on",
+            "invoice",
             "voucher",
         )
-        read_only_fields = PaymentOrderSerializer.Meta.read_only_fields + ("voucher",)
 
 
 class HttpCheckoutSerializer(CheckoutSerializer):
@@ -429,6 +535,57 @@ class HttpCheckoutSerializer(CheckoutSerializer):
         model = models.Checkout
         fields = ("url",) + CheckoutSerializer.Meta.fields
         read_only_fields = CheckoutSerializer.Meta.read_only_fields
+
+
+class CheckoutRouteSerializer(NestedHyperlinkedModelSerializer, PaymentRouteSerializer):
+    url = NestedHyperlinkedIdentityField(
+        view_name="checkout-routes-detail",
+        parent_lookup_kwargs={
+            "checkout_pk": "deposit__paymentorder__checkout__id",
+        },
+    )
+    checkout = serializers.HyperlinkedRelatedField(
+        source="deposit.checkout", view_name="checkout-detail", read_only=True
+    )
+    network = serializers.ChoiceField(choices=list(PAYMENT_ROUTE_CHOICES))
+
+    def _get_checkout(self):
+        view = self.context["view"]
+        return models.Checkout.objects.filter(pk=view.kwargs["checkout_pk"]).first()
+
+    def validate(self, data):
+        network = data["network"]
+        route_type = PaymentRouteSerializer.get_route_model(network)
+
+        checkout = self._get_checkout()
+
+        if checkout.expires_on <= timezone.now():
+            raise serializers.ValidationError("Checkout is already expired")
+
+        checkout_q = Q(deposit__paymentorder__checkout=checkout)
+        if route_type.objects.filter(checkout_q).available().exists():
+            raise serializers.ValidationError(f"Already has valid route for {network} payments")
+
+        if not route_type.is_usable_for_token(checkout.order.currency):
+            raise serializers.ValidationError(
+                f"Can not make {network} payments with {checkout.order.currency.name}"
+            )
+
+        return data
+
+    def create(self, validated_data):
+        network = validated_data["network"]
+        route_type = PaymentRouteSerializer.get_route_model(network)
+        checkout = self._get_checkout()
+        try:
+            return route_type.make(checkout.order)
+        except RoutingError:
+            raise serializers.ValidationError(f"Failed to get {network} payment route")
+
+    class Meta:
+        model = models.PaymentRoute
+        fields = ("url", "checkout", "network") + PaymentRouteSerializer.Meta.fields
+        read_only_fields = ("url", "checkout") + PaymentRouteSerializer.Meta.read_only_fields
 
 
 class StoreSerializer(serializers.ModelSerializer):
@@ -443,7 +600,7 @@ class StoreSerializer(serializers.ModelSerializer):
 
 
 class StoreViewerSerializer(StoreSerializer):
-    accepted_currencies = HyperlinkedRelatedTokenField(many=True)
+    accepted_currencies = HyperlinkedEthereumTokenSerializer(many=True)
 
     class Meta:
         model = models.Store

@@ -26,10 +26,12 @@ class PaymentOrderManagerTestCase(BaseTestCase):
             currency=self.raiden_channel.token_network.token
         )
 
-    def test_order_has_blockchain_route(self):
+    def test_order_can_create_blockchain_route(self):
+        BlockchainPaymentRoute.make(self.order)
         self.assertTrue(PaymentOrder.objects.with_blockchain_route().exists())
 
-    def test_order_has_raiden_route(self):
+    def test_order_can_create_raiden_route(self):
+        RaidenPaymentRoute.make(self.order)
         self.assertTrue(RaidenPaymentRoute.objects.exists())
         with_route = PaymentOrder.objects.with_raiden_route()
         self.assertTrue(with_route.exists())
@@ -39,19 +41,19 @@ class PaymentOrderManagerTestCase(BaseTestCase):
         self.assertFalse(PaymentOrder.objects.paid().filter(id=self.order.id).exists())
 
     def test_order_with_partial_payment_is_open(self):
-        route = BlockchainPaymentRoute.objects.filter(deposit=self.order).first()
+        route = BlockchainPaymentRoute.make(deposit=self.order)
         partial_payment_amount = self.order.as_token_amount * 0.5
         tx = add_token_to_account(route.account, partial_payment_amount)
         PaymentConfirmation.objects.create(payment=tx.blockchainpayment)
         self.assertTrue(BlockchainPaymentRoute.objects.open().exists())
 
     def test_order_with_unconfirmed_payment_is_open(self):
-        route = BlockchainPaymentRoute.objects.filter(deposit=self.order).first()
+        route = BlockchainPaymentRoute.make(deposit=self.order)
         add_token_to_account(route.account, self.order.as_token_amount)
         self.assertTrue(BlockchainPaymentRoute.objects.open().exists())
 
     def test_order_with_multiple_payments_is_not_open(self):
-        route = BlockchainPaymentRoute.objects.filter(deposit=self.order).first()
+        route = BlockchainPaymentRoute.make(deposit=self.order)
         partial_payment_amount = self.order.as_token_amount * 0.5
         first_tx = add_token_to_account(route.account, partial_payment_amount)
         PaymentConfirmation.objects.create(payment=first_tx.blockchainpayment)
@@ -62,7 +64,7 @@ class PaymentOrderManagerTestCase(BaseTestCase):
         self.assertFalse(BlockchainPaymentRoute.objects.open().exists())
 
     def test_order_with_confirmed_payment_is_not_open(self):
-        route = BlockchainPaymentRoute.objects.filter(deposit=self.order).first()
+        route = BlockchainPaymentRoute.make(deposit=self.order)
         tx = add_token_to_account(route.account, self.order.as_token_amount)
         PaymentConfirmation.objects.create(payment=tx.blockchainpayment)
         self.assertFalse(BlockchainPaymentRoute.objects.open().exists())

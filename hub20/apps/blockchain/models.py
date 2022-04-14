@@ -14,7 +14,7 @@ from web3 import Web3
 from web3.datastructures import AttributeDict
 from web3.types import BlockData, TxData, TxReceipt
 
-from .app_settings import START_BLOCK_NUMBER
+from .app_settings import BLOCK_SCAN_RANGE, START_BLOCK_NUMBER
 from .fields import EthereumAddressField, HexField, Web3ProviderURLField
 
 logger = logging.getLogger(__name__)
@@ -38,6 +38,10 @@ class Chain(models.Model):
     @property
     def synced(self):
         return self.provider.synced and self.provider.is_active
+
+    @property
+    def short_name(self):
+        return self.info.short_name
 
     @property
     def is_testnet(self):
@@ -64,6 +68,7 @@ class Chain(models.Model):
 
 class ChainMetadata(models.Model):
     chain = models.OneToOneField(Chain, related_name="info", on_delete=models.CASCADE)
+    short_name = models.SlugField(null=True)
     testing_for = models.ForeignKey(
         Chain, null=True, blank=True, related_name="testnets", on_delete=models.CASCADE
     )
@@ -246,6 +251,7 @@ class Web3Provider(models.Model):
     requires_geth_poa_middleware = models.BooleanField(default=False)
     supports_pending_filters = models.BooleanField(default=False)
     supports_eip1559 = models.BooleanField(default=False)
+    max_block_scan_range = models.PositiveIntegerField(default=BLOCK_SCAN_RANGE)
     is_active = models.BooleanField(default=True)
     synced = models.BooleanField(default=False)
     connected = models.BooleanField(default=False)

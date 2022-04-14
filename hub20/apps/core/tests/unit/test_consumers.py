@@ -95,14 +95,16 @@ def erc20_blockchain_payment(erc20_payment_request):
 @pytest.fixture
 def checkout():
     checkout = CheckoutFactory()
-    checkout.store.accepted_token_list.tokens.add(checkout.currency)
+    checkout.store.accepted_token_list.tokens.add(checkout.order.currency)
     return checkout
 
 
 @pytest.fixture
 def erc20_blockchain_checkout_payment(checkout):
     return Erc20TokenBlockchainPaymentFactory(
-        currency=checkout.currency, amount=checkout.amount, route__deposit=checkout
+        currency=checkout.order.currency,
+        amount=checkout.order.amount,
+        route__deposit=checkout.order,
     )
 
 
@@ -170,7 +172,9 @@ async def test_checkout_receives_transaction_mined_notification(
     payment_data = payment_messages[0]
     assert is_0x_prefixed(payment_data["transaction"])
     assert is_0x_prefixed(payment_data["token"])
-    assert Decimal(payment_data["amount"]) == checkout.amount, "payment amount does not match"
+    assert (
+        Decimal(payment_data["amount"]) == checkout.order.amount
+    ), "payment amount does not match"
 
 
 @pytest.mark.asyncio
@@ -183,8 +187,9 @@ async def test_checkout_receives_transaction_broadcast_notification(
     ok, protocol_or_error = await communicator.connect()
     assert ok, "Failed to connect"
 
-    account = await sync_to_async(deposit_account)(checkout)
-    tx_params = await sync_to_async(deposit_transaction_params)(checkout)
+    order = checkout.order
+    account = await sync_to_async(deposit_account)(order)
+    tx_params = await sync_to_async(deposit_transaction_params)(order)
     tx_data = deposit_tx_data(tx_params)
 
     await sync_to_async(
@@ -192,7 +197,7 @@ async def test_checkout_receives_transaction_broadcast_notification(
     )(
         sender=tx_data.__class__,
         account=account,
-        amount=checkout.as_token_amount,
+        amount=order.as_token_amount,
         transaction_data=tx_data,
     )
 
@@ -211,7 +216,9 @@ async def test_checkout_receives_transaction_broadcast_notification(
     payment_data = payment_messages[0]
     assert is_0x_prefixed(payment_data["transaction"])
     assert is_0x_prefixed(payment_data["token"])
-    assert Decimal(payment_data["amount"]) == checkout.amount, "payment amount does not match"
+    assert (
+        Decimal(payment_data["amount"]) == checkout.order.amount
+    ), "payment amount does not match"
 
 
 @pytest.mark.asyncio

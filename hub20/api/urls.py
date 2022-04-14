@@ -18,7 +18,7 @@ from rest_framework.permissions import AllowAny
 
 from hub20.apps.core.api import urlpatterns as core_urlpatterns
 
-from .views import IndexView
+from .views import IndexView, NetworkIndexView
 
 
 def make_auth_view(url_path: str, view_class, view_name: str) -> Callable:
@@ -38,6 +38,7 @@ urlpatterns = [
     make_auth_view("session/logout", LogoutView, "rest_logout"),
     path("my/profile", UserDetailsView.as_view(), name="rest_user_details"),
     path("register/", include("dj_rest_auth.registration.urls")),
+    path("networks", NetworkIndexView.as_view(), name="network-index"),
     path("networks/blockchains/", include("hub20.apps.blockchain.api", namespace="blockchain")),
     path("networks/raiden/", include("hub20.apps.raiden.api")),
     path("", IndexView.as_view(), name="index"),

@@ -2,6 +2,7 @@ import logging
 
 import requests
 from django.core.management.base import BaseCommand
+from django.template.defaultfilters import slugify
 
 from hub20.apps.blockchain import models
 from hub20.apps.blockchain.schemas import chainlist
@@ -34,6 +35,11 @@ class Command(BaseCommand):
                         highest_block=0,
                     ),
                 )
+
+                models.ChainMetadata.objects.update_or_create(
+                    chain=chain, defaults={"short_name": slugify(chain_data.shortName)}
+                )
+
                 native_token_data = chain_data.nativeCurrency
                 models.NativeToken.objects.update_or_create(
                     chain=chain, defaults=native_token_data.dict()

@@ -5,11 +5,13 @@ from rest_framework.reverse import reverse
 from rest_framework.test import APIClient
 
 from hub20.apps.blockchain.factories import FAKER
-from hub20.apps.core import factories
+from hub20.apps.core import choices, factories
 from hub20.apps.core.factories import (
+    CheckoutFactory,
     Erc20TokenBlockchainPaymentFactory,
     Erc20TokenPaymentConfirmationFactory,
 )
+from hub20.apps.core.models import BlockchainPaymentRoute
 from hub20.apps.ethereum_money.factories import Erc20TokenAmountFactory, Erc20TokenFactory
 
 
@@ -234,16 +236,16 @@ class CheckoutViewTestCase(TestCase):
         amount = Erc20TokenAmountFactory(currency=self.token)
 
         url = reverse("checkout-list")
+
         post_data = {
             "amount": amount.amount,
             "token": reverse(
                 "token-detail",
-                kwargs=dict(address=amount.currency.address, chain_id=amount.currency.chain_id),
+                kwargs=dict(address=self.token.address, chain_id=self.token.chain_id),
             ),
             "store": self.store.id,
-            "external_identifier": "API Test",
+            "reference": "API Test",
         }
-
         response = self.client.post(url, post_data)
         self.assertEqual(response.status_code, 201, response.data)
 
@@ -255,7 +257,7 @@ class CheckoutViewTestCase(TestCase):
 
     def test_payment_serializer(self):
         checkout = factories.CheckoutFactory(store=self.store)
-        route = checkout.routes.select_subclasses().first()
+        route = BlockchainPaymentRoute.make(deposit=checkout.order)
 
         Erc20TokenBlockchainPaymentFactory(route=route)
 
@@ -270,6 +272,28 @@ class CheckoutViewTestCase(TestCase):
         self.assertTrue("block" in payment)
 
 
+class CheckoutRoutesViewTestCase(TestCase):
+    def setUp(self):
+        self.checkout = CheckoutFactory()
+
+    def test_can_add_route(self):
+        url = reverse("checkout-routes-list", kwargs={"checkout_pk": self.checkout.pk})
+
+        post_data = {"network": BlockchainPaymentRoute.NETWORK}
+        response = self.client.post(url, post_data)
+        self.assertEqual(response.status_code, 201, response.data)
+
+    def test_can_not_open_multiple_routes_on_same_network(self):
+        url = reverse("checkout-routes-list", kwargs={"checkout_pk": self.checkout.pk})
+
+        post_data = {"network": BlockchainPaymentRoute.NETWORK}
+        first_route_response = self.client.post(url, post_data)
+        self.assertEqual(first_route_response.status_code, 201, first_route_response.data)
+
+        second_route_response = self.client.post(url, post_data)
+        self.assertEqual(second_route_response.status_code, 400, first_route_response.data)
+
+
 __all__ = [
     "StoreViewTestCase",
     "UserStoreViewTestCase",
@@ -277,4 +301,5 @@ __all__ = [
     "TokenBalanceViewTestCase",
     "TransferViewTestCase",
     "CheckoutViewTestCase",
+    "CheckoutRoutesViewTestCase",
 ]

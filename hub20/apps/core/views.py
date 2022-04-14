@@ -1,7 +1,5 @@
-from typing import Optional
-
 from django.contrib.auth import get_user_model
-from django.db.models import BooleanField, Case, ProtectedError, Value, When
+from django.db.models import BooleanField, Case, Value, When
 from django.db.models.query import QuerySet
 from django.http import Http404
 from django.shortcuts import get_object_or_404
@@ -17,7 +15,6 @@ from rest_framework.mixins import (
 )
 from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.serializers import Serializer
 from rest_framework.views import APIView
 from rest_framework.viewsets import GenericViewSet, ModelViewSet
 
@@ -31,38 +28,6 @@ from .filters import DepositFilter, UserFilter
 from .permissions import IsStoreOwner
 
 User = get_user_model()
-
-
-class ReadWriteSerializerMixin(generics.GenericAPIView):
-    """
-    Overrides get_serializer_class to choose the read serializer
-    for GET requests and the write serializer for POST requests.
-
-    Set read_serializer_class and write_serializer_class attributes on a
-    generic APIView
-    """
-
-    read_serializer_class: Optional[Serializer] = None
-    write_serializer_class: Optional[Serializer] = None
-
-    def get_serializer_class(self) -> Serializer:
-        if self.request and self.request.method in ["POST", "PUT", "PATCH"]:
-            return self.get_write_serializer_class()
-        return self.get_read_serializer_class()
-
-    def get_read_serializer_class(self) -> Serializer:
-        assert self.read_serializer_class is not None, (
-            "'%s' should either include a `read_serializer_class` attribute,"
-            "or override the `get_read_serializer_class()` method." % self.__class__.__name__
-        )
-        return self.read_serializer_class
-
-    def get_write_serializer_class(self) -> Serializer:
-        assert self.write_serializer_class is not None, (
-            "'%s' should either include a `write_serializer_class` attribute,"
-            "or override the `get_write_serializer_class()` method." % self.__class__.__name__
-        )
-        return self.write_serializer_class
 
 
 class AccountCreditEntryList(generics.ListAPIView):
@@ -98,56 +63,18 @@ class DepositViewSet(GenericViewSet, ListModelMixin, CreateModelMixin, RetrieveM
         return get_object_or_404(models.Deposit, pk=self.kwargs.get("pk"), user=self.request.user)
 
 
-class BaseDepositView:
+class DepositRoutesViewSet(GenericViewSet, ListModelMixin, CreateModelMixin, RetrieveModelMixin):
+    """
+    Manages routes related to a deposit
+    """
+
     permission_classes = (IsAuthenticated,)
-    serializer_class = serializers.DepositSerializer
+    serializer_class = serializers.DepositRouteSerializer
+    lookup_value_regex = "[0-9a-f-]{36}"
 
-
-class DepositListView(BaseDepositView, generics.ListCreateAPIView):
-    filterset_class = DepositFilter
-    filter_backends = (
-        OrderingFilter,
-        DjangoFilterBackend,
-    )
-    ordering = "-created"
-
-    def get_queryset(self) -> QuerySet:
-        return self.request.user.deposit_set.all()
-
-
-class DepositView(BaseDepositView, generics.RetrieveAPIView):
-    def get_object(self) -> models.Deposit:
-        return get_object_or_404(models.Deposit, pk=self.kwargs.get("pk"), user=self.request.user)
-
-
-class BasePaymentOrderView(ReadWriteSerializerMixin):
-    read_serializer_class = serializers.PaymentOrderReadSerializer
-    write_serializer_class = serializers.PaymentOrderSerializer
-
-
-class PaymentOrderListView(BasePaymentOrderView, generics.ListCreateAPIView):
-    permission_classes = (IsAuthenticated,)
-
-    def get_queryset(self) -> QuerySet:
-        return models.PaymentOrder.objects.filter(user=self.request.user)
-
-
-class PaymentOrderView(BasePaymentOrderView, generics.RetrieveDestroyAPIView):
-    permission_classes = (IsAuthenticated,)
-
-    def get_object(self) -> models.PaymentOrder:
-        return get_object_or_404(
-            models.PaymentOrder, pk=self.kwargs.get("pk"), user=self.request.user
-        )
-
-    def destroy(self, request, pk=None):
-        try:
-            return super().destroy(request, pk=pk)
-        except ProtectedError:
-            return Response(
-                "Order has either been paid or has open routes and can not be canceled",
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+    def get_queryset(self, *args, **kw):
+        deposit_id = self.kwargs["deposit_pk"]
+        return models.PaymentRoute.objects.filter(deposit_id=deposit_id).select_subclasses()
 
 
 class TokenBrowserViewSet(TokenViewSet):
@@ -189,7 +116,7 @@ class TokenBrowserViewSet(TokenViewSet):
         except AttributeError:
             raise Http404
 
-    @action(detail=True, permission_classes=(IsAuthenticated,))
+    @action(detail=True)
     def routes(self, request, **kwargs):
         """
         Returns list of all routes that can be used for deposits/withdrawals in the hub
@@ -254,6 +181,22 @@ class CheckoutViewSet(GenericViewSet, CreateModelMixin, RetrieveModelMixin):
 
     def get_object(self):
         return get_object_or_404(models.Checkout, id=self.kwargs["pk"])
+
+
+class CheckoutRoutesViewSet(GenericViewSet, ListModelMixin, CreateModelMixin, RetrieveModelMixin):
+    """
+    Manages routes related to a checkout
+    """
+
+    permission_classes = (AllowAny,)
+    serializer_class = serializers.CheckoutRouteSerializer
+    lookup_value_regex = "[0-9a-f-]{36}"
+
+    def get_queryset(self, *args, **kw):
+        checkout_id = self.kwargs["checkout_pk"]
+        return models.PaymentRoute.objects.filter(
+            deposit__paymentorder__checkout=checkout_id
+        ).select_subclasses()
 
 
 class PaymentViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):

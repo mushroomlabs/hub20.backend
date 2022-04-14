@@ -7,10 +7,17 @@ from Crypto.PublicKey import RSA
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils import timezone
+from model_utils.models import TimeStampedModel
 
 from hub20.apps.ethereum_money.models import EthereumToken, UserTokenList
 
+from ..settings import app_settings
 from .payments import PaymentOrder
+
+
+def calculate_checkout_expiration_time():
+    return timezone.now() + datetime.timedelta(seconds=app_settings.Payment.checkout_lifetime)
 
 
 class Store(models.Model):
@@ -29,8 +36,11 @@ class Store(models.Model):
     @property
     def accepted_currencies(self):
         if self.accepted_token_list:
-            return self.accepted_token_list.tokens.all()
-        return EthereumToken.tradeable.all()
+            qs = self.accepted_token_list.tokens.all()
+        else:
+            qs = EthereumToken.tradeable.all()
+
+        return qs.filter(chain__providers__is_active=True)
 
     def issue_jwt(self, **data):
         data.update(
@@ -68,31 +78,36 @@ class StoreRSAKeyPair(models.Model):
         return pair
 
 
-class Checkout(PaymentOrder):
+class Checkout(TimeStampedModel):
+    id = models.UUIDField(default=uuid.uuid4, primary_key=True)
+    expires_on = models.DateTimeField(default=calculate_checkout_expiration_time)
+    order = models.OneToOneField(PaymentOrder, related_name="checkout", on_delete=models.CASCADE)
     store = models.ForeignKey(Store, on_delete=models.CASCADE)
-    external_identifier = models.TextField()
-    requester_ip = models.GenericIPAddressField(null=True)
 
     @property
     def voucher_data(self):
         return {
             "checkout_id": str(self.id),
-            "external_identifier": self.external_identifier,
-            "token": {"symbol": self.currency.symbol, "address": self.currency.address},
+            "reference": self.order.reference,
+            "token": {
+                "symbol": self.order.currency.symbol,
+                "address": self.order.currency.address,
+                "chain_id": self.order.currency.chain_id,
+            },
             "payments": [
                 {
                     "id": str(p.id),
                     "amount": str(p.amount),
                     "confirmed": p.is_confirmed,
                     "identifier": p.identifier,
-                    "route": p.route.get_route_name(),
+                    "route": p.route.network,
                 }
-                for p in self.payments
+                for p in self.order.payments
             ],
-            "total_amount": str(self.amount),
-            "total_confirmed": str(self.total_confirmed),
-            "is_paid": self.is_paid,
-            "is_confirmed": self.is_confirmed,
+            "total_amount": str(self.order.amount),
+            "total_confirmed": str(self.order.total_confirmed),
+            "is_paid": self.order.is_paid,
+            "is_confirmed": self.order.is_confirmed,
         }
 
     @property
@@ -100,11 +115,11 @@ class Checkout(PaymentOrder):
         return self.store.issue_jwt(**self.voucher_data)
 
     def clean(self):
-        if self.store.owner != self.user:
+        if self.store.owner != self.order.user:
             raise ValidationError("Creator of payment order must be the same as store owner")
 
-        if self.currency not in self.store.accepted_token_list.tokens.all():
-            raise ValidationError(f"{self.store.name} does not accept payment in {self.currency}")
+        if self.order.currency not in self.store.accepted_token_list.tokens.all():
+            raise ValidationError(f"{self.store.name} does not accept {self.order.currency.name}")
 
 
 __all__ = ["Store", "StoreRSAKeyPair", "Checkout"]

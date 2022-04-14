@@ -35,6 +35,7 @@ class ChainSerializer(serializers.ModelSerializer):
             "url",
             "id",
             "name",
+            "short_name",
             "token",
             "explorers",
             "status",

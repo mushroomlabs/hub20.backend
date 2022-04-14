@@ -53,7 +53,7 @@ class BaseTestCase(TestCase):
 class BlockchainPaymentTestCase(BaseTestCase):
     def setUp(self):
         self.order = Erc20TokenPaymentOrderFactory()
-        self.blockchain_route = BlockchainPaymentRoute.objects.filter(deposit=self.order).first()
+        self.blockchain_route = BlockchainPaymentRoute.make(deposit=self.order)
         self.chain = self.blockchain_route.chain
 
     def test_transaction_sets_payment_as_received(self):
@@ -91,10 +91,10 @@ class BlockchainPaymentTestCase(BaseTestCase):
 class CheckoutTestCase(BaseTestCase):
     def setUp(self):
         self.checkout = CheckoutFactory()
-        self.checkout.store.accepted_token_list.tokens.add(self.checkout.currency)
+        self.checkout.store.accepted_token_list.tokens.add(self.checkout.order.currency)
 
     def test_checkout_user_and_store_owner_are_the_same(self):
-        self.assertEqual(self.checkout.store.owner, self.checkout.user)
+        self.assertEqual(self.checkout.store.owner, self.checkout.order.user)
 
     def test_checkout_currency_must_be_accepted_by_store(self):
         self.checkout.clean()
@@ -110,7 +110,7 @@ class RaidenPaymentTestCase(BaseTestCase):
 
         self.channel = ChannelFactory(token_network=token_network)
         self.order = Erc20TokenPaymentOrderFactory(currency=token_network.token)
-        self.raiden_route = RaidenPaymentRoute.objects.filter(deposit=self.order).first()
+        self.raiden_route = RaidenPaymentRoute.make(deposit=self.order)
 
     def test_order_has_raiden_route(self):
         self.assertIsNotNone(self.raiden_route)

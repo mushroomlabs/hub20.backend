@@ -15,6 +15,7 @@ class AppSettings:
         minimum_confirmations = 5
         blockchain_route_lifetime = 100  # In blocks
         raiden_route_lifetime = 15 * 60  # In seconds
+        checkout_lifetime = 15 * 60  # In seconds
 
     class Raiden:
         minimum_ether_required = Decimal("0.025")

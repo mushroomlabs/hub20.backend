@@ -1,11 +1,7 @@
 import factory
 from factory import fuzzy
 
-from hub20.apps.blockchain.factories import (
-    EthereumProvider,
-    SyncedChainFactory,
-    TransactionFactory,
-)
+from hub20.apps.blockchain.factories import EthereumProvider, TransactionFactory
 from hub20.apps.core import models
 from hub20.apps.ethereum_money.factories import Erc20TokenFactory, ETHFactory
 from hub20.apps.wallet.factories import EthereumAccountFactory
@@ -18,6 +14,7 @@ factory.Faker.add_provider(EthereumProvider)
 class PaymentOrderFactory(factory.django.DjangoModelFactory):
     user = factory.SubFactory(UserFactory)
     amount = fuzzy.FuzzyDecimal(0, 10, precision=6)
+    reference = factory.fuzzy.FuzzyText(length=30, prefix="order-")
 
     class Meta:
         abstract = False
@@ -41,9 +38,11 @@ class Erc20TokenPaymentOrderFactory(PaymentOrderFactory):
 class EtherBlockchainPaymentRouteFactory(factory.django.DjangoModelFactory):
     deposit = factory.SubFactory(EtherPaymentOrderFactory)
     account = factory.SubFactory(EthereumAccountFactory)
-    chain = factory.SubFactory(SyncedChainFactory)
     payment_window = factory.LazyAttribute(
-        lambda obj: (obj.chain.highest_block, obj.chain.highest_block + 100)
+        lambda obj: (
+            obj.deposit.currency.chain.highest_block,
+            obj.deposit.currency.chain.highest_block + 100,
+        )
     )
 
     class Meta:
