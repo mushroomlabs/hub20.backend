@@ -57,8 +57,12 @@ def _check_for_blockchain_payment_confirmations(block_number):
         PaymentConfirmation.objects.create(payment=payment)
 
 
-def _publish_block_created_event(chain_id, block_number):
+def _publish_block_created_event(chain_id, block_data):
+    block_number = block_data.get("number")
     routes = BlockchainPaymentRoute.objects.in_chain(chain_id).open(block_number=block_number)
+
+    tasks.notify_block_created.delay(chain_id, block_data)
+
     for checkout in Checkout.objects.filter(order__routes__in=routes):
         logger.debug(
             f"Scheduling publish event for checkout {checkout.id}: block #{block_number} created"
@@ -179,7 +183,8 @@ def on_raiden_payment_received_check_raiden_payments(sender, **kw):
 def on_block_sealed_publish_block_created_event(sender, **kw):
     block_data = kw["block_data"]
     chain_id = kw["chain_id"]
-    _publish_block_created_event(chain_id=chain_id, block_number=block_data.get("number"))
+    logger.debug(f"Handling block sealed notification of new block on chain #{chain_id}")
+    _publish_block_created_event(chain_id=chain_id, block_data=block_data)
 
 
 @receiver(block_sealed, sender=Block)
@@ -195,12 +200,13 @@ def on_block_created_check_confirmed_payments(sender, **kw):
         _check_for_blockchain_payment_confirmations(block.number)
 
 
-@receiver(post_save, sender=Block)
+@receiver(block_sealed, sender=Block)
 def on_block_added_publish_expired_blockchain_routes(sender, **kw):
-    block = kw["instance"]
+    block_data = kw["block_data"]
+    block_number = block_data["number"]
 
     expiring_routes = BlockchainPaymentRoute.objects.filter(
-        payment_window__endswith=block.number - 1
+        payment_window__endswith=block_number - 1
     )
 
     for route in expiring_routes:

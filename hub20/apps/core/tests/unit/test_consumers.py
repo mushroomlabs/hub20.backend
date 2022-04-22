@@ -9,7 +9,8 @@ from eth_utils import is_0x_prefixed
 from web3 import Web3
 
 from hub20.apps.blockchain.factories import BlockFactory
-from hub20.apps.blockchain.models import BaseEthereumAccount, Chain
+from hub20.apps.blockchain.models import BaseEthereumAccount, Block, Chain
+from hub20.apps.blockchain.signals import block_sealed
 from hub20.apps.blockchain.tests.mocks import BlockMock
 from hub20.apps.core import handlers
 from hub20.apps.core.api import consumer_patterns
@@ -139,6 +140,36 @@ async def test_session_receives_token_deposit_received(
 
     payment_data = payment_message["data"]
     assert is_0x_prefixed(payment_data["transaction"])
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_checkout_receives_block_created_notification(
+    checkout, erc20_blockchain_checkout_payment
+):
+    communicator = WebsocketCommunicator(application, f"checkout/{checkout.id}")
+
+    ok, protocol_or_error = await communicator.connect()
+    assert ok, "Failed to connect"
+
+    block_data = BlockMock()
+
+    await sync_to_async(block_sealed.send)(
+        sender=Block, chain_id=checkout.order.currency.chain_id, block_data=block_data
+    )
+
+    messages = []
+    while not await communicator.receive_nothing(timeout=0.25):
+        messages.append(await communicator.receive_json_from())
+
+    await communicator.disconnect()
+
+    assert len(messages) != 0, "we should have received something here"
+
+    block_created_messages = [
+        msg for msg in messages if msg["event"] == Events.BLOCKCHAIN_BLOCK_CREATED.value
+    ]
+    assert len(block_created_messages) == 1, "we should have received one block created message"
 
 
 @pytest.mark.asyncio

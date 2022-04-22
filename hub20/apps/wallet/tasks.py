@@ -81,19 +81,16 @@ def update_all_wallet_balances():
 
 
 @shared_task
-def update_wallet_token_balances(chain_id, event_data, provider_url):
+def update_wallet_token_balances(chain_id, wallet_address, event_data, provider_url):
     token_address = event_data.address
     token = EthereumToken.objects.filter(chain_id=chain_id, address=token_address).first()
 
     if not token:
         return
 
-    sender = event_data.args._from
-    recipient = event_data.args._to
+    wallet = Wallet.objects.filter(address=wallet_address).first()
 
-    affected_wallets = Wallet.objects.filter(address__in=[sender, recipient])
-
-    if not affected_wallets.exists():
+    if not wallet:
         return
 
     provider = Web3Provider.objects.get(url=provider_url)
@@ -101,10 +98,7 @@ def update_wallet_token_balances(chain_id, event_data, provider_url):
 
     block_data = w3.eth.get_block(event_data.blockNumber, full_transactions=True)
 
-    amount = token.from_wei(event_data.args._value)
-
-    for wallet in affected_wallets:
-        _get_erc20_token_balance(wallet=wallet, token=amount.currency, block_data=block_data)
+    _get_erc20_token_balance(wallet=wallet, token=token, block_data=block_data)
 
 
 @shared_task

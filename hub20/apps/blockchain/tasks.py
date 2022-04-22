@@ -6,12 +6,13 @@ import celery_pubsub
 from celery import shared_task
 from django.core.cache import cache
 from django.db.transaction import atomic
-from requests.exceptions import ConnectionError
+from requests.exceptions import ConnectionError, HTTPError
 from web3 import Web3
 from web3.exceptions import ExtraDataLengthError
+from websockets.exceptions import InvalidStatusCode
 
 from .analytics import MAX_PRIORITY_FEE_TRACKER, get_historical_block_data
-from .app_settings import BLOCK_SCAN_RANGE
+from .app_settings import BLOCK_SCAN_RANGE, WEB3_REQUEST_TIMEOUT
 from .client import inspect_web3, make_web3
 from .models import BaseEthereumAccount, Block, Transaction, Web3Provider
 from .signals import block_sealed
@@ -19,43 +20,72 @@ from .signals import block_sealed
 logger = logging.getLogger(__name__)
 
 
-@contextmanager
-def stream_processor_lock(provider, oid, timeout):
-    logger.info(f"Getting lock for {provider.url}")
-    lock_id = md5(provider.url.encode()).hexdigest()
+STREAM_PROCESSOR_LOCK_INTERVAL = 2 * WEB3_REQUEST_TIMEOUT  # in seconds
 
-    # cache.add fails if the key already exists
-    status = cache.add(lock_id, oid, timeout)
+
+class ProviderTaskLock:
+    def __init__(self, task, provider, timeout=STREAM_PROCESSOR_LOCK_INTERVAL):
+        self.task = task
+        self.provider = provider
+        self.timeout = timeout
+        self.is_acquired = False
+
+        hsh = md5(f"{self.provider.hostname}-{self.task.name}".encode())
+        self.key = hsh.hexdigest()
+
+    def acquire(self):
+        # cache.add fails if the key already exists
+        self.is_acquired = cache.add(self.key, self.task.request.id, self.timeout)
+
+    def refresh(self):
+        logger.debug(f"Refreshing lock for {self.provider.hostname} on {self.task.name}")
+        self.is_acquired = self.is_acquired and cache.touch(self.key, self.timeout)
+
+    def release(self):
+        if self.is_acquired:
+            logger.debug(f"Releasing lock for {self.provider.hostname} on {self.task.name}")
+            cache.delete(self.key)
+
+
+@contextmanager
+def stream_processor_lock(task, provider, timeout=STREAM_PROCESSOR_LOCK_INTERVAL):
+    """
+    The context manager should be called from any non-idempotent
+    task that process incoming data from a provider. It creates a lock for
+    the exclusive task/provider pair which expires with `timeout` seconds.
+    If the task may run for a indetermined period, it can make calls
+    to lock.refresh in order to reset the lock timer.
+    """
+
+    logger.debug(f"Attempting lock for {provider.hostname} on task {task.name}")
+    lock = ProviderTaskLock(task=task, provider=provider, timeout=timeout)
+
+    lock.acquire()
+
     try:
-        yield status
+        yield lock
     finally:
-        # release lock if we are the ones that acquired it
-        if status:
-            cache.delete(lock_id)
+        lock.release()
 
 
 # Tasks that are processing event logs from the blockchain (should
 # have only one at a time)
 @shared_task(bind=True)
 def process_mined_blocks(self):
-    # Conservatively, we can process 10 blocks per second, so let's give
-    # double the time for the lock
-
-    # TODO: make the timeout specific to the chain average block time
-    lock_ttl = (2 * BLOCK_SCAN_RANGE) / 10
-
     for provider in Web3Provider.available.select_related("chain"):
+        logger.debug(f"Running task {self.name} by {provider.hostname}")
         try:
-            with stream_processor_lock(provider, self.app.oid, lock_ttl) as acquired:
-                if acquired:
+            with stream_processor_lock(task=self, provider=provider) as lock:
+                if lock.is_acquired:
+                    logger.debug(f"Lock acquired for task {self.name} by {provider.hostname}")
                     chain = provider.chain
                     w3: Web3 = make_web3(provider=provider)
-                    logger.info(f"Getting blocks for {chain.name}")
+                    logger.info(f"Getting blocks from {provider.hostname}")
                     current_block = w3.eth.block_number
                     start = chain.highest_block
                     stop = min(current_block, chain.highest_block + BLOCK_SCAN_RANGE)
                     for block_number in range(start, stop):
-                        logger.debug(f"Getting block #{block_number} from {chain}")
+                        logger.debug(f"Getting block #{block_number} from {provider.hostname}")
                         block_data = w3.eth.get_block(block_number, full_transactions=True)
                         block_number = block_data.number
                         logger.info(f"Processing block #{block_number} on {provider}")
@@ -65,11 +95,22 @@ def process_mined_blocks(self):
                             block_data=block_data,
                             provider_url=provider.url,
                         )
-                        chain.highest_block = block_number
                         logger.debug(f"Updating chain height to {block_number}")
+                        chain.highest_block = block_number
+                        lock.refresh()
+
                     chain.save()
-        except ExtraDataLengthError:
-            logger.error(f"Failed to get block info from {provider.hostname}")
+                else:
+                    logger.debug(f"Failed to get lock for {provider.hostname}")
+        except ExtraDataLengthError as exc:
+            if provider.requires_geth_poa_middleware:
+                logger.error(f"Failed to get block info from {provider.hostname}: {exc}")
+            else:
+                logger.warning(f"{provider.hostname} seems to use POA middleware. Updating it.")
+                provider.requires_geth_poa_middleware = True
+                provider.save()
+        except InvalidStatusCode:
+            logger.error(f"Could not connect with {provider.hostname} via websocket")
 
 
 # Tasks that are meant to be run periodically
@@ -137,10 +178,12 @@ def check_providers_are_synced():
         except (ValueError, AttributeError):
             # The node does not support the eth_syncing method. Assume healthy.
             is_synced = True
-        except ConnectionError:
+        except (ConnectionError, HTTPError) as exc:
+            logger.error(f"Failed to connect to {provider.hostname}: {exc}")
             continue
 
         if provider.synced and not is_synced:
+            logger.warn(f"Node {provider.hostname} is out of sync")
             celery_pubsub.publish(
                 "node.sync.nok", chain_id=provider.chain_id, provider_url=provider.url
             )
@@ -155,27 +198,30 @@ def check_providers_are_synced():
 def check_chains_were_reorganized():
     for provider in Web3Provider.active.all():
         with atomic():
-            chain = provider.chain
-            w3 = make_web3(provider=provider)
-            block_number = w3.eth.block_number
+            try:
+                chain = provider.chain
+                w3 = make_web3(provider=provider)
+                block_number = w3.eth.block_number
+                if chain.highest_block > block_number:
+                    chain.blocks.filter(number__gt=block_number).delete()
 
-            if chain.highest_block > block_number:
-                chain.blocks.filter(number__gt=block_number).delete()
-
-            chain.highest_block = block_number
-            chain.save()
+                chain.highest_block = block_number
+                chain.save()
+            except InvalidStatusCode:
+                logger.error(f"Could not connect with {provider.hostname} via websocket")
 
 
 # Tasks that are setup to subscribe and handle events generated by the event streams
 @shared_task
 def save_historical_data(chain_id, block_data, provider_url):
-    logger.debug(f"Adding {block_data} to {chain_id} historical data")
+    logger.debug(f"Adding block #{block_data.number} to historical data from chain #{chain_id}")
     block_history = get_historical_block_data(chain_id)
     block_history.push(block_data)
 
 
 @shared_task
 def notify_new_block(chain_id, block_data, provider_url):
+    logger.debug(f"Sending notification of new block on chain #{chain_id}")
     block_sealed.send(sender=Block, chain_id=chain_id, block_data=block_data)
 
 

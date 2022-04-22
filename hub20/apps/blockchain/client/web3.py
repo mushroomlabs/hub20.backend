@@ -10,6 +10,7 @@ from web3.providers import HTTPProvider, IPCProvider, WebsocketProvider
 from web3.types import TxReceipt
 
 from hub20.apps.blockchain import analytics
+from hub20.apps.blockchain.app_settings import WEB3_REQUEST_TIMEOUT
 from hub20.apps.blockchain.exceptions import Web3TransactionError
 from hub20.apps.blockchain.models import Web3Provider
 
@@ -49,7 +50,17 @@ def get_web3(provider_url: str) -> Web3:
         "wss": WebsocketProvider,
     }.get(endpoint.scheme, IPCProvider)
 
-    w3 = Web3(provider_class(provider_url))
+    http_request_params = dict(request_kwargs={"timeout": WEB3_REQUEST_TIMEOUT})
+    ws_connection_params = dict(websocket_timeout=WEB3_REQUEST_TIMEOUT)
+
+    params = {
+        "http": http_request_params,
+        "https": http_request_params,
+        "ws": ws_connection_params,
+        "wss": ws_connection_params,
+    }.get(endpoint.scheme, {})
+
+    w3 = Web3(provider_class(provider_url, **params))
     return w3
 
 

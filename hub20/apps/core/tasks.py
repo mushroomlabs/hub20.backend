@@ -58,11 +58,12 @@ def check_payments_in_open_routes():
 
         w3 = make_web3(provider=provider)
         contract = w3.eth.contract(abi=EIP20_ABI, address=token.address)
+        wallet_address = route.account.address
 
         event_filter = contract.events.Transfer().createFilter(
             fromBlock=route.start_block_number,
             toBlock=route.expiration_block_number,
-            argument_filters={"_to": route.account.address},
+            argument_filters={"_to": wallet_address},
         )
 
         try:
@@ -80,6 +81,7 @@ def check_payments_in_open_routes():
                 celery_pubsub.publish(
                     "blockchain.event.token_transfer.mined",
                     chain_id=w3.eth.chain_id,
+                    wallet_address=wallet_address,
                     event_data=transfer_event,
                     provider_url=provider.url,
                 )
@@ -150,8 +152,8 @@ def call_checkout_webhook(checkout_id):
 
 
 @shared_task
-def notify_new_block(chain_id, block_data, provider_url):
-
+def notify_block_created(chain_id, block_data):
+    logger.debug(f"Sending notification of of block created on #{chain_id}")
     block_number = block_data["number"]
     session_keys = _get_open_session_keys()
     logger.info(f"Notifying {len(session_keys)} clients about block #{block_number}")
@@ -184,7 +186,6 @@ def clear_expired_sessions():
     Session.objects.filter(expire_date__lte=timezone.now()).delete()
 
 
-celery_pubsub.subscribe("blockchain.mined.block", notify_new_block)
 celery_pubsub.subscribe("node.sync.nok", notify_node_unavailable)
 celery_pubsub.subscribe("node.sync.ok", notify_node_recovered)
 celery_pubsub.subscribe("node.connection.nok", notify_node_unavailable)

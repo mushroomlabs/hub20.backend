@@ -49,33 +49,29 @@ def index_channel_open_events(self):
         current_block = w3.eth.block_number
         abi = contract.events.ChannelOpened._get_event_abi()
 
-        # The more the indexer is behind, the more time it will have to keep the lock
-        lock_ttl = max(BLOCK_CREATION_INTERVAL, current_block - event_indexer.last_block)
+        with stream_processor_lock(task=self, provider=provider) as lock:
+            while event_indexer.last_block < current_block and lock.is_acquired:
+                from_block = event_indexer.last_block
+                to_block = min(current_block, from_block + BLOCK_SCAN_RANGE)
 
-        with stream_processor_lock(provider, self.app.oid, lock_ttl) as acquired:
-            if acquired:
-                while event_indexer.last_block <= current_block:
-                    from_block = event_indexer.last_block
-                    to_block = min(current_block, from_block + BLOCK_SCAN_RANGE)
+                logger.debug(f"Getting {indexer_name} events between {from_block} and {to_block}")
+                _, event_filter_params = construct_event_filter_params(
+                    abi, w3.codec, fromBlock=from_block, toBlock=to_block
+                )
 
-                    logger.debug(
-                        f"Getting {indexer_name} events between {from_block} and {to_block}"
+                for log in w3.eth.get_logs(event_filter_params):
+                    event_data = get_event_data(w3.codec, abi, log)
+                    celery_pubsub.publish(
+                        "blockchain.event.token_network_channel_opened.mined",
+                        chain_id=w3.eth.chain_id,
+                        event_data=event_data,
+                        provider_url=provider.url,
                     )
-                    _, event_filter_params = construct_event_filter_params(
-                        abi, w3.codec, fromBlock=from_block, toBlock=to_block
-                    )
 
-                    for log in w3.eth.get_logs(event_filter_params):
-                        event_data = get_event_data(w3.codec, abi, log)
-                        celery_pubsub.publish(
-                            "blockchain.event.token_network_channel_opened.mined",
-                            chain_id=w3.eth.chain_id,
-                            event_data=event_data,
-                            provider_url=provider.url,
-                        )
+                event_indexer.last_block = to_block
+                event_indexer.save()
 
-                    event_indexer.last_block = to_block
-                    event_indexer.save()
+                lock.refresh()
 
 
 @shared_task(bind=True)
@@ -90,32 +86,29 @@ def index_channel_close_events(self):
         current_block = w3.eth.block_number
         abi = contract.events.ChannelClosed._get_event_abi()
 
-        lock_ttl = max(BLOCK_CREATION_INTERVAL, current_block - event_indexer.last_block)
+        with stream_processor_lock(task=self, provider=provider) as lock:
+            while event_indexer.last_block < current_block and lock.is_acquired:
+                from_block = event_indexer.last_block
+                to_block = min(current_block, from_block + BLOCK_SCAN_RANGE)
 
-        with stream_processor_lock(provider, self.app.oid, lock_ttl) as acquired:
-            if acquired:
-                while event_indexer.last_block <= current_block:
-                    from_block = event_indexer.last_block
-                    to_block = min(current_block, from_block + BLOCK_SCAN_RANGE)
+                logger.debug(f"Getting {indexer_name} events between {from_block} and {to_block}")
+                _, event_filter_params = construct_event_filter_params(
+                    abi, w3.codec, fromBlock=from_block, toBlock=to_block
+                )
 
-                    logger.debug(
-                        f"Getting {indexer_name} events between {from_block} and {to_block}"
+                for log in w3.eth.get_logs(event_filter_params):
+                    event_data = get_event_data(w3.codec, abi, log)
+                    celery_pubsub.publish(
+                        "blockchain.event.token_network_channel_closed.mined",
+                        chain_id=w3.eth.chain_id,
+                        event_data=event_data,
+                        provider_url=provider.url,
                     )
-                    _, event_filter_params = construct_event_filter_params(
-                        abi, w3.codec, fromBlock=from_block, toBlock=to_block
-                    )
 
-                    for log in w3.eth.get_logs(event_filter_params):
-                        event_data = get_event_data(w3.codec, abi, log)
-                        celery_pubsub.publish(
-                            "blockchain.event.token_network_channel_closed.mined",
-                            chain_id=w3.eth.chain_id,
-                            event_data=event_data,
-                            provider_url=provider.url,
-                        )
+                event_indexer.last_block = to_block
+                event_indexer.save()
 
-                    event_indexer.last_block = to_block
-                    event_indexer.save()
+                lock.refresh()
 
 
 @shared_task

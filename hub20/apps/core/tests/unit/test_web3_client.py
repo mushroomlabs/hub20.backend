@@ -63,6 +63,7 @@ class PaymentTransferTestCase(BaseTestCase):
 
         record_token_transfers(
             chain_id=self.w3.eth.chain_id,
+            wallet_address=route.account.address,
             event_data=event_data,
             provider_url=self.w3.provider.endpoint_uri,
         )
