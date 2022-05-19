@@ -244,7 +244,21 @@ class BaseEthereumAccount(models.Model):
         return private_key and bytearray.fromhex(private_key[2:])
 
 
-class Web3Provider(models.Model):
+class BaseProvider(models.Model):
+    is_active = models.BooleanField(default=True)
+    synced = models.BooleanField(default=False)
+    connected = models.BooleanField(default=False)
+
+    objects = InheritanceManager()
+    active = QueryManager(is_active=True)
+    available = QueryManager(synced=True, connected=True, is_active=True)
+
+    @property
+    def is_online(self):
+        return self.connected and self.synced
+
+
+class Web3Provider(BaseProvider):
     chain = models.ForeignKey(Chain, related_name="providers", on_delete=models.CASCADE)
     url = Web3ProviderURLField()
     client_version = models.CharField(max_length=300, null=True)
@@ -252,17 +266,6 @@ class Web3Provider(models.Model):
     supports_pending_filters = models.BooleanField(default=False)
     supports_eip1559 = models.BooleanField(default=False)
     max_block_scan_range = models.PositiveIntegerField(default=BLOCK_SCAN_RANGE)
-    is_active = models.BooleanField(default=True)
-    synced = models.BooleanField(default=False)
-    connected = models.BooleanField(default=False)
-
-    objects = models.Manager()
-    active = QueryManager(is_active=True)
-    available = QueryManager(synced=True, connected=True, is_active=True)
-
-    @property
-    def is_online(self):
-        return self.connected and self.synced
 
     @property
     def hostname(self):
@@ -312,6 +315,7 @@ __all__ = [
     "BaseEthereumAccount",
     "AbstractTokenInfo",
     "NativeToken",
+    "BaseProvider",
     "Web3Provider",
     "Explorer",
     "EventIndexer",
