@@ -13,7 +13,7 @@ from django.utils import timezone
 from hub20.apps.blockchain.client import BLOCK_CREATION_INTERVAL, make_web3
 from hub20.apps.blockchain.models import Web3Provider
 from hub20.apps.ethereum_money.abi import EIP20_ABI
-from hub20.apps.ethereum_money.models import EthereumToken
+from hub20.apps.ethereum_money.models import Token
 
 from .consumers import CheckoutConsumer, Events, SessionEventsConsumer
 from .models import BlockchainPaymentRoute, Checkout, Transfer
@@ -41,7 +41,7 @@ def check_payments_in_open_routes():
 
     for route in open_routes:
         logger.info(f"Checking for token transfers for payment {route.deposit_id}")
-        token: EthereumToken = route.deposit.currency
+        token: Token = route.deposit.currency
 
         # We are only concerned here about ERC20 tokens. Native token
         # transfers are detected directly by the blockchain listeners

@@ -7,7 +7,7 @@ from eth_utils import to_checksum_address
 
 from hub20.apps.blockchain.client import make_web3
 from hub20.apps.blockchain.models import Web3Provider
-from hub20.apps.ethereum_money.models import EthereumToken, EthereumTokenAmount
+from hub20.apps.ethereum_money.models import Token, TokenAmount
 from hub20.apps.raiden.client.blockchain import mint_tokens
 from hub20.apps.wallet.models import KeystoreAccount
 
@@ -46,7 +46,7 @@ class Command(BaseCommand):
             logger.error("Can only mint tokens on testnets")
             return
 
-        token = EthereumToken.make(options["token"], provider.chain)
+        token = Token.make(options["token"], provider.chain)
 
-        amount = EthereumTokenAmount(amount=options["amount"], currency=token)
+        amount = TokenAmount(amount=options["amount"], currency=token)
         mint_tokens(w3=w3, account=account, amount=amount)

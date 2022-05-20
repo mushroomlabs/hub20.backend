@@ -13,7 +13,7 @@ from web3.datastructures import AttributeDict
 
 from hub20.apps.blockchain.models import BaseEthereumAccount, Chain
 from hub20.apps.blockchain.typing import Address
-from hub20.apps.ethereum_money.models import EthereumTokenAmount
+from hub20.apps.ethereum_money.models import TokenAmount
 from hub20.apps.raiden.exceptions import RaidenConnectionError, RaidenPaymentError
 from hub20.apps.raiden.models import Channel, Payment, Raiden, TokenNetwork
 
@@ -133,7 +133,7 @@ class RaidenClient:
         except RaidenConnectionError:
             return "offline"
 
-    def make_user_deposit(self, total_deposit_amount: EthereumTokenAmount):
+    def make_user_deposit(self, total_deposit_amount: TokenAmount):
         return _make_request(
             self.raiden_udc_endpoint, method="POST", total_deposit=total_deposit_amount.as_wei
         )
@@ -142,7 +142,7 @@ class RaidenClient:
         url = self.token_network_endpoint(token_network=token_network)
         return _make_request(url, method="DELETE")
 
-    def make_channel_deposit(self, channel: Channel, amount: EthereumTokenAmount):
+    def make_channel_deposit(self, channel: Channel, amount: TokenAmount):
         channel = self._refresh_channel(channel)
         new_deposit = channel.deposit_amount + amount
 
@@ -150,7 +150,7 @@ class RaidenClient:
             self.channel_endpoint(channel), method="PATCH", total_deposit=new_deposit.as_wei
         )
 
-    def make_channel_withdraw(self, channel: Channel, amount: EthereumTokenAmount):
+    def make_channel_withdraw(self, channel: Channel, amount: TokenAmount):
         channel = self._refresh_channel(channel)
         new_withdraw = channel.withdraw_amount + amount
         return _make_request(
@@ -171,7 +171,7 @@ class RaidenClient:
         return numeric_identifier % Payment.MAX_IDENTIFIER_ID
 
     def transfer(
-        self, amount: EthereumTokenAmount, address: Address, identifier: Optional[int] = None, **kw
+        self, amount: TokenAmount, address: Address, identifier: Optional[int] = None, **kw
     ) -> Dict:
         url = f"{self.raiden_root_endpoint}/payments/{amount.currency.address}/{str(address)}"
 
@@ -208,7 +208,7 @@ class RaidenClient:
     @classmethod
     def select_for_transfer(
         cls,
-        amount: EthereumTokenAmount,
+        amount: TokenAmount,
         receiver: Optional[User] = None,
         address: Optional[Address] = None,
     ) -> Optional[RaidenClient]:

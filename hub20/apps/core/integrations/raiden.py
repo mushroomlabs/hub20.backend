@@ -5,7 +5,7 @@ from web3 import Web3
 from hub20.apps.blockchain.models import Chain, Web3Provider
 from hub20.apps.core.settings import app_settings
 from hub20.apps.ethereum_money.client import get_account_balance
-from hub20.apps.ethereum_money.models import EthereumToken, EthereumTokenAmount
+from hub20.apps.ethereum_money.models import Token, TokenAmount
 from hub20.apps.raiden.client.blockchain import get_service_deposit_balance, get_service_token
 from hub20.apps.raiden.exceptions import RaidenMissingPrecondition
 from hub20.apps.raiden.models import Raiden
@@ -20,9 +20,9 @@ def check_is_ethereum_node_synced(w3: Web3):
 
 
 def check_required_ether_balance(raiden: Raiden, w3: Web3, chain: Chain):
-    native_token = EthereumToken.make_native(chain)
+    native_token = Token.make_native(chain)
     on_chain_balance = get_account_balance(w3=w3, token=native_token, address=raiden.address)
-    required_amount = EthereumTokenAmount(
+    required_amount = TokenAmount(
         amount=app_settings.Raiden.minimum_ether_required, currency=native_token
     )
 
@@ -36,7 +36,7 @@ def check_required_ether_balance(raiden: Raiden, w3: Web3, chain: Chain):
 
 def check_required_service_token_deposit(raiden: Raiden, w3: Web3):
     service_token = get_service_token(w3=w3)
-    required_balance = EthereumTokenAmount(
+    required_balance = TokenAmount(
         amount=app_settings.Raiden.minimum_service_token_required, currency=service_token
     )
     on_chain_balance = get_account_balance(w3=w3, token=service_token, address=raiden.address)

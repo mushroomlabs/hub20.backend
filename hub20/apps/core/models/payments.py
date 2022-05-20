@@ -5,20 +5,14 @@ import uuid
 from typing import Optional
 
 from django.conf import settings
-from django.contrib.postgres.fields.ranges import IntegerRangeField
 from django.db import models
 from django.db.models import Exists, ExpressionWrapper, F, OuterRef, Q, Sum, Value
-from django.db.models.functions import Coalesce, Lower, Upper
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 from model_utils.managers import InheritanceManager
 from model_utils.models import TimeStampedModel
 
-from hub20.apps.blockchain.models import BaseEthereumAccount, Chain, Transaction
-from hub20.apps.ethereum_money.models import (
-    EthereumToken,
-    EthereumTokenAmountField,
-    EthereumTokenValueModel,
-)
+from hub20.apps.ethereum_money.models import Token, TokenAmountField, TokenValueModel
 from hub20.apps.raiden.models import Channel, Payment as RaidenPaymentEvent, Raiden
 from hub20.apps.wallet import get_wallet_model
 
@@ -103,12 +97,12 @@ class PaymentRouteQuerySet(models.QuerySet):
         return self.annotate(
             currency=F("payments__currency"),
             total_paid=Coalesce(
-                Sum("payments__amount"), Value(0), output_field=EthereumTokenAmountField()
+                Sum("payments__amount"), Value(0), output_field=TokenAmountField()
             ),
             total_confirmed=Coalesce(
                 Sum("payments__amount", filter=Q(payments__confirmation__isnull=False)),
                 Value(0),
-                output_field=EthereumTokenAmountField(),
+                output_field=TokenAmountField(),
             ),
         )
 
@@ -122,49 +116,6 @@ class InternalPaymentRouteQuerySet(PaymentRouteQuerySet):
     def available(self, at: Optional[datetime.datetime] = None) -> models.QuerySet:
         date_value = at or timezone.now()
         return self.filter(created__lte=date_value)
-
-
-class BlockchainRouteQuerySet(PaymentRouteQuerySet):
-    def in_chain(self, chain_id) -> models.QuerySet:
-        return self.filter(deposit__currency__chain__id=chain_id)
-
-    def with_provider(self) -> models.QuerySet:
-        return self.filter(deposit__currency__chain__providers__is_active=True)
-
-    def with_expiration(self) -> models.QuerySet:
-        return self.annotate(
-            start_block=Lower("payment_window"), expiration_block=Upper("payment_window")
-        )
-
-    def expired(self, block_number: Optional[int] = None) -> models.QuerySet:
-        highest_block = F("deposit__currency__chain__highest_block")
-        at_block = block_number if block_number is not None else highest_block
-        return self.filter(expiration_block__lt=at_block)
-
-    def available(self, block_number: Optional[int] = None) -> models.QuerySet:
-        highest_block = F("deposit__currency__chain__highest_block")
-        qs = self.with_expiration()
-        at_block = block_number if block_number is not None else highest_block
-
-        return qs.filter(start_block__lte=at_block, expiration_block__gte=at_block)
-
-    def open(self, block_number: Optional[int] = None) -> models.QuerySet:
-        highest_block = F("deposit__currency__chain__highest_block")
-        at_block = block_number if block_number is not None else highest_block
-
-        no_defined_amount = Q(deposit__paymentorder__isnull=True)
-
-        confirmed = Q(total_confirmed__gte=F("deposit__paymentorder__amount")) & Q(
-            currency=F("deposit__currency")
-        )
-        expired = Q(expiration_block__lt=at_block)
-
-        return (
-            self.with_expiration()
-            .exclude(expired)
-            .with_payment_amounts()
-            .filter(no_defined_amount | ~confirmed)
-        )
 
 
 class RaidenRouteQuerySet(PaymentRouteQuerySet):
@@ -197,7 +148,7 @@ class Deposit(TimeStampedModel):
     id = models.UUIDField(default=uuid.uuid4, primary_key=True)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     session_key = models.SlugField(null=True)
-    currency = models.ForeignKey(EthereumToken, on_delete=models.PROTECT)
+    currency = models.ForeignKey(Token, on_delete=models.PROTECT)
     objects = DepositQuerySet.as_manager()
 
     @property
@@ -225,7 +176,7 @@ class Deposit(TimeStampedModel):
         return self.STATUS.expired if self.is_expired else self.STATUS.open
 
 
-class PaymentOrder(Deposit, EthereumTokenValueModel):
+class PaymentOrder(Deposit, TokenValueModel):
     reference = models.CharField(max_length=200, null=True, blank=True)
     objects = PaymentOrderQuerySet.as_manager()
 
@@ -282,7 +233,7 @@ class PaymentRoute(TimeStampedModel):
         return self.NETWORK
 
     @classmethod
-    def is_usable_for_token(cls, token: EthereumToken):
+    def is_usable_for_token(cls, token: Token):
         return False
 
     @classmethod
@@ -294,64 +245,6 @@ class InternalPaymentRoute(PaymentRoute):
     NETWORK = "internal"
 
     objects = InternalPaymentRouteQuerySet.as_manager()
-
-
-class BlockchainPaymentRoute(PaymentRoute):
-    NETWORK = "blockchain"
-
-    account = models.ForeignKey(
-        BaseEthereumAccount, on_delete=models.CASCADE, related_name="blockchain_routes"
-    )
-    payment_window = IntegerRangeField()
-    objects = BlockchainRouteQuerySet.as_manager()
-
-    @property
-    def chain(self):
-        return self.deposit.currency.chain
-
-    @property
-    def start_block_number(self):
-        return self.payment_window.lower
-
-    @property
-    def expiration_block_number(self):
-        return self.payment_window.upper
-
-    @property
-    def is_expired(self):
-        return self.chain.highest_block > self.expiration_block_number
-
-    @staticmethod
-    def calculate_payment_window(chain):
-        if not chain.synced:
-            raise ValueError("Chain is not synced")
-
-        current = chain.highest_block
-        return (current, current + app_settings.Payment.blockchain_route_lifetime)
-
-    @classmethod
-    def is_usable_for_token(cls, token: EthereumToken):
-        return token.is_listed and token.chain in Chain.active.all()
-
-    @classmethod
-    def make(cls, deposit):
-        chain = deposit.currency.chain
-        chain.refresh_from_db()
-        if chain.synced:
-            payment_window = cls.calculate_payment_window(chain)
-
-            busy_routes = cls.objects.open().filter(deposit__currency=deposit.currency)
-            available_accounts = BaseEthereumAccount.objects.exclude(
-                blockchain_routes__in=busy_routes
-            )
-
-            account = available_accounts.order_by("?").first() or Wallet.generate()
-
-            return cls.objects.create(
-                account=account, deposit=deposit, payment_window=payment_window
-            )
-        else:
-            raise RoutingError("Failed to create blockchain route. Chain data not synced")
 
 
 class RaidenPaymentRoute(PaymentRoute):
@@ -375,7 +268,7 @@ class RaidenPaymentRoute(PaymentRoute):
         return calculate_raiden_payment_window()
 
     @classmethod
-    def is_usable_for_token(cls, token: EthereumToken):
+    def is_usable_for_token(cls, token: Token):
         return token.is_listed and hasattr(token, "tokennetwork")
 
     @classmethod
@@ -391,7 +284,7 @@ class RaidenPaymentRoute(PaymentRoute):
             )
 
 
-class Payment(TimeStampedModel, EthereumTokenValueModel):
+class Payment(TimeStampedModel, TokenValueModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4)
     route = models.ForeignKey(PaymentRoute, on_delete=models.PROTECT, related_name="payments")
     objects = InheritanceManager()
@@ -407,14 +300,6 @@ class InternalPayment(Payment):
     @property
     def identifier(self):
         return str(self.id)
-
-
-class BlockchainPayment(Payment):
-    transaction = models.OneToOneField(Transaction, unique=True, on_delete=models.CASCADE)
-
-    @property
-    def identifier(self):
-        return str(self.transaction.hash)
 
 
 class RaidenPayment(Payment):
@@ -434,11 +319,9 @@ __all__ = [
     "PaymentOrder",
     "PaymentRoute",
     "InternalPaymentRoute",
-    "BlockchainPaymentRoute",
     "RaidenPaymentRoute",
     "Payment",
     "InternalPayment",
-    "BlockchainPayment",
     "RaidenPayment",
     "PaymentConfirmation",
 ]

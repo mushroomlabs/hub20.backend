@@ -19,8 +19,10 @@ from rest_framework.views import APIView
 from rest_framework.viewsets import GenericViewSet, ModelViewSet
 
 from hub20.apps.blockchain.client import make_web3
+from hub20.apps.core.serializers import AddressSerializerField
 from hub20.apps.ethereum_money.client import get_estimate_fee
-from hub20.apps.ethereum_money.models import EthereumToken
+from hub20.apps.ethereum_money.models import Token
+from hub20.apps.ethereum_money.serializers import HyperlinkedRelatedTokenField, TokenValueField
 from hub20.apps.ethereum_money.views import BaseTokenViewSet, TokenViewSet
 
 from . import models, serializers
@@ -153,7 +155,7 @@ class TokenBalanceListView(generics.ListAPIView):
     def get_queryset(self) -> QuerySet:
         return self.request.user.account.get_balances().annotate(
             is_native=Case(
-                When(address=EthereumToken.NULL_ADDRESS, then=Value(True)),
+                When(address=Token.NULL_ADDRESS, then=Value(True)),
                 default=Value(False),
                 output_field=BooleanField(),
             )
@@ -164,9 +166,9 @@ class TokenBalanceView(generics.RetrieveAPIView):
     permission_classes = (IsAuthenticated,)
     serializer_class = serializers.HyperlinkedTokenBalanceSerializer
 
-    def get_object(self) -> EthereumToken:
+    def get_object(self) -> Token:
         token = get_object_or_404(
-            EthereumToken, chain_id=self.kwargs["chain_id"], address=self.kwargs["address"]
+            Token, chain_id=self.kwargs["chain_id"], address=self.kwargs["address"]
         )
         return self.request.user.account.get_balance(token)
 
@@ -327,3 +329,34 @@ class AccountingReportView(StatusView):
                 user_accounts=self._get_serialized_book(models.UserAccount),
             )
         )
+
+
+class WalletBalanceSerializer(serializers.ModelSerializer):
+    token = HyperlinkedRelatedTokenField(source="currency")
+    balance = TokenValueField(source="amount")
+    block = serializers.IntegerField(source="block.number", read_only=True)
+
+    class Meta:
+        model = models.WalletBalanceRecord
+        fields = read_only_fields = ("token", "balance", "block")
+
+
+class WalletSerializer(serializers.HyperlinkedModelSerializer):
+    url = serializers.HyperlinkedIdentityField(view_name="wallet-detail", lookup_field="address")
+
+    address = AddressSerializerField(read_only=True)
+    balances = WalletBalanceSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = models.Wallet
+        fields = read_only_fields = ("url", "address", "balances")
+
+
+class WalletViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
+    permission_classes = (IsAdminUser,)
+    serializer_class = serializers.WalletSerializer
+    lookup_url_kwarg = "address"
+    lookup_field = "address"
+
+    def get_queryset(self) -> QuerySet:
+        return models.Wallet.objects.all()

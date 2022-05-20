@@ -7,7 +7,7 @@ from django.core.management.base import BaseCommand
 from hub20.apps.blockchain.models import Transaction
 from hub20.apps.core.choices import PAYMENT_NETWORKS
 from hub20.apps.core.models.accounting import PaymentNetworkAccount, UserAccount
-from hub20.apps.ethereum_money.models import EthereumToken, TransferEvent
+from hub20.apps.ethereum_money.models import Token, TransferEvent
 from hub20.apps.raiden.models import Payment as RaidenPayment, Raiden
 from hub20.apps.wallet.models import Wallet
 
@@ -27,7 +27,7 @@ class Command(BaseCommand):
         for user in User.objects.all():
             UserAccount.objects.get_or_create(user=user)
 
-        tokens = EthereumToken.objects.filter(transferevent__currency__isnull=False)
+        tokens = Token.objects.filter(transferevent__currency__isnull=False)
 
         wallet_addresses = Wallet.objects.values_list("address", flat=True)
 

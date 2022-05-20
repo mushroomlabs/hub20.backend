@@ -9,7 +9,7 @@ from web3._utils.filters import construct_event_filter_params
 from web3.exceptions import TransactionNotFound
 
 from hub20.apps.blockchain.app_settings import BLOCK_SCAN_RANGE
-from hub20.apps.blockchain.client import BLOCK_CREATION_INTERVAL, make_web3
+from hub20.apps.blockchain.client import make_web3
 from hub20.apps.blockchain.models import (
     EventIndexer,
     Transaction,
@@ -17,8 +17,8 @@ from hub20.apps.blockchain.models import (
     Web3Provider,
 )
 from hub20.apps.blockchain.tasks import stream_processor_lock
+from hub20.apps.core.models import Token, TokenAmount
 from hub20.apps.ethereum_money.client import get_account_balance
-from hub20.apps.ethereum_money.models import EthereumToken, EthereumTokenAmount
 from hub20.apps.ethereum_money.typing import TokenAmount_T
 from hub20.apps.raiden import models
 from hub20.apps.raiden.client import (
@@ -205,7 +205,7 @@ def make_udc_deposit(self, raiden_url: str, amount: TokenAmount_T):
     service_token = get_service_token(w3=w3)
 
     onchain_balance = get_account_balance(w3=w3, token=service_token, address=raiden.address)
-    deposit_token_amount = EthereumTokenAmount(currency=service_token, amount=amount)
+    deposit_token_amount = TokenAmount(currency=service_token, amount=amount)
 
     if onchain_balance < deposit_token_amount:
         raise InsufficientBalanceError(f"On chain balance for {raiden.address} is not enough")
@@ -226,7 +226,7 @@ def make_channel_deposit(self, channel_id, deposit_amount: TokenAmount_T):
     w3 = make_web3(provider=channel.raiden.chain.provider)
 
     raiden_client = RaidenClient(raiden_node=channel.raiden)
-    token_amount = EthereumTokenAmount(currency=channel.token, amount=deposit_amount)
+    token_amount = TokenAmount(currency=channel.token, amount=deposit_amount)
 
     chain_balance = get_account_balance(w3=w3, token=channel.token, address=channel.raiden.address)
 
@@ -248,7 +248,7 @@ def make_channel_deposit(self, channel_id, deposit_amount: TokenAmount_T):
 def make_channel_withdraw(self, channel_id, deposit_amount: TokenAmount_T):
     channel = Channel.objects.get(id=channel_id)
     raiden_client = RaidenClient(raiden_node=channel.raiden)
-    token_amount = EthereumTokenAmount(currency=channel.token, amount=deposit_amount)
+    token_amount = TokenAmount(currency=channel.token, amount=deposit_amount)
     channel_balance = channel.balance_amount
 
     if channel_balance < token_amount:
@@ -266,11 +266,11 @@ def make_channel_withdraw(self, channel_id, deposit_amount: TokenAmount_T):
 )
 def join_token_network(self, raiden_url, token_address, deposit_amount: TokenAmount_T):
     raiden = Raiden.objects.get(url=raiden_url)
-    token = EthereumToken.objects.get(address=token_address, chain_id=raiden.chain_id)
+    token = Token.objects.get(address=token_address, chain_id=raiden.chain_id)
     token_network = TokenNetwork.objects.get(token__address=token_address)
 
     raiden_client = RaidenClient(raiden_node=raiden)
-    token_amount = EthereumTokenAmount(currency=token, amount=deposit_amount)
+    token_amount = TokenAmount(currency=token, amount=deposit_amount)
 
     w3 = make_web3(provider=raiden.chain.provider)
     chain_balance = get_account_balance(w3=w3, token=token, address=raiden.address)

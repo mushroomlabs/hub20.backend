@@ -7,7 +7,7 @@ from hub20.apps.blockchain.client import BLOCK_CREATION_INTERVAL, make_web3
 from hub20.apps.blockchain.models import Web3Provider
 from hub20.apps.core.models import BlockchainPaymentRoute
 from hub20.apps.ethereum_money.abi import EIP20_ABI
-from hub20.apps.ethereum_money.models import EthereumToken
+from hub20.apps.ethereum_money.models import Token
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ def process_pending_transfers_in_open_routes():
 
     for route in open_routes:
         logger.info(f"Checking for pending token transfers for payment {route.deposit_id}")
-        token: EthereumToken = route.deposit.currency
+        token: Token = route.deposit.currency
 
         # We are only concerned here about ERC20 tokens. Native token
         # transfers are detected directly by the blockchain listeners

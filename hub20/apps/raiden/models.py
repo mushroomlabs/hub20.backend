@@ -13,15 +13,10 @@ from model_utils.choices import Choices
 from model_utils.managers import InheritanceManager, QueryManager
 from model_utils.models import StatusModel, TimeStampedModel
 
-from hub20.apps.blockchain.fields import EthereumAddressField, Uint256Field
+from hub20.apps.blockchain.fields import AddressField, Uint256Field
 from hub20.apps.blockchain.models import BaseEthereumAccount, Chain, Transaction
 from hub20.apps.blockchain.validators import uri_parsable_scheme_validator
-from hub20.apps.ethereum_money.models import (
-    EthereumToken,
-    EthereumTokenAmount,
-    EthereumTokenAmountField,
-    EthereumTokenValueModel,
-)
+from hub20.apps.ethereum_money.models import Token, TokenAmount, TokenAmountField, TokenValueModel
 
 CHANNEL_STATUSES = Choices(
     "opened", "waiting_for_settle", "settling", "settled", "unusable", "closed", "closing"
@@ -36,8 +31,8 @@ class RaidenURLField(models.URLField):
 
 
 class TokenNetwork(models.Model):
-    address = EthereumAddressField()
-    token = models.OneToOneField(EthereumToken, on_delete=models.CASCADE)
+    address = AddressField()
+    token = models.OneToOneField(Token, on_delete=models.CASCADE)
     objects = models.Manager()
 
     def can_reach(self, address) -> bool:
@@ -71,7 +66,7 @@ class TokenNetworkChannel(models.Model):
         TokenNetwork, on_delete=models.CASCADE, related_name="channels"
     )
     identifier = Uint256Field()
-    participant_addresses = ArrayField(EthereumAddressField(), size=2)
+    participant_addresses = ArrayField(AddressField(), size=2)
 
     @property
     def events(self):
@@ -88,13 +83,10 @@ class TokenNetworkChannelStatus(StatusModel):
     def set_status(cls, channel: TokenNetworkChannel):
         last_event = channel.events.last()
         event_name = last_event and last_event.name
-        status = (
-            event_name
-            and {
-                "ChannelOpened": CHANNEL_STATUSES.opened,
-                "ChannelClosed": CHANNEL_STATUSES.closed,
-            }.get(event_name)
-        )
+        status = event_name and {
+            "ChannelOpened": CHANNEL_STATUSES.opened,
+            "ChannelClosed": CHANNEL_STATUSES.closed,
+        }.get(event_name)
         if status:
             cls.objects.update_or_create(channel=channel, defaults={"status": status})
 
@@ -154,10 +146,10 @@ class Channel(StatusModel):
     raiden = models.ForeignKey(Raiden, on_delete=models.CASCADE, related_name="channels")
     token_network = models.ForeignKey(TokenNetwork, on_delete=models.CASCADE)
     identifier = models.PositiveIntegerField()
-    partner_address = EthereumAddressField(db_index=True)
-    balance = EthereumTokenAmountField()
-    total_deposit = EthereumTokenAmountField()
-    total_withdraw = EthereumTokenAmountField()
+    partner_address = AddressField(db_index=True)
+    balance = TokenAmountField()
+    total_deposit = TokenAmountField()
+    total_withdraw = TokenAmountField()
 
     objects = models.Manager()
     funded = QueryManager(status=STATUS.opened, balance__gt=0)
@@ -168,16 +160,16 @@ class Channel(StatusModel):
         return self.token_network.token
 
     @property
-    def balance_amount(self) -> EthereumTokenAmount:
-        return EthereumTokenAmount(amount=self.balance, currency=self.token)
+    def balance_amount(self) -> TokenAmount:
+        return TokenAmount(amount=self.balance, currency=self.token)
 
     @property
-    def deposit_amount(self) -> EthereumTokenAmount:
-        return EthereumTokenAmount(amount=self.total_deposit, currency=self.token)
+    def deposit_amount(self) -> TokenAmount:
+        return TokenAmount(amount=self.total_deposit, currency=self.token)
 
     @property
-    def withdraw_amount(self) -> EthereumTokenAmount:
-        return EthereumTokenAmount(amount=self.total_withdraw, currency=self.token)
+    def withdraw_amount(self) -> TokenAmount:
+        return TokenAmount(amount=self.total_withdraw, currency=self.token)
 
     @property
     def last_event_timestamp(self) -> Optional[datetime.datetime]:
@@ -192,7 +184,7 @@ class Channel(StatusModel):
         token_network_address = channel_data.pop("token_network_address")
         token_address = channel_data.pop("token_address")
 
-        token = EthereumToken.ERC20tokens.filter(address=token_address).first()
+        token = Token.ERC20tokens.filter(address=token_address).first()
 
         assert token is not None
         assert token.chain == raiden.chain
@@ -225,13 +217,13 @@ class Channel(StatusModel):
 
 
 class Payment(models.Model):
-    MAX_IDENTIFIER_ID = (2 ** 64) - 1
+    MAX_IDENTIFIER_ID = (2**64) - 1
     channel = models.ForeignKey(Channel, on_delete=models.CASCADE, related_name="payments")
-    amount = EthereumTokenAmountField()
+    amount = TokenAmountField()
     timestamp = models.DateTimeField()
     identifier = Uint256Field()
-    sender_address = EthereumAddressField()
-    receiver_address = EthereumAddressField()
+    sender_address = AddressField()
+    receiver_address = AddressField()
     objects = models.Manager()
     sent = QueryManager(sender_address=F("channel__raiden__address"))
     received = QueryManager(receiver_address=F("channel__raiden__address"))
@@ -241,8 +233,8 @@ class Payment(models.Model):
         return self.channel.token
 
     @property
-    def as_token_amount(self) -> EthereumTokenAmount:
-        return EthereumTokenAmount(amount=self.amount, currency=self.token)
+    def as_token_amount(self) -> TokenAmount:
+        return TokenAmount(amount=self.amount, currency=self.token)
 
     @property
     def partner_address(self):
@@ -277,9 +269,9 @@ class Payment(models.Model):
 
 class UserDeposit(models.Model):
     raiden = models.OneToOneField(Raiden, related_name="udc", on_delete=models.CASCADE)
-    token = models.ForeignKey(EthereumToken, related_name="user_deposit", on_delete=models.CASCADE)
-    total_deposit = EthereumTokenAmountField()
-    balance = EthereumTokenAmountField()
+    token = models.ForeignKey(Token, related_name="user_deposit", on_delete=models.CASCADE)
+    total_deposit = TokenAmountField()
+    balance = TokenAmountField()
 
 
 class RaidenManagementOrder(TimeStampedModel):
@@ -292,7 +284,7 @@ class RaidenManagementOrder(TimeStampedModel):
 
 class JoinTokenNetworkOrder(RaidenManagementOrder):
     token_network = models.ForeignKey(TokenNetwork, on_delete=models.PROTECT)
-    amount = EthereumTokenAmountField()
+    amount = TokenAmountField()
 
 
 class LeaveTokenNetworkOrder(RaidenManagementOrder):
@@ -301,15 +293,15 @@ class LeaveTokenNetworkOrder(RaidenManagementOrder):
 
 class ChannelDepositOrder(RaidenManagementOrder):
     channel = models.ForeignKey(Channel, on_delete=models.PROTECT)
-    amount = EthereumTokenAmountField()
+    amount = TokenAmountField()
 
 
 class ChannelWithdrawOrder(RaidenManagementOrder):
     channel = models.ForeignKey(Channel, on_delete=models.PROTECT)
-    amount = EthereumTokenAmountField()
+    amount = TokenAmountField()
 
 
-class UserDepositContractOrder(RaidenManagementOrder, EthereumTokenValueModel):
+class UserDepositContractOrder(RaidenManagementOrder, TokenValueModel):
     pass
 
 

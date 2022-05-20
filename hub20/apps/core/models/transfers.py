@@ -9,28 +9,16 @@ from django.db import models
 from model_utils.managers import InheritanceManager, InheritanceManagerMixin, QueryManagerMixin
 from model_utils.models import TimeStampedModel
 
-from hub20.apps.blockchain.fields import EthereumAddressField
-from hub20.apps.blockchain.models import Transaction, TransactionDataRecord
 from hub20.apps.core.choices import TRANSFER_STATUS, WITHDRAWAL_NETWORKS
-from hub20.apps.ethereum_money.client import Web3Client
-from hub20.apps.ethereum_money.models import (
-    EthereumToken,
-    EthereumTokenAmount,
-    EthereumTokenValueModel,
-)
+from hub20.apps.core.fields import AddressField
+from hub20.apps.ethereum_money.models import TokenValueModel
 from hub20.apps.raiden.client.node import RaidenClient
 from hub20.apps.raiden.exceptions import RaidenPaymentError
 from hub20.apps.raiden.models import Payment
 
+from ..exceptions import TransferError
+
 logger = logging.getLogger(__name__)
-
-
-class TransferError(Exception):
-    pass
-
-
-class TransferOperationError(Exception):
-    pass
 
 
 class TransferStatusQueryManager(InheritanceManagerMixin, QueryManagerMixin, models.Manager):
@@ -41,7 +29,7 @@ class TransferStatusQueryManager(InheritanceManagerMixin, QueryManagerMixin, mod
         return qs
 
 
-class Transfer(TimeStampedModel, EthereumTokenValueModel):
+class Transfer(TimeStampedModel, TokenValueModel):
     reference = models.UUIDField(default=uuid.uuid4, unique=True)
     sender = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="transfers_sent"
@@ -136,22 +124,8 @@ class InternalTransfer(Transfer):
 
 
 class Withdrawal(Transfer):
-    address = EthereumAddressField(db_index=True)
+    address = AddressField(db_index=True)
     payment_network = models.CharField(max_length=64, choices=WITHDRAWAL_NETWORKS)
-
-
-class BlockchainWithdrawal(Withdrawal):
-    def _execute(self):
-        try:
-            assert self.payment_network == WITHDRAWAL_NETWORKS.blockchain, "Wrong payment network"
-            web3_client = Web3Client.select_for_transfer(amount=self.amount, address=self.address)
-            tx_data = web3_client.transfer(amount=self.as_token_amount, address=self.address)
-            BlockchainWithdrawalReceipt.objects.create(transfer=self, transaction_data=tx_data)
-        except Exception as exc:
-            raise TransferError(str(exc)) from exc
-
-    class Meta:
-        proxy = True
 
 
 class RaidenWithdrawal(Withdrawal):
@@ -180,10 +154,6 @@ class TransferReceipt(TimeStampedModel):
     transfer = models.OneToOneField(Transfer, on_delete=models.CASCADE, related_name="receipt")
 
 
-class BlockchainWithdrawalReceipt(TransferReceipt):
-    transaction_data = models.OneToOneField(TransactionDataRecord, on_delete=models.CASCADE)
-
-
 class RaidenWithdrawalReceipt(TransferReceipt):
     payment_data = HStoreField()
 
@@ -193,15 +163,6 @@ class TransferConfirmation(TimeStampedModel):
         Transfer, on_delete=models.CASCADE, related_name="confirmation"
     )
     objects = InheritanceManager()
-
-
-class BlockchainWithdrawalConfirmation(TransferConfirmation):
-    transaction = models.OneToOneField(Transaction, on_delete=models.CASCADE)
-
-    @property
-    def fee(self) -> EthereumTokenAmount:
-        native_token = EthereumToken.make_native(chain=self.transaction.block.chain)
-        return native_token.from_wei(self.transaction.gas_fee)
 
 
 class RaidenWithdrawalConfirmation(TransferConfirmation):
@@ -226,12 +187,9 @@ __all__ = [
     "TransferConfirmation",
     "TransferReceipt",
     "TransferError",
-    "BlockchainWithdrawal",
-    "BlockchainWithdrawalReceipt",
     "RaidenWithdrawal",
     "RaidenWithdrawalReceipt",
     "InternalTransfer",
-    "BlockchainWithdrawalConfirmation",
     "RaidenWithdrawalConfirmation",
     "Withdrawal",
 ]

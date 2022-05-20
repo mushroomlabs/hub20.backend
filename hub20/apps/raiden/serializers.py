@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django_celery_results.models import TaskResult
 from raiden_contracts.contract_manager import gas_measurements
 from rest_framework import serializers
@@ -7,12 +9,17 @@ from rest_framework_nested.relations import (
 )
 from rest_framework_nested.serializers import NestedHyperlinkedModelSerializer
 
-from hub20.apps.blockchain.client import make_web3
-from hub20.apps.blockchain.models import Web3Provider
+from hub20.apps.core.models import TokenAmount
+from hub20.apps.core.serializers import (
+    AddressSerializerField,
+    HyperlinkedRelatedTokenField,
+    PaymentRouteSerializer,
+    PaymentSerializer,
+    TokenValueField,
+)
 from hub20.apps.ethereum_money.client import get_account_balance
-from hub20.apps.ethereum_money.models import EthereumTokenAmount
-from hub20.apps.ethereum_money.serializers import HyperlinkedRelatedTokenField, TokenValueField
-from hub20.apps.ethereum_money.typing import TokenAmount
+from hub20.apps.web3.client import make_web3
+from hub20.apps.web3.models import Web3Provider
 
 from . import models, tasks
 from .client import RaidenClient, get_service_token
@@ -227,7 +234,7 @@ class ServiceDepositSerializer(ManagementOrderSerializer):
         w3 = make_web3(provider=raiden.chain.provider)
         token = get_service_token(w3=w3)
 
-        deposit_amount = EthereumTokenAmount(currency=token, amount=data["amount"])
+        deposit_amount = TokenAmount(currency=token, amount=data["amount"])
         balance = get_account_balance(w3=w3, token=token, address=raiden.address)
 
         if balance < deposit_amount:
@@ -301,9 +308,9 @@ class ChannelWithdrawalSerializer(ChannelManagementSerializer):
             raise serializers.ValidationError("Can not get channel information")
 
         token = channel.token
-        amount = TokenAmount(data).normalize()
-        withdraw_amount = EthereumTokenAmount(amount=amount, currency=token)
-        channel_balance = EthereumTokenAmount(amount=channel.balance, currency=token)
+        amount = Decimal(data).normalize()
+        withdraw_amount = TokenAmount(amount=amount, currency=token)
+        channel_balance = TokenAmount(amount=channel.balance, currency=token)
 
         if withdraw_amount > channel_balance:
             raise serializers.ValidationError(f"Insufficient balance: {channel_balance.formatted}")
@@ -354,3 +361,30 @@ class JoinTokenNetworkOrderSerializer(ManagementOrderSerializer):
         model = models.JoinTokenNetworkOrder
         fields = ("url", "created", "raiden", "token_network", "amount", "task_result")
         read_only_fields = ("url", "created", "raiden", "task_result")
+
+
+class RaidenPaymentRouteSerializer(PaymentRouteSerializer):
+    address = AddressSerializerField(source="raiden.address", read_only=True)
+
+    class Meta:
+        model = models.RaidenPaymentRoute
+        fields = PaymentRouteSerializer.Meta.fields + (
+            "address",
+            "expiration_time",
+        )
+        read_only_fields = PaymentRouteSerializer.Meta.read_only_fields + (
+            "address",
+            "expiration_time",
+        )
+
+
+class RaidenPaymentSerializer(PaymentSerializer):
+    raiden = serializers.CharField(source="payment.channel.raiden.address")
+
+    class Meta:
+        model = models.RaidenPayment
+        fields = PaymentSerializer.Meta.fields + ("identifier", "raiden")
+        read_only_fields = PaymentSerializer.Meta.read_only_fields + (
+            "identifier",
+            "raiden",
+        )

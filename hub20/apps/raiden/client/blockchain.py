@@ -21,7 +21,7 @@ from hub20.apps.blockchain.models import Web3Provider
 from hub20.apps.blockchain.typing import EthereumAccount_T
 from hub20.apps.ethereum_money.abi import EIP20_ABI
 from hub20.apps.ethereum_money.client import make_token
-from hub20.apps.ethereum_money.models import EthereumToken, EthereumTokenAmount
+from hub20.apps.ethereum_money.models import Token, TokenAmount
 from hub20.apps.raiden.models import Raiden, TokenNetwork
 
 GAS_REQUIRED_FOR_DEPOSIT: int = 200_000
@@ -83,19 +83,19 @@ def get_service_token_address(chain_id: int):
     return service_contract_data["constructor_arguments"][0]
 
 
-def get_service_token(w3: Web3) -> EthereumToken:
+def get_service_token(w3: Web3) -> Token:
     chain_id = int(w3.net.version)
     service_token_address = get_service_token_address(chain_id)
     return make_token(w3=w3, address=service_token_address)
 
 
-def get_service_token_contract(w3: Web3) -> EthereumToken:
+def get_service_token_contract(w3: Web3) -> Token:
     chain_id = int(w3.net.version)
     service_token_address = get_service_token_address(chain_id)
     return w3.eth.contract(address=service_token_address, abi=EIP20_ABI)
 
 
-def mint_tokens(w3: Web3, account: EthereumAccount_T, amount: EthereumTokenAmount):
+def mint_tokens(w3: Web3, account: EthereumAccount_T, amount: TokenAmount):
     logger.debug(f"Minting {amount.formatted}")
     contract_manager = ContractManager(contracts_precompiled_path())
     token_proxy = w3.eth.contract(
@@ -112,13 +112,13 @@ def mint_tokens(w3: Web3, account: EthereumAccount_T, amount: EthereumTokenAmoun
     )
 
 
-def get_service_total_deposit(w3: Web3, raiden: Raiden) -> EthereumTokenAmount:
+def get_service_total_deposit(w3: Web3, raiden: Raiden) -> TokenAmount:
     user_deposit_contract = get_user_deposit_contract(w3=w3)
     token = get_service_token(w3=w3)
     return token.from_wei(user_deposit_contract.functions.total_deposit(raiden.address).call())
 
 
-def get_service_deposit_balance(w3: Web3, raiden: Raiden) -> EthereumTokenAmount:
+def get_service_deposit_balance(w3: Web3, raiden: Raiden) -> TokenAmount:
     user_deposit_contract = get_user_deposit_contract(w3=w3)
     token = get_service_token(w3=w3)
     return token.from_wei(user_deposit_contract.functions.effectiveBalance(raiden.address).call())
@@ -134,9 +134,9 @@ def get_token_networks():
             continue
         get_token_network_address = token_registry_contract.functions.token_to_token_networks
 
-        for token in EthereumToken.ERC20tokens.filter(chain_id=provider.chain_id):
+        for token in Token.ERC20tokens.filter(chain_id=provider.chain_id):
             token_network_address = get_token_network_address(token.address).call()
-            if token_network_address != EthereumToken.NULL_ADDRESS:
+            if token_network_address != Token.NULL_ADDRESS:
                 TokenNetwork.objects.update_or_create(
                     token=token, defaults={"address": token_network_address}
                 )

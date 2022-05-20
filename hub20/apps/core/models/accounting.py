@@ -11,14 +11,8 @@ from django.db.models.functions import Coalesce
 from django.db.models.query import QuerySet
 from model_utils.models import TimeStampedModel
 
-from hub20.apps.ethereum_money.models import (
-    EthereumToken,
-    EthereumTokenAmount,
-    EthereumTokenAmountField,
-    EthereumTokenValueModel,
-)
-
 from ..choices import PAYMENT_NETWORKS
+from .erc20 import Token, TokenAmount, TokenAmountField, TokenValueModel
 
 logger = logging.getLogger(__name__)
 
@@ -35,14 +29,14 @@ class DoubleEntryAccountModelQuerySet(models.QuerySet):
             .annotate(balance=F("total_credit") - F("total_debit"))
         )
 
-    def with_funds(self, token_amount: EthereumTokenAmount):
+    def with_funds(self, token_amount: TokenAmount):
         return self.grouped_by_token_balances().filter(
             balance__gte=token_amount.amount, token_id=token_amount.currency.id
         )
 
 
 class Book(models.Model):
-    token = models.ForeignKey(EthereumToken, on_delete=models.PROTECT, related_name="books")
+    token = models.ForeignKey(Token, on_delete=models.PROTECT, related_name="books")
     owner_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
     owner_id = models.PositiveIntegerField()
     owner = GenericForeignKey("owner_type", "owner_id")
@@ -51,7 +45,7 @@ class Book(models.Model):
         unique_together = ("token", "owner_type", "owner_id")
 
 
-class BookEntry(TimeStampedModel, EthereumTokenValueModel):
+class BookEntry(TimeStampedModel, TokenValueModel):
     book = models.ForeignKey(Book, on_delete=models.CASCADE, related_name="entries")
     reference_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
     reference_id = models.PositiveIntegerField()
@@ -93,35 +87,35 @@ class DoubleEntryAccountModel(models.Model):
     def balances(self):
         return self.get_balances()
 
-    def get_book(self, token: EthereumToken) -> Book:
+    def get_book(self, token: Token) -> Book:
         book, _ = self.books.get_or_create(token=token)
         return book
 
-    def get_balance_token_amount(self, token: EthereumToken) -> Optional[EthereumTokenAmount]:
+    def get_balance_token_amount(self, token: Token) -> Optional[TokenAmount]:
         balance = self.get_balance(token=token)
-        return balance and EthereumTokenAmount(currency=token, amount=balance.balance)
+        return balance and TokenAmount(currency=token, amount=balance.balance)
 
-    def get_balance(self, token: EthereumToken) -> Optional[EthereumToken]:
+    def get_balance(self, token: Token) -> Optional[Token]:
         return self.get_balances().filter(id=token.id).first()
 
     def get_balances(self) -> QuerySet:
-        total_sum = Coalesce(Sum("amount"), 0, output_field=EthereumTokenAmountField())
+        total_sum = Coalesce(Sum("amount"), 0, output_field=TokenAmountField())
         credit_qs = self.credits.values(token=F("book__token")).annotate(total_credit=total_sum)
         debit_qs = self.debits.values(token=F("book__token")).annotate(total_debit=total_sum)
 
         credit_sqs = credit_qs.filter(token=OuterRef("pk"))
         debit_sqs = debit_qs.filter(token=OuterRef("pk"))
 
-        annotated_qs = EthereumToken.objects.annotate(
+        annotated_qs = Token.objects.annotate(
             total_credit=Coalesce(
                 Subquery(credit_sqs.values("total_credit")),
                 0,
-                output_field=EthereumTokenAmountField(),
+                output_field=TokenAmountField(),
             ),
             total_debit=Coalesce(
                 Subquery(debit_sqs.values("total_debit")),
                 0,
-                output_field=EthereumTokenAmountField(),
+                output_field=TokenAmountField(),
             ),
         )
         return annotated_qs.annotate(balance=F("total_credit") - F("total_debit")).exclude(
@@ -130,7 +124,7 @@ class DoubleEntryAccountModel(models.Model):
 
     @classmethod
     def balance_sheet(cls):
-        total_sum = Coalesce(Sum("amount"), 0, output_field=EthereumTokenAmountField())
+        total_sum = Coalesce(Sum("amount"), 0, output_field=TokenAmountField())
         filter_q = {f"{cls.book_relation_attr}__isnull": False}
         credit_qs = (
             Credit.objects.filter(**filter_q)
@@ -146,16 +140,16 @@ class DoubleEntryAccountModel(models.Model):
         credit_sqs = credit_qs.filter(token=OuterRef("pk"))
         debit_sqs = debit_qs.filter(token=OuterRef("pk"))
 
-        annotated_qs = EthereumToken.objects.annotate(
+        annotated_qs = Token.objects.annotate(
             total_credit=Coalesce(
                 Subquery(credit_sqs.values("total_credit")),
                 0,
-                output_field=EthereumTokenAmountField(),
+                output_field=TokenAmountField(),
             ),
             total_debit=Coalesce(
                 Subquery(debit_sqs.values("total_debit")),
                 0,
-                output_field=EthereumTokenAmountField(),
+                output_field=TokenAmountField(),
             ),
         )
         return annotated_qs.annotate(balance=F("total_credit") - F("total_debit"))

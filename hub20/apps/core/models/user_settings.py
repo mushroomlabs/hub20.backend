@@ -1,7 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.db import models
 
-from hub20.apps.ethereum_money.models import EthereumToken as Token
+from hub20.apps.ethereum_money.models import Token
 
 User = get_user_model()
 

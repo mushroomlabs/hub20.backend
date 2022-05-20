@@ -13,13 +13,16 @@ class AppSettings:
 
     class Payment:
         minimum_confirmations = 5
-        blockchain_route_lifetime = 100  # In blocks
         raiden_route_lifetime = 15 * 60  # In seconds
         checkout_lifetime = 15 * 60  # In seconds
 
     class Raiden:
         minimum_ether_required = Decimal("0.025")
         minimum_service_token_required = Decimal("5.5")
+
+    class HDWallet:
+        root_key = None
+        mnemonic = None
 
     def __init__(self):
         self.load()
@@ -31,6 +34,8 @@ class AppSettings:
             "PAYMENT_BLOCKCHAIN_ROUTE_LIFETIME": (self.Payment, "blockchain_route_lifetime"),
             "RAIDEN_MINIMUM_ETHER_REQUIRED": (self.Raiden, "minimum_ether_required"),
             "RAIDEN_MINIMUM_RDN_REQUIRED": (self.Raiden, "minimum_service_token_required"),
+            "ETHEREUM_HD_WALLET_MNEMONIC": (self.Wallet, "mnemonic"),
+            "ETHEREUM_HD_WALLET_ROOT_KEY": (self.Wallet, "root_key"),
         }
         user_settings = getattr(settings, "HUB20", {})
 
