@@ -14,15 +14,12 @@ logger = logging.getLogger(__name__)
 class Events(Enum):
     INTERNAL_DEPOSIT_CONFIRMED = "internal.deposit.confirmed"
     BLOCKCHAIN_BLOCK_CREATED = "blockchain.block.created"
-    BLOCKCHAIN_DEPOSIT_RECEIVED = "blockchain.deposit.received"
     BLOCKCHAIN_DEPOSIT_BROADCAST = "blockchain.deposit.broadcast"
     BLOCKCHAIN_DEPOSIT_CONFIRMED = "blockchain.deposit.confirmed"
     BLOCKCHAIN_ROUTE_EXPIRED = "blockchain.payment_route.expired"
     ETHEREUM_NODE_UNAVAILABLE = "ethereum_node.unavailable"
     ETHEREUM_NODE_OK = "ethereum_node.ok"
     RAIDEN_ROUTE_EXPIRED = "raiden.payment_route.expired"
-    RAIDEN_DEPOSIT_RECEIVED = "raiden.deposit.received"
-    RAIDEN_DEPOSIT_CONFIRMED = "raiden.deposit.confirmed"
 
 
 def accept_subprotocol(consumer):

@@ -1,3 +1,5 @@
+from enum import Enum
+
 from ethereum.transactions import secpk1n
 
 NULL_ADDRESS: str = "0x" + "0" * 40
@@ -12,3 +14,11 @@ SIGNATURE_S_MIN_VALUE: int = 1
 SIGNATURE_S_MAX_VALUE: int = secpk1n // 2
 SIGNATURE_V_MIN_VALUE: int = 27
 SIGNATURE_V_MAX_VALUE: int = 28
+
+
+class Events(Enum):
+    BLOCK_CREATED = "blockchain.block.created"
+    DEPOSIT_RECEIVED = "blockchain.deposit.received"
+    DEPOSIT_BROADCAST = "blockchain.deposit.broadcast"
+    DEPOSIT_CONFIRMED = "blockchain.deposit.confirmed"
+    ROUTE_EXPIRED = "blockchain.payment_route.expired"
