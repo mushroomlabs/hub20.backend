@@ -11,7 +11,6 @@ from django.db.models.functions import Coalesce
 from django.db.models.query import QuerySet
 from model_utils.models import TimeStampedModel
 
-from ..choices import PAYMENT_NETWORKS
 from .erc20 import Token, TokenAmount, TokenAmountField, TokenValueModel
 
 logger = logging.getLogger(__name__)
@@ -205,7 +204,7 @@ class PaymentNetworkAccount(DoubleEntryAccountModel):
     book_relation_attr = "book__network"
     token_balance_relation_attr = "books__network"
 
-    payment_network = models.CharField(max_length=100, choices=PAYMENT_NETWORKS, unique=True)
+    payment_network = models.CharField(max_length=100, unique=True)
 
     books = GenericRelation(
         Book,

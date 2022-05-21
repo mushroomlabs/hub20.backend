@@ -1,30 +1,12 @@
 import logging
-from typing import Optional
 
-from django.contrib.sessions.models import Session
 from django.db.models.signals import post_save
 from django.dispatch import receiver
-from django.utils import timezone
 
 from hub20.apps.core import tasks
 from hub20.apps.core.models import Checkout, InternalPayment, Payment, PaymentConfirmation
-from hub20.apps.wallet import get_wallet_model
 
 logger = logging.getLogger(__name__)
-Wallet = get_wallet_model()
-
-
-def _get_user_id(session: Session) -> Optional[int]:
-    try:
-        return int(session.get_decoded()["_auth_user_id"])
-    except (KeyError, ValueError, TypeError):
-        return None
-
-
-def _get_user_session_keys(user_id):
-    now = timezone.now()
-    sessions = Session.objects.filter(expire_date__gt=now)
-    return [s.session_key for s in sessions if _get_user_id(s) == user_id]
 
 
 @receiver(post_save, sender=InternalPayment)

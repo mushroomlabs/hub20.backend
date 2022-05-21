@@ -2,6 +2,9 @@ from django.apps import apps as django_apps
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 
+default_app_config = "hub20.apps.core.apps.Hub20Config"
+PAYMENT_NETWORK_NAME = "internal"
+
 
 def get_wallet_model():
     """
@@ -18,6 +21,3 @@ def get_wallet_model():
         raise ImproperlyConfigured(
             f"Model '{account_setting}' is not installed and can not be used as Wallet"
         )
-
-
-default_app_config = "hub20.apps.core.apps.Hub20Config"
