@@ -21,4 +21,6 @@ class Events(Enum):
     DEPOSIT_RECEIVED = "blockchain.deposit.received"
     DEPOSIT_BROADCAST = "blockchain.deposit.broadcast"
     DEPOSIT_CONFIRMED = "blockchain.deposit.confirmed"
-    ROUTE_EXPIRED = "blockchain.payment_route.expired"
+    ROUTE_EXPIRED = "blockchain.route.expired"
+    PROVIDER_OFFLINE = "blockchain.provider.offline"
+    PROVIDER_ONLINE = "blockchain.provider.online"

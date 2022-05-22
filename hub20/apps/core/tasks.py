@@ -1,6 +1,7 @@
 import logging
+from contextlib import contextmanager
+from hashlib import md5
 
-import celery_pubsub
 import httpx
 from asgiref.sync import async_to_sync
 from celery import shared_task
@@ -10,13 +11,8 @@ from django.contrib.sessions.models import Session
 from django.core.cache import cache
 from django.utils import timezone
 
-from hub20.apps.blockchain.client import BLOCK_CREATION_INTERVAL, make_web3
-from hub20.apps.blockchain.models import Web3Provider
-from hub20.apps.ethereum_money.abi import EIP20_ABI
-from hub20.apps.ethereum_money.models import Token
-
 from .consumers import CheckoutConsumer, Events, SessionEventsConsumer
-from .models import BlockchainPaymentRoute, Checkout, Transfer
+from .models import Checkout, TokenList, Transfer
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -27,67 +23,58 @@ def _get_open_session_keys():
     return Session.objects.filter(expire_date__gt=now).values_list("session_key", flat=True)
 
 
+STREAM_PROCESSOR_LOCK_INTERVAL = 20  # in seconds
+
+
+class ProviderTaskLock:
+    def __init__(self, task, provider, timeout=STREAM_PROCESSOR_LOCK_INTERVAL):
+        self.task = task
+        self.provider = provider
+        self.timeout = timeout
+        self.is_acquired = False
+
+        hsh = md5(f"{self.provider.hostname}-{self.task.name}".encode())
+        self.key = hsh.hexdigest()
+
+    def acquire(self):
+        # cache.add fails if the key already exists
+        self.is_acquired = cache.add(self.key, self.task.request.id, self.timeout)
+
+    def refresh(self):
+        logger.debug(f"Refreshing lock for {self.provider.hostname} on {self.task.name}")
+        self.is_acquired = self.is_acquired and cache.touch(self.key, self.timeout)
+
+    def release(self):
+        if self.is_acquired:
+            logger.debug(f"Releasing lock for {self.provider.hostname} on {self.task.name}")
+            cache.delete(self.key)
+
+
+@contextmanager
+def stream_processor_lock(task, provider, timeout=STREAM_PROCESSOR_LOCK_INTERVAL):
+    """
+    The context manager should be called from any non-idempotent
+    task that process incoming data from a provider. It creates a lock for
+    the exclusive task/provider pair which expires with `timeout` seconds.
+    If the task may run for a indetermined period, it can make calls
+    to lock.refresh in order to reset the lock timer.
+    """
+
+    logger.debug(f"Attempting lock for {provider.hostname} on task {task.name}")
+    lock = ProviderTaskLock(task=task, provider=provider, timeout=timeout)
+
+    lock.acquire()
+
+    try:
+        yield lock
+    finally:
+        lock.release()
+
+
 @shared_task
-def check_payments_in_open_routes():
-    CACHE_KEY = "TRANSACTIONS_FOR_OPEN_ROUTES"
-
-    logger.debug("Checking for token transfers in open routes")
-    open_routes = BlockchainPaymentRoute.objects.open().select_related(
-        "deposit",
-        "deposit__currency",
-        "deposit__currency__chain",
-        "account",
-    )
-
-    for route in open_routes:
-        logger.info(f"Checking for token transfers for payment {route.deposit_id}")
-        token: Token = route.deposit.currency
-
-        # We are only concerned here about ERC20 tokens. Native token
-        # transfers are detected directly by the blockchain listeners
-        if not token.is_ERC20:
-            continue
-
-        provider = Web3Provider.active.filter(chain=token.chain).first()
-
-        if not provider:
-            logger.warning(
-                f"Route {route} is open but not provider available to check for payments"
-            )
-            continue
-
-        w3 = make_web3(provider=provider)
-        contract = w3.eth.contract(abi=EIP20_ABI, address=token.address)
-        wallet_address = route.account.address
-
-        event_filter = contract.events.Transfer().createFilter(
-            fromBlock=route.start_block_number,
-            toBlock=route.expiration_block_number,
-            argument_filters={"_to": wallet_address},
-        )
-
-        try:
-            for transfer_event in event_filter.get_all_entries():
-                tx_hash = transfer_event.transactionHash.hex()
-
-                key = f"{CACHE_KEY}:{tx_hash}"
-
-                if cache.get(key):
-                    logger.debug(f"Transfer event in tx {tx_hash} has already been published")
-
-                    continue
-
-                logger.debug(f"Publishing transfer event from tx {tx_hash}")
-                celery_pubsub.publish(
-                    "blockchain.event.token_transfer.mined",
-                    chain_id=w3.eth.chain_id,
-                    wallet_address=wallet_address,
-                    event_data=transfer_event,
-                    provider_url=provider.url,
-                )
-                cache.set(key, True, timeout=BLOCK_CREATION_INTERVAL * 2)
-        except ValueError as exc:
-            logger.warning(f"Can not get transfer logs from {provider.hostname}: {exc}")
+def broadcast_event(**kw):
+    for session_key in _get_open_session_keys():
+        send_session_event(session_key, **kw)
 
 
 @shared_task
@@ -152,6 +139,12 @@ def call_checkout_webhook(checkout_id):
 
 
 @shared_task
+def import_token_list(url, description=None):
+    token_list_data = TokenList.fetch(url)
+    TokenList.make(url, token_list_data, description=description)
+
+
+@shared_task
 def notify_block_created(chain_id, block_data):
     logger.debug(f"Sending notification of of block created on #{chain_id}")
     block_number = block_data["number"]
@@ -168,25 +161,5 @@ def notify_block_created(chain_id, block_data):
 
 
 @shared_task
-def notify_node_unavailable(chain_id, provider_url):
-    for session_key in _get_open_session_keys():
-        send_session_event(
-            session_key, event=Events.ETHEREUM_NODE_UNAVAILABLE.value, chain_id=chain_id
-        )
-
-
-@shared_task
-def notify_node_recovered(chain_id, provider_url):
-    for session_key in _get_open_session_keys():
-        send_session_event(session_key, event=Events.ETHEREUM_NODE_OK.value, chain_id=chain_id)
-
-
-@shared_task
 def clear_expired_sessions():
     Session.objects.filter(expire_date__lte=timezone.now()).delete()
-
-
-celery_pubsub.subscribe("node.sync.nok", notify_node_unavailable)
-celery_pubsub.subscribe("node.sync.ok", notify_node_recovered)
-celery_pubsub.subscribe("node.connection.nok", notify_node_unavailable)
-celery_pubsub.subscribe("node.connection.ok", notify_node_recovered)

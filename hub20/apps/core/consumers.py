@@ -17,8 +17,6 @@ class Events(Enum):
     BLOCKCHAIN_DEPOSIT_BROADCAST = "blockchain.deposit.broadcast"
     BLOCKCHAIN_DEPOSIT_CONFIRMED = "blockchain.deposit.confirmed"
     BLOCKCHAIN_ROUTE_EXPIRED = "blockchain.payment_route.expired"
-    ETHEREUM_NODE_UNAVAILABLE = "ethereum_node.unavailable"
-    ETHEREUM_NODE_OK = "ethereum_node.ok"
     RAIDEN_ROUTE_EXPIRED = "raiden.payment_route.expired"
 
 
