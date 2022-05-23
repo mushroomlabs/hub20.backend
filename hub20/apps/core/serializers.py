@@ -1,16 +1,10 @@
 from rest_framework import serializers
 
-from hub20.apps.core.models import Token
-from hub20.apps.core.serializers import AddressSerializerField
-from hub20.apps.ethereum_money.serializers import (
-    HyperlinkedRelatedTokenField,
+from hub20.apps.core.tokens.serializers import (
     HyperlinkedTokenIdentityField,
     HyperlinkedTokenMixin,
     TokenSerializer,
-    TokenValueField,
 )
-
-from . import models
 
 
 class TokenRouteDescriptorSerializer(HyperlinkedTokenMixin, TokenSerializer):

@@ -1,59 +1,12 @@
 from raiden_contracts.contract_manager import gas_measurements
 from rest_framework import serializers
-from rest_framework_nested.relations import NestedHyperlinkedIdentityField
-from rest_framework_nested.serializers import NestedHyperlinkedModelSerializer
 
-from hub20.apps.core.serializers import HyperlinkedRelatedTokenField, PaymentSerializer
+from hub20.apps.core.serializers import PaymentSerializer
 from hub20.apps.web3.client import make_web3
 from hub20.apps.web3.models import Web3Provider
 
 from . import models
 from .client import RaidenClient
-
-
-class ChainField(serializers.PrimaryKeyRelatedField):
-    queryset = models.Chain.objects.filter(tokens__tokennetwork__isnull=False).distinct()
-
-
-class TokenNetworkField(serializers.RelatedField):
-    queryset = models.TokenNetwork.objects.all()
-    lookup_field = "address"
-
-
-class TokenNetworkSerializer(serializers.ModelSerializer):
-    url = serializers.HyperlinkedIdentityField(
-        view_name="token-network-detail",
-        lookup_field="address",
-    )
-    token = HyperlinkedRelatedTokenField()
-
-    class Meta:
-        model = models.TokenNetwork
-        fields = ("url", "address", "token")
-        read_only_fields = ("url", "address", "token")
-
-
-class ChannelSerializer(NestedHyperlinkedModelSerializer):
-    url = NestedHyperlinkedIdentityField(
-        view_name="raiden-channel-detail",
-        parent_lookup_kwargs={
-            "raiden_pk": "raiden_id",
-        },
-    )
-    token = HyperlinkedRelatedTokenField(read_only=True, queryset=None)
-
-    class Meta:
-        model = models.Channel
-        fields = ("url", "id", "token", "identifier", "partner_address", "status", "balance")
-        read_only_fields = (
-            "url",
-            "id",
-            "token",
-            "identifier",
-            "partner_address",
-            "status",
-            "balance",
-        )
 
 
 class RaidenStatusSerializer(serializers.ModelSerializer):
