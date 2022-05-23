@@ -4,25 +4,19 @@ import datetime
 from typing import Optional
 from urllib.parse import urlparse
 
-from django.contrib.auth import get_user_model
-from django.contrib.postgres.fields import ArrayField
 from django.db import models
-from django.db.models import F, Max
-from django_celery_results.models import TaskResult
+from django.db.models import F
 from model_utils.choices import Choices
-from model_utils.managers import InheritanceManager, QueryManager
-from model_utils.models import StatusModel, TimeStampedModel
+from model_utils.managers import QueryManager
+from model_utils.models import StatusModel
 
-from hub20.apps.blockchain.fields import AddressField, Uint256Field
-from hub20.apps.blockchain.models import BaseEthereumAccount, Chain, Transaction
-from hub20.apps.blockchain.validators import uri_parsable_scheme_validator
-from hub20.apps.ethereum_money.models import Token, TokenAmount, TokenAmountField, TokenValueModel
+from hub20.apps.core.fields import AddressField, Uint256Field
+from hub20.apps.core.models import BaseEthereumAccount, Chain, Token, TokenAmount, TokenAmountField
+from hub20.apps.core.validators import uri_parsable_scheme_validator
 
 CHANNEL_STATUSES = Choices(
     "opened", "waiting_for_settle", "settling", "settled", "unusable", "closed", "closing"
 )
-User = get_user_model()
-
 raiden_url_validator = uri_parsable_scheme_validator(("http", "https"))
 
 
@@ -33,71 +27,13 @@ class RaidenURLField(models.URLField):
 class TokenNetwork(models.Model):
     address = AddressField()
     token = models.OneToOneField(Token, on_delete=models.CASCADE)
-    objects = models.Manager()
-
-    def can_reach(self, address) -> bool:
-        # This is a very naive assumption. One should not assume that we can
-        # reach an address just because the address has an open channel.
-
-        # However, our main purpose is only to find out if a given address is
-        # being used by raiden and that we can _try_ to use for a transfer.
-        open_channels = self.channels.filter(status__status=CHANNEL_STATUSES.opened)
-        return open_channels.filter(participant_addresses__contains=[address]).exists()
 
     @property
     def chain(self):
         return self.token.chain
 
-    @property
-    def events(self):
-        return TokenNetworkChannelEvent.objects.filter(channel__token_network=self)
-
-    @property
-    def most_recent_channel_event(self) -> Optional[int]:
-        max_block_aggregate = Max("tokennetworkchannelevent__transaction__block__number")
-        return self.channels.aggregate(max_block=max_block_aggregate).get("max_block")
-
     def __str__(self):
         return f"{self.address} - ({self.token.symbol} @ {self.token.chain_id})"
-
-
-class TokenNetworkChannel(models.Model):
-    token_network = models.ForeignKey(
-        TokenNetwork, on_delete=models.CASCADE, related_name="channels"
-    )
-    identifier = Uint256Field()
-    participant_addresses = ArrayField(AddressField(), size=2)
-
-    @property
-    def events(self):
-        return self.tokennetworkchannelevent_set.order_by("transaction__block__number")
-
-
-class TokenNetworkChannelStatus(StatusModel):
-    STATUS = CHANNEL_STATUSES
-    channel = models.OneToOneField(
-        TokenNetworkChannel, on_delete=models.CASCADE, related_name="status"
-    )
-
-    @classmethod
-    def set_status(cls, channel: TokenNetworkChannel):
-        last_event = channel.events.last()
-        event_name = last_event and last_event.name
-        status = event_name and {
-            "ChannelOpened": CHANNEL_STATUSES.opened,
-            "ChannelClosed": CHANNEL_STATUSES.closed,
-        }.get(event_name)
-        if status:
-            cls.objects.update_or_create(channel=channel, defaults={"status": status})
-
-
-class TokenNetworkChannelEvent(models.Model):
-    channel = models.ForeignKey(TokenNetworkChannel, on_delete=models.CASCADE)
-    transaction = models.ForeignKey(Transaction, on_delete=models.CASCADE)
-    name = models.CharField(max_length=32, db_index=True)
-
-    class Meta:
-        unique_together = ("channel", "transaction")
 
 
 class Raiden(models.Model):
@@ -267,55 +203,9 @@ class Payment(models.Model):
         unique_together = ("channel", "identifier", "sender_address", "receiver_address")
 
 
-class UserDeposit(models.Model):
-    raiden = models.OneToOneField(Raiden, related_name="udc", on_delete=models.CASCADE)
-    token = models.ForeignKey(Token, related_name="user_deposit", on_delete=models.CASCADE)
-    total_deposit = TokenAmountField()
-    balance = TokenAmountField()
-
-
-class RaidenManagementOrder(TimeStampedModel):
-    raiden = models.ForeignKey(Raiden, related_name="management_orders", on_delete=models.CASCADE)
-    task_result = models.OneToOneField(
-        TaskResult, related_name="raiden_management_order", on_delete=models.CASCADE
-    )
-    objects = InheritanceManager()
-
-
-class JoinTokenNetworkOrder(RaidenManagementOrder):
-    token_network = models.ForeignKey(TokenNetwork, on_delete=models.PROTECT)
-    amount = TokenAmountField()
-
-
-class LeaveTokenNetworkOrder(RaidenManagementOrder):
-    token_network = models.ForeignKey(TokenNetwork, on_delete=models.PROTECT)
-
-
-class ChannelDepositOrder(RaidenManagementOrder):
-    channel = models.ForeignKey(Channel, on_delete=models.PROTECT)
-    amount = TokenAmountField()
-
-
-class ChannelWithdrawOrder(RaidenManagementOrder):
-    channel = models.ForeignKey(Channel, on_delete=models.PROTECT)
-    amount = TokenAmountField()
-
-
-class UserDepositContractOrder(RaidenManagementOrder, TokenValueModel):
-    pass
-
-
 __all__ = [
     "TokenNetwork",
     "Raiden",
-    "TokenNetwork",
     "Channel",
     "Payment",
-    "UserDeposit",
-    "RaidenManagementOrder",
-    "JoinTokenNetworkOrder",
-    "LeaveTokenNetworkOrder",
-    "ChannelDepositOrder",
-    "ChannelWithdrawOrder",
-    "UserDepositContractOrder",
 ]

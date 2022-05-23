@@ -5,17 +5,15 @@ import ethereum
 from django.core.management.base import BaseCommand
 from eth_utils import to_checksum_address
 
-from hub20.apps.blockchain.client import make_web3
-from hub20.apps.blockchain.models import Web3Provider
-from hub20.apps.ethereum_money.models import Token, TokenAmount
-from hub20.apps.raiden.client.blockchain import mint_tokens
-from hub20.apps.wallet.models import KeystoreAccount
+from hub20.apps.core.models import BaseEthereumAccount, KeystoreAccount, Token, TokenAmount
+from hub20.apps.web3.client import make_web3, mint_tokens
+from hub20.apps.web3.models import Web3Provider
 
 logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
-    help = "Mints tests tokens"
+    help = "Calls mint function on tokens (should only work for test tokens)"
 
     def add_arguments(self, parser):
         parser.add_argument("-a", "--account", required=True, type=str)
@@ -25,15 +23,9 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         address = to_checksum_address(options["account"])
-        accounts = [
-            acc
-            for acc in KeystoreAccount.objects.filter(address=address).select_subclasses()
-            if acc.private_key is not None
-        ]
+        account = BaseEthereumAccount.objects.filter(address=address).first()
 
-        account = accounts and accounts.pop()
-
-        if not account:
+        if not (account and getattr(account, "private_key", None)):
             private_key = getpass.getpass(f"Private Key for {address} required: ")
             generated_address = to_checksum_address(ethereum.utils.privtoaddr(private_key.strip()))
             assert generated_address == address, "Private Key does not match"

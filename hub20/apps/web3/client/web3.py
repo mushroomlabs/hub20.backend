@@ -5,6 +5,8 @@ from urllib.parse import urlparse
 from eth_utils import to_checksum_address
 from ethereum.abi import ContractTranslator
 from pydantic import BaseModel
+from raiden_contracts.constants import CONTRACT_CUSTOM_TOKEN
+from raiden_contracts.contract_manager import ContractManager, contracts_precompiled_path
 from web3 import Web3
 from web3.datastructures import AttributeDict
 from web3.exceptions import ExtraDataLengthError, TransactionNotFound
@@ -23,6 +25,8 @@ from hub20.apps.web3.models import BaseEthereumAccount, TransactionDataRecord, W
 from hub20.apps.web3.typing import Address, EthereumAccount_T
 
 logger = logging.getLogger(__name__)
+
+GAS_REQUIRED_FOR_MINT: int = 100_000
 
 
 class Web3ProviderConfiguration(BaseModel):
@@ -215,6 +219,23 @@ def make_token(w3: Web3, address) -> Token:
     token_data = get_token_information(w3=w3, address=address)
     chain = Chain.active.get(id=w3.eth.chain_id)
     return Token.make(chain=chain, address=address, **token_data)
+
+
+def mint_tokens(w3: Web3, account: EthereumAccount_T, amount: TokenAmount):
+    logger.debug(f"Minting {amount.formatted}")
+    contract_manager = ContractManager(contracts_precompiled_path())
+    token_proxy = w3.eth.contract(
+        address=to_checksum_address(amount.currency.address),
+        abi=contract_manager.get_contract_abi(CONTRACT_CUSTOM_TOKEN),
+    )
+
+    send_transaction(
+        w3=w3,
+        contract_function=token_proxy.functions.mint,
+        account=account,
+        contract_args=(amount.as_wei,),
+        gas=GAS_REQUIRED_FOR_MINT,
+    )
 
 
 class Web3Client:
