@@ -48,10 +48,6 @@ PROJECT_APPS = [
     "admin_interface",
     "colorfield",
     "django.contrib.admin",
-    "hub20.apps.blockchain",
-    "hub20.apps.wallet",
-    "hub20.apps.ethereum_money",
-    "hub20.apps.raiden",
     "hub20.apps.core",
 ]
 
