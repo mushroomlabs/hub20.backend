@@ -3,9 +3,8 @@ from unittest.mock import patch
 from django.contrib.contenttypes.models import ContentType
 from django.test import TestCase
 
-from hub20.apps.core.choices import PAYMENT_NETWORKS
 from hub20.apps.core.factories import Erc20TokenPaymentOrderFactory, RaidenWithdrawalFactory
-from hub20.apps.core.models.accounting import PaymentNetworkAccount
+from hub20.apps.core.models import PaymentNetwork, PaymentNetworkAccount
 from hub20.apps.core.tests import AccountingTestCase
 
 from ..client.node import RaidenClient
@@ -37,8 +36,8 @@ class RaidenPaymentTestCase(TestCase):
 class RaidenAccountingTestCase(AccountingTestCase):
     def setUp(self):
         super().setUp()
-        self.treasury = PaymentNetworkAccount.make(PAYMENT_NETWORKS.internal)
-        self.raiden_account = PaymentNetworkAccount.make(PAYMENT_NETWORKS.raiden)
+        self.treasury = PaymentNetworkAccount.make(PaymentNetwork._meta.app_label)
+        self.raiden_account = PaymentNetworkAccount.make(RaidenPaymentRoute._meta.app_label)
 
     @patch.object(RaidenClient, "select_for_transfer")
     @patch.object(RaidenClient, "transfer")

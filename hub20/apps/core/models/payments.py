@@ -6,22 +6,17 @@ from typing import Optional
 
 from django.conf import settings
 from django.db import models
-from django.db.models import Exists, ExpressionWrapper, F, OuterRef, Q, Sum, Value
+from django.db.models import F, Q, Sum, Value
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 from model_utils.managers import InheritanceManager
 from model_utils.models import TimeStampedModel
 
-from hub20.apps.ethereum_money.models import Token, TokenAmountField, TokenValueModel
-from hub20.apps.raiden.models import Channel, Payment as RaidenPaymentEvent, Raiden
-from hub20.apps.wallet import get_wallet_model
-
 from ..choices import DEPOSIT_STATUS
-from ..exceptions import RoutingError
-from ..settings import app_settings
+from .networks import PaymentNetwork
+from .tokens import BaseToken, TokenAmountField, TokenValueModel
 
 logger = logging.getLogger(__name__)
-Wallet = get_wallet_model()
 
 
 def generate_payment_route_id():
@@ -35,49 +30,7 @@ def generate_payment_route_id():
     return random.randint(LOWER_BOUND, UPPER_BOUND)
 
 
-def calculate_raiden_payment_window():
-    return datetime.timedelta(seconds=app_settings.Payment.raiden_route_lifetime)
-
-
-class DepositQuerySet(models.QuerySet):
-    def expired(self, block_number: Optional[int] = None, at: Optional[datetime.datetime] = None):
-        return self.without_blockchain_route(block_number=block_number).without_raiden_route(at=at)
-
-    def open(self, block_number: Optional[int] = None, at: Optional[datetime.datetime] = None):
-        exists_blockchain_route = self.__class__.get_blockchain_window_query(
-            block_number=block_number
-        )
-        exists_raiden_route = self.__class__.get_raiden_window_query(at=at)
-
-        return self.filter(exists_blockchain_route | exists_raiden_route)
-
-    def with_blockchain_route(self, block_number: Optional[int] = None):
-        exists_route = self.__class__.get_blockchain_window_query(block_number=block_number)
-        return self.filter(exists_route)
-
-    def with_raiden_route(self, at: Optional[datetime.datetime] = None):
-        exists_route = self.__class__.get_raiden_window_query(at=at)
-        return self.filter(exists_route)
-
-    def without_blockchain_route(self, block_number: Optional[int] = None):
-        exists_route = self.__class__.get_blockchain_window_query(block_number=block_number)
-        return self.filter(~exists_route)
-
-    def without_raiden_route(self, at: Optional[datetime.datetime] = None):
-        exists_route = self.__class__.get_raiden_window_query(at=at)
-        return self.filter(~exists_route)
-
-    @classmethod
-    def get_blockchain_window_query(cls, block_number: Optional[int] = None) -> Exists:
-        qs = BlockchainPaymentRoute.objects.available(block_number=block_number)
-        return Exists(qs.filter(deposit=OuterRef("pk")))
-
-    @classmethod
-    def get_raiden_window_query(cls, at: Optional[datetime.datetime] = None) -> Exists:
-        return Exists(RaidenPaymentRoute.objects.available(at=at).filter(deposit=OuterRef("pk")))
-
-
-class PaymentOrderQuerySet(DepositQuerySet):
+class PaymentOrderQuerySet(models.QuerySet):
     def unpaid(self):
         q_no_payment = Q(total_paid__isnull=True)
         q_low_payment = Q(total_paid__lt=F("amount"))
@@ -118,38 +71,14 @@ class InternalPaymentRouteQuerySet(PaymentRouteQuerySet):
         return self.filter(created__lte=date_value)
 
 
-class RaidenRouteQuerySet(PaymentRouteQuerySet):
-    def with_expiration(self) -> models.QuerySet:
-        return self.annotate(
-            expires_on=ExpressionWrapper(
-                F("created") + F("payment_window"), output_field=models.DateTimeField()
-            )
-        )
-
-    def expired(self, at: Optional[datetime.datetime] = None) -> models.QuerySet:
-        date_value = at or timezone.now()
-        return self.with_expiration().filter(expires_on__lt=date_value)
-
-    def available(self, at: Optional[datetime.datetime] = None) -> models.QuerySet:
-        date_value = at or timezone.now()
-        return (
-            self.with_expiration()
-            .filter(payments__raidenpayment__isnull=True)
-            .filter(created__lte=date_value, expires_on__gte=date_value)
-        )
-
-    def used(self) -> models.QuerySet:
-        return self.filter(payments__raidenpayment__isnull=False)
-
-
 class Deposit(TimeStampedModel):
     STATUS = DEPOSIT_STATUS
 
     id = models.UUIDField(default=uuid.uuid4, primary_key=True)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    network = models.ForeignKey(PaymentNetwork, on_delete=models.PROTECT)
     session_key = models.SlugField(null=True)
-    currency = models.ForeignKey(Token, on_delete=models.PROTECT)
-    objects = DepositQuerySet.as_manager()
+    currency = models.ForeignKey(BaseToken, on_delete=models.PROTECT)
 
     @property
     def payments(self):
@@ -203,8 +132,6 @@ class PaymentOrder(Deposit, TokenValueModel):
 
 
 class PaymentRoute(TimeStampedModel):
-    NETWORK: Optional[str] = None
-
     id = models.UUIDField(default=uuid.uuid4, primary_key=True)
     deposit = models.ForeignKey(Deposit, on_delete=models.CASCADE, related_name="routes")
     identifier = models.BigIntegerField(default=generate_payment_route_id, unique=True)
@@ -233,7 +160,7 @@ class PaymentRoute(TimeStampedModel):
         return self.NETWORK
 
     @classmethod
-    def is_usable_for_token(cls, token: Token):
+    def is_usable_for_token(cls, token: BaseToken):
         return False
 
     @classmethod
@@ -245,43 +172,6 @@ class InternalPaymentRoute(PaymentRoute):
     NETWORK = "internal"
 
     objects = InternalPaymentRouteQuerySet.as_manager()
-
-
-class RaidenPaymentRoute(PaymentRoute):
-    NETWORK = "raiden"
-
-    payment_window = models.DurationField(default=calculate_raiden_payment_window)
-    raiden = models.ForeignKey(Raiden, on_delete=models.CASCADE, related_name="payment_routes")
-
-    objects = RaidenRouteQuerySet.as_manager()
-
-    @property
-    def is_expired(self):
-        return self.expiration_time < timezone.now()
-
-    @property
-    def expiration_time(self):
-        return self.created + self.payment_window
-
-    @staticmethod
-    def calculate_payment_window():
-        return calculate_raiden_payment_window()
-
-    @classmethod
-    def is_usable_for_token(cls, token: Token):
-        return token.is_listed and hasattr(token, "tokennetwork")
-
-    @classmethod
-    def make(cls, deposit):
-        channels = Channel.available.filter(token_network__token=deposit.currency)
-
-        if channels.exists():
-            channel = channels.order_by("?").first()
-            return cls.objects.create(raiden=channel.raiden, deposit=deposit)
-        else:
-            raise RoutingError(
-                f"No raiden node available to accept {deposit.currency.symbol} payments"
-            )
 
 
 class Payment(TimeStampedModel, TokenValueModel):
@@ -302,14 +192,6 @@ class InternalPayment(Payment):
         return str(self.id)
 
 
-class RaidenPayment(Payment):
-    payment = models.OneToOneField(RaidenPaymentEvent, unique=True, on_delete=models.CASCADE)
-
-    @property
-    def identifier(self):
-        return f"{self.payment.identifier}-{self.id}"
-
-
 class PaymentConfirmation(TimeStampedModel):
     payment = models.OneToOneField(Payment, on_delete=models.CASCADE, related_name="confirmation")
 
@@ -319,9 +201,7 @@ __all__ = [
     "PaymentOrder",
     "PaymentRoute",
     "InternalPaymentRoute",
-    "RaidenPaymentRoute",
     "Payment",
     "InternalPayment",
-    "RaidenPayment",
     "PaymentConfirmation",
 ]

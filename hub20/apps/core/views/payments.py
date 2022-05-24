@@ -11,7 +11,6 @@ from .. import models, serializers
 
 
 class DepositFilter(filters.FilterSet):
-    open = filters.BooleanFilter(label="open", method="filter_open")
     chain = filters.NumberFilter(field_name="currency__chain")
     token = filters.CharFilter(field_name="currency__address")
 

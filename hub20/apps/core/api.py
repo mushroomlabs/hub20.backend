@@ -2,8 +2,6 @@ from django.urls import path
 from rest_framework.routers import SimpleRouter
 from rest_framework_nested.routers import NestedSimpleRouter
 
-from hub20.apps.ethereum_money.api import TokenRouter
-from hub20.apps.ethereum_money.views import TokenListViewSet, UserTokenListViewSet
 from hub20.apps.wallet.views import WalletViewSet
 
 from . import views
@@ -20,7 +18,7 @@ class TransferRouter(UUIDRouter):
     lookup_field = "reference"
 
 
-token_router = TokenRouter(trailing_slash=False)
+token_router = UUIDRouter(trailing_slash=False)
 token_router.register(r"tokens", views.TokenBrowserViewSet, basename="token")
 token_router.register(r"my/tokens", views.UserTokenViewSet, basename="user-token")
 
@@ -28,12 +26,12 @@ token_router.register(r"my/tokens", views.UserTokenViewSet, basename="user-token
 router = SimpleRouter(trailing_slash=False)
 router.register("checkout", views.CheckoutViewSet, basename="checkout")
 router.register("payments", views.PaymentViewSet, basename="payments")
-router.register("tokenlists", TokenListViewSet, basename="tokenlist")
+router.register("tokenlists", views.TokenListViewSet, basename="tokenlist")
 router.register("stores", views.StoreViewSet, basename="store")
 router.register("users", views.UserViewSet, basename="users")
 router.register("wallets", WalletViewSet, basename="wallet")
 router.register("my/stores", views.UserStoreViewSet, basename="user-store")
-router.register("my/tokenlists", UserTokenListViewSet, basename="user-tokenlist")
+router.register("my/tokenlists", views.UserTokenListViewSet, basename="user-tokenlist")
 router.register("my/deposits", views.DepositViewSet, basename="user-deposit")
 
 transfer_router = TransferRouter(trailing_slash=False)

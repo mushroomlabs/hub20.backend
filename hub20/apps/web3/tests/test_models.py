@@ -5,11 +5,9 @@ from django.contrib.contenttypes.models import ContentType
 from django.db import IntegrityError
 from django.test import TestCase
 
-from hub20.apps.core.choices import PAYMENT_NETWORKS, TRANSFER_STATUS
+from hub20.apps.core.choices import TRANSFER_STATUS
 from hub20.apps.core.factories import BlockchainWithdrawalFactory, Erc20TokenPaymentOrderFactory
-from hub20.apps.core.models.accounting import PaymentNetworkAccount
-from hub20.apps.core.models.blockchain import Block, Transaction
-from hub20.apps.core.models.payments import BlockchainPayment, BlockchainPaymentRoute
+from hub20.apps.core.models import PaymentNetwork, PaymentNetworkAccount
 from hub20.apps.core.settings import app_settings
 from hub20.apps.core.signals.tokens import outgoing_transfer_mined
 from hub20.apps.core.tests import AccountingTestCase, TransferTestCase
@@ -18,6 +16,7 @@ from hub20.apps.ethereum_money.factories import (
     Erc20TransactionDataFactory,
     Erc20TransactionFactory,
 )
+from hub20.apps.web3.models import Block, BlockchainPayment, BlockchainPaymentRoute, Transaction
 
 from ..client.web3 import Web3Client
 from ..signals import block_sealed
@@ -99,8 +98,8 @@ class BlockchainWithdrawalTestCase(TransferTestCase):
 class Web3AccountingTestCase(AccountingTestCase):
     def setUp(self):
         super().setUp()
-        self.treasury = PaymentNetworkAccount.make(PAYMENT_NETWORKS.internal)
-        self.blockchain_account = PaymentNetworkAccount.make(PAYMENT_NETWORKS.blockchain)
+        self.treasury = PaymentNetworkAccount.make(PaymentNetwork._meta.app_label)
+        self.blockchain_account = PaymentNetworkAccount.make(Block._meta.app_label)
 
     @patch.object(Web3Client, "select_for_transfer")
     @patch.object(Web3Client, "transfer")

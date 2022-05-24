@@ -1,7 +1,7 @@
 from django.test import TestCase
 
 from hub20.apps.core.factories import Erc20TokenPaymentOrderFactory
-from hub20.apps.core.models.payments import PaymentConfirmation, PaymentOrder
+from hub20.apps.core.models.payments import PaymentConfirmation
 from hub20.apps.core.tests.base import add_token_to_account
 
 from ..models import BlockchainPaymentRoute
@@ -12,13 +12,6 @@ class PaymentOrderManagerTestCase(TestCase):
         self.order = Erc20TokenPaymentOrderFactory(
             currency=self.raiden_channel.token_network.token
         )
-
-    def test_order_can_create_blockchain_route(self):
-        BlockchainPaymentRoute.make(self.order)
-        orders_with_blockchain_route = PaymentOrder.objects.with_route(
-            network=BlockchainPaymentRoute.NETWORK
-        )
-        self.assertTrue(orders_with_blockchain_route.exists())
 
     def test_order_with_partial_payment_is_open(self):
         route = BlockchainPaymentRoute.make(deposit=self.order)

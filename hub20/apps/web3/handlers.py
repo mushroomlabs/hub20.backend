@@ -143,13 +143,11 @@ def on_incoming_transfer_broadcast_send_notification_to_active_sessions(sender, 
     if not route:
         return
 
-    deposit = Deposit.objects.with_blockchain_route().filter(routes=route).first()
-
-    if deposit and deposit.session_key:
+    if route.deposit.session_key:
         send_session_event.delay(
-            deposit.session_key,
+            route.deposit.session_key,
             event=Events.DEPOSIT_BROADCAST.value,
-            deposit_id=str(deposit.id),
+            deposit_id=str(route.deposit.id),
             amount=str(payment_amount.amount),
             token=payment_amount.currency.address,
             transaction=tx_data.hash.hex(),

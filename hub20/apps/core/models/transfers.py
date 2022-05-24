@@ -4,7 +4,6 @@ import logging
 import uuid
 
 from django.conf import settings
-from django.contrib.postgres.fields import HStoreField
 from django.db import models
 from model_utils.managers import InheritanceManager, InheritanceManagerMixin, QueryManagerMixin
 from model_utils.models import TimeStampedModel
@@ -12,9 +11,6 @@ from model_utils.models import TimeStampedModel
 from hub20.apps.core.choices import TRANSFER_STATUS, WITHDRAWAL_NETWORKS
 from hub20.apps.core.fields import AddressField
 from hub20.apps.ethereum_money.models import TokenValueModel
-from hub20.apps.raiden.client.node import RaidenClient
-from hub20.apps.raiden.exceptions import RaidenPaymentError
-from hub20.apps.raiden.models import Payment
 
 from ..exceptions import TransferError
 
@@ -128,34 +124,8 @@ class Withdrawal(Transfer):
     payment_network = models.CharField(max_length=64, choices=WITHDRAWAL_NETWORKS)
 
 
-class RaidenWithdrawal(Withdrawal):
-    def _execute(self):
-        try:
-            assert self.payment_network == WITHDRAWAL_NETWORKS.raiden, "Wrong payment network"
-            raiden_client = RaidenClient.select_for_transfer(
-                amount=self.amount, address=self.address
-            )
-            payment_data = raiden_client.transfer(
-                amount=self.as_token_amount,
-                address=self.address,
-                identifier=raiden_client._ensure_valid_identifier(self.identifier),
-            )
-            RaidenWithdrawalReceipt.objects.create(transfer=self, payment_data=payment_data)
-        except AssertionError:
-            raise TransferError("Incorrect transfer method")
-        except RaidenPaymentError as exc:
-            raise TransferError(exc.message) from exc
-
-    class Meta:
-        proxy = True
-
-
 class TransferReceipt(TimeStampedModel):
     transfer = models.OneToOneField(Transfer, on_delete=models.CASCADE, related_name="receipt")
-
-
-class RaidenWithdrawalReceipt(TransferReceipt):
-    payment_data = HStoreField()
 
 
 class TransferConfirmation(TimeStampedModel):
@@ -163,10 +133,6 @@ class TransferConfirmation(TimeStampedModel):
         Transfer, on_delete=models.CASCADE, related_name="confirmation"
     )
     objects = InheritanceManager()
-
-
-class RaidenWithdrawalConfirmation(TransferConfirmation):
-    payment = models.OneToOneField(Payment, on_delete=models.CASCADE)
 
 
 class TransferFailure(TimeStampedModel):
@@ -187,9 +153,6 @@ __all__ = [
     "TransferConfirmation",
     "TransferReceipt",
     "TransferError",
-    "RaidenWithdrawal",
-    "RaidenWithdrawalReceipt",
     "InternalTransfer",
-    "RaidenWithdrawalConfirmation",
     "Withdrawal",
 ]

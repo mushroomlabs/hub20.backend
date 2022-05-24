@@ -100,7 +100,7 @@ class Checkout(TimeStampedModel):
                     "amount": str(p.amount),
                     "confirmed": p.is_confirmed,
                     "identifier": p.identifier,
-                    "route": p.route.network,
+                    "route": p.route.deposit.network.slug,
                 }
                 for p in self.order.payments
             ],

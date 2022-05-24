@@ -2,6 +2,12 @@ from django.db import models
 from model_utils.managers import InheritanceManager, QueryManager
 
 
+class PaymentNetwork(models.Model):
+    name = models.CharField(max_length=300, unique=True)
+    slug = models.SlugField()
+    description = models.TextField()
+
+
 class BaseProvider(models.Model):
     is_active = models.BooleanField(default=True)
     synced = models.BooleanField(default=False)
@@ -16,4 +22,4 @@ class BaseProvider(models.Model):
         return self.connected and self.synced
 
 
-__all__ = ["BaseProvider"]
+__all__ = ["PaymentNetwork", "BaseProvider"]

@@ -39,6 +39,7 @@ from hub20.apps.core.models import (
 )
 from hub20.apps.core.settings import app_settings
 
+from .constants import NULL_ADDRESS
 from .fields import Web3ProviderURLField
 
 Wallet = get_wallet_model()
@@ -363,8 +364,11 @@ class HierarchicalDeterministicWallet(BaseWallet):
 
 # Tokens
 class NativeToken(BaseToken):
-    NULL_ADDRESS = "0x0000000000000000000000000000000000000000"
     chain = models.OneToOneField(Chain, on_delete=models.CASCADE, related_name="native_token")
+
+    @property
+    def address(self):
+        return NULL_ADDRESS
 
 
 class Erc20Token(BaseToken):

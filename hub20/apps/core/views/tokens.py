@@ -1,4 +1,4 @@
-from django.db.models import BooleanField, Case, Q, Value, When
+from django.db.models import Q
 from django.db.models.query import QuerySet
 from django.http import Http404
 from django.shortcuts import get_object_or_404
@@ -57,15 +57,10 @@ class BaseTokenViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
     search_fields = ("name", "=symbol", "chain__name")
     ordering_fields = ("symbol", "name", "chain_id")
     ordering = ("-is_native", "chain_id", "symbol")
+    lookup_value_regex = "[0-9a-f-]{36}"
 
     def get_queryset(self) -> QuerySet:
-        return models.Token.tradeable.annotate(
-            is_native=Case(
-                When(address=models.Token.NULL_ADDRESS, then=Value(True)),
-                default=Value(False),
-                output_field=BooleanField(),
-            )
-        )
+        return models.BaseToken.tradeable.select_subclasses()
 
     def get_object(self):
         address = self.kwargs["address"]

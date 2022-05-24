@@ -4,20 +4,37 @@ import datetime
 from typing import Optional
 from urllib.parse import urlparse
 
+from django.contrib.postgres.fields import HStoreField
 from django.db import models
-from django.db.models import F
+from django.db.models import ExpressionWrapper, F
+from django.utils import timezone
 from model_utils.choices import Choices
 from model_utils.managers import QueryManager
 from model_utils.models import StatusModel
 
+from hub20.apps.core.exceptions import RoutingError, TransferError
 from hub20.apps.core.fields import AddressField, Uint256Field
-from hub20.apps.core.models import BaseWallet, Chain, Token, TokenAmount, TokenAmountField
+from hub20.apps.core.models.payments import (
+    Payment as BasePayment,
+    PaymentRoute,
+    PaymentRouteQuerySet,
+)
+from hub20.apps.core.models.tokens import TokenAmount, TokenAmountField
+from hub20.apps.core.models.transfers import TransferConfirmation, TransferReceipt, Withdrawal
+from hub20.apps.core.settings import app_settings
 from hub20.apps.core.validators import uri_parsable_scheme_validator
+from hub20.apps.web3.models import Chain, Erc20Token
+
+from .exceptions import RaidenPaymentError
 
 CHANNEL_STATUSES = Choices(
     "opened", "waiting_for_settle", "settling", "settled", "unusable", "closed", "closing"
 )
 raiden_url_validator = uri_parsable_scheme_validator(("http", "https"))
+
+
+def calculate_raiden_payment_window():
+    return datetime.timedelta(seconds=app_settings.Raiden.payment_route_lifetime)
 
 
 class RaidenURLField(models.URLField):
@@ -26,7 +43,7 @@ class RaidenURLField(models.URLField):
 
 class TokenNetwork(models.Model):
     address = AddressField()
-    token = models.OneToOneField(Token, on_delete=models.CASCADE)
+    token = models.OneToOneField(Erc20Token, on_delete=models.CASCADE)
 
     @property
     def chain(self):
@@ -38,12 +55,8 @@ class TokenNetwork(models.Model):
 
 class Raiden(models.Model):
     url = RaidenURLField(unique=True)
-    account = models.ForeignKey(BaseWallet, related_name="raiden_nodes", on_delete=models.CASCADE)
+    address = AddressField()
     chain = models.OneToOneField(Chain, related_name="raiden_node", on_delete=models.PROTECT)
-
-    @property
-    def address(self):
-        return self.account.address
 
     @property
     def hostname(self):
@@ -118,7 +131,7 @@ class Channel(StatusModel):
         token_network_address = channel_data.pop("token_network_address")
         token_address = channel_data.pop("token_address")
 
-        token = Token.ERC20tokens.filter(address=token_address).first()
+        token = Erc20Token.objects.filter(address=token_address).first()
 
         assert token is not None
         assert token.chain == raiden.chain
@@ -201,9 +214,112 @@ class Payment(models.Model):
         unique_together = ("channel", "identifier", "sender_address", "receiver_address")
 
 
+# Payments
+class RaidenRouteQuerySet(PaymentRouteQuerySet):
+    def with_expiration(self) -> models.QuerySet:
+        return self.annotate(
+            expires_on=ExpressionWrapper(
+                F("created") + F("payment_window"), output_field=models.DateTimeField()
+            )
+        )
+
+    def expired(self, at: Optional[datetime.datetime] = None) -> models.QuerySet:
+        date_value = at or timezone.now()
+        return self.with_expiration().filter(expires_on__lt=date_value)
+
+    def available(self, at: Optional[datetime.datetime] = None) -> models.QuerySet:
+        date_value = at or timezone.now()
+        return (
+            self.with_expiration()
+            .filter(payments__raidenpayment__isnull=True)
+            .filter(created__lte=date_value, expires_on__gte=date_value)
+        )
+
+    def used(self) -> models.QuerySet:
+        return self.filter(payments__raidenpayment__isnull=False)
+
+
+class RaidenPaymentRoute(PaymentRoute):
+    NETWORK = "raiden"
+
+    payment_window = models.DurationField(default=calculate_raiden_payment_window)
+    raiden = models.ForeignKey(Raiden, on_delete=models.CASCADE, related_name="payment_routes")
+
+    objects = RaidenRouteQuerySet.as_manager()
+
+    @property
+    def is_expired(self):
+        return self.expiration_time < timezone.now()
+
+    @property
+    def expiration_time(self):
+        return self.created + self.payment_window
+
+    @staticmethod
+    def calculate_payment_window():
+        return calculate_raiden_payment_window()
+
+    @classmethod
+    def is_usable_for_token(cls, token: Erc20Token):
+        return token.is_listed and hasattr(token, "tokennetwork")
+
+    @classmethod
+    def make(cls, deposit):
+        channels = Channel.available.filter(token_network__token=deposit.currency)
+
+        if channels.exists():
+            channel = channels.order_by("?").first()
+            return cls.objects.create(raiden=channel.raiden, deposit=deposit)
+        else:
+            raise RoutingError(
+                f"No raiden node available to accept {deposit.currency.symbol} payments"
+            )
+
+
+class RaidenPayment(BasePayment):
+    payment = models.OneToOneField(Payment, unique=True, on_delete=models.CASCADE)
+
+    @property
+    def identifier(self):
+        return f"{self.payment.identifier}-{self.id}"
+
+
+# Transfers
+class RaidenWithdrawalReceipt(TransferReceipt):
+    payment_data = HStoreField()
+
+
+class RaidenWithdrawalConfirmation(TransferConfirmation):
+    payment = models.OneToOneField(Payment, on_delete=models.CASCADE)
+
+
+class RaidenWithdrawal(Withdrawal):
+    def _execute(self):
+        try:
+            raiden_client = RaidenClient.select_for_transfer(
+                amount=self.amount, address=self.address
+            )
+            payment_data = raiden_client.transfer(
+                amount=self.as_token_amount,
+                address=self.address,
+                identifier=raiden_client._ensure_valid_identifier(self.identifier),
+            )
+            RaidenWithdrawalReceipt.objects.create(transfer=self, payment_data=payment_data)
+        except AssertionError:
+            raise TransferError("Incorrect transfer method")
+        except RaidenPaymentError as exc:
+            raise TransferError(exc.message) from exc
+
+    class Meta:
+        proxy = True
+
+
 __all__ = [
     "TokenNetwork",
     "Raiden",
     "Channel",
     "Payment",
+    "RaidenWithdrawal",
+    "RaidenWithdrawalReceipt",
+    "RaidenWithdrawalConfirmation",
 ]
