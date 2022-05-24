@@ -11,7 +11,7 @@ from model_utils.managers import QueryManager
 from model_utils.models import StatusModel
 
 from hub20.apps.core.fields import AddressField, Uint256Field
-from hub20.apps.core.models import BaseEthereumAccount, Chain, Token, TokenAmount, TokenAmountField
+from hub20.apps.core.models import BaseWallet, Chain, Token, TokenAmount, TokenAmountField
 from hub20.apps.core.validators import uri_parsable_scheme_validator
 
 CHANNEL_STATUSES = Choices(
@@ -38,9 +38,7 @@ class TokenNetwork(models.Model):
 
 class Raiden(models.Model):
     url = RaidenURLField(unique=True)
-    account = models.ForeignKey(
-        BaseEthereumAccount, related_name="raiden_nodes", on_delete=models.CASCADE
-    )
+    account = models.ForeignKey(BaseWallet, related_name="raiden_nodes", on_delete=models.CASCADE)
     chain = models.OneToOneField(Chain, related_name="raiden_node", on_delete=models.PROTECT)
 
     @property

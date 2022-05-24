@@ -151,7 +151,7 @@ class BlockchainExplorerAdmin(admin.ModelAdmin):
     search_fields = ("url", "chain__name")
 
 
-@admin.register(models.BaseEthereumAccount)
+@admin.register(models.BaseWallet)
 class EthereumAccountAdmin(admin.ModelAdmin):
     list_display = ("address",)
 

@@ -9,7 +9,7 @@ from eth_utils import is_0x_prefixed
 from web3 import Web3
 
 from hub20.apps.blockchain.factories import BlockFactory
-from hub20.apps.blockchain.models import BaseEthereumAccount, Block, Chain
+from hub20.apps.blockchain.models import BaseWallet, Block, Chain
 from hub20.apps.blockchain.signals import block_sealed
 from hub20.apps.blockchain.tests.mocks import BlockMock
 from hub20.apps.core import handlers
@@ -34,7 +34,7 @@ application = ProtocolTypeRouter(
 
 
 def deposit_account(payment_request):
-    return BaseEthereumAccount.objects.filter(blockchain_routes__deposit=payment_request).first()
+    return BaseWallet.objects.filter(blockchain_routes__deposit=payment_request).first()
 
 
 def deposit_transaction_params(payment_request):

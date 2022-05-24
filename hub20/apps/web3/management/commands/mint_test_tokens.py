@@ -5,7 +5,7 @@ import ethereum
 from django.core.management.base import BaseCommand
 from eth_utils import to_checksum_address
 
-from hub20.apps.core.models import BaseEthereumAccount, KeystoreAccount, Token, TokenAmount
+from hub20.apps.core.models import BaseWallet, KeystoreAccount, Token, TokenAmount
 from hub20.apps.web3.client import make_web3, mint_tokens
 from hub20.apps.web3.models import Web3Provider
 
@@ -23,7 +23,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         address = to_checksum_address(options["account"])
-        account = BaseEthereumAccount.objects.filter(address=address).first()
+        account = BaseWallet.objects.filter(address=address).first()
 
         if not (account and getattr(account, "private_key", None)):
             private_key = getpass.getpass(f"Private Key for {address} required: ")

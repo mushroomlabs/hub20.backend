@@ -6,12 +6,14 @@ from hub20.apps.core.models import Chain
 from hub20.apps.core.serializers import (
     AddressSerializerField,
     HexadecimalField,
+    HyperlinkedRelatedTokenField,
     PaymentRouteSerializer,
     PaymentSerializer,
+    TokenValueField,
 )
 
 from .analytics import estimate_gas_price
-from .models import BlockchainPayment, BlockchainPaymentRoute
+from .models import BlockchainPayment, BlockchainPaymentRoute, Wallet, WalletBalanceRecord
 
 logger = logging.getLogger(__name__)
 
@@ -67,3 +69,24 @@ class BlockchainPaymentRouteSerializer(PaymentRouteSerializer):
             "address",
             "expiration_block",
         )
+
+
+class WalletBalanceSerializer(serializers.ModelSerializer):
+    token = HyperlinkedRelatedTokenField(source="currency")
+    balance = TokenValueField(source="amount")
+    block = serializers.IntegerField(source="block.number", read_only=True)
+
+    class Meta:
+        model = WalletBalanceRecord
+        fields = read_only_fields = ("token", "balance", "block")
+
+
+class WalletSerializer(serializers.HyperlinkedModelSerializer):
+    url = serializers.HyperlinkedIdentityField(view_name="wallet-detail", lookup_field="address")
+
+    address = AddressSerializerField(read_only=True)
+    balances = WalletBalanceSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Wallet
+        fields = read_only_fields = ("url", "address", "balances")

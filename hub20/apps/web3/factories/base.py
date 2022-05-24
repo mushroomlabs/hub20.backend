@@ -6,7 +6,7 @@ from django.utils import timezone
 from faker import Faker
 
 from ..models import (
-    BaseEthereumAccount,
+    BaseWallet,
     Block,
     Chain,
     NativeToken,
@@ -37,7 +37,7 @@ class BaseWalletFactory(factory.django.DjangoModelFactory):
     address = factory.Faker("ethereum_address")
 
     class Meta:
-        model = BaseEthereumAccount
+        model = BaseWallet
         django_get_or_create = ("address",)
 
 

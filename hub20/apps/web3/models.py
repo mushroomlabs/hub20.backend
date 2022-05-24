@@ -1,40 +1,52 @@
+import datetime
+import functools
+import json
 import logging
+import os
 from typing import Optional
 from urllib.parse import urlparse
 
+import ethereum
+from django.contrib.postgres.fields import ArrayField, HStoreField
 from django.contrib.postgres.fields.ranges import IntegerRangeField
 from django.db import models
-from django.db.models import F, Q
+from django.db.models import F, Max, Q
 from django.db.models.functions import Lower, Upper
 from django.db.transaction import atomic
-from model_utils.managers import QueryManager
+from django.utils import timezone
+from hdwallet import HDWallet
+from hdwallet.symbols import ETH
+from model_utils.managers import InheritanceManager, QueryManager
+from web3 import Web3
+from web3.datastructures import AttributeDict
+from web3.types import BlockData, TxData, TxReceipt
 
 from hub20.apps.core import get_wallet_model
 from hub20.apps.core.exceptions import RoutingError
-from hub20.apps.core.fields import AddressField
+from hub20.apps.core.fields import AddressField, HexField
 from hub20.apps.core.models import (
-    BaseEthereumAccount,
     BaseProvider,
     BaseToken,
     Payment,
     PaymentRoute,
     PaymentRouteQuerySet,
-    Token,
     TokenAmount,
     TokenValueModel,
-    Transaction,
-    TransactionDataRecord,
     TransferConfirmation,
     TransferError,
     TransferReceipt,
     Withdrawal,
 )
+from hub20.apps.core.settings import app_settings
 
-from .app_settings import BLOCK_SCAN_RANGE, PAYMENT_ROUTE_LIFETIME
 from .fields import Web3ProviderURLField
 
 Wallet = get_wallet_model()
 logger = logging.getLogger(__name__)
+
+
+def serialize_web3_data(data: AttributeDict):
+    return json.loads(Web3.toJSON(data))
 
 
 class Chain(models.Model):
@@ -246,6 +258,110 @@ class EventIndexer(models.Model):
         ]
 
 
+class BaseWallet(models.Model):
+    address = AddressField(unique=True, db_index=True, blank=False)
+    transactions = models.ManyToManyField(Transaction)
+    objects = InheritanceManager()
+
+    def historical_balance(self, token):
+        return self.balance_records.filter(currency=token).order_by("block__number")
+
+    def current_balance(self, token):
+        return self.historical_balance(token).last()
+
+    @property
+    def balances(self):
+        # There has to be a better way to convert a ValuesQuerySet
+        # into a Queryset, but for the moment it will be okay.
+        record_qs = self.balance_records.values("currency").annotate(
+            block__number=Max("block__number")
+        )
+
+        filter_q = functools.reduce(lambda x, y: x | y, [Q(**r) for r in record_qs])
+
+        return self.balance_records.filter(amount__gt=0).filter(filter_q)
+
+    @property
+    def private_key_bytes(self) -> Optional[bytes]:
+        private_key = getattr(self, "private_key", None)
+        return private_key and bytearray.fromhex(private_key[2:])
+
+    def __str__(self):
+        return self.address
+
+
+class WalletBalanceRecord(TokenValueModel):
+    """
+    Provides a blocktime-series record of balances for any account
+    """
+
+    wallet = models.ForeignKey(
+        BaseWallet, related_name="balance_records", on_delete=models.CASCADE
+    )
+    block = models.ForeignKey(Block, on_delete=models.CASCADE)
+
+    class Meta:
+        unique_together = ("wallet", "currency", "block")
+
+
+class ColdWallet(BaseWallet):
+    @classmethod
+    def generate(cls):
+        raise TypeError("Cold wallets do not store private keys and can not be generated")
+
+
+class KeystoreAccount(BaseWallet):
+    private_key = HexField(max_length=64, unique=True)
+
+    @classmethod
+    def generate(cls):
+        private_key = os.urandom(32)
+        address = ethereum.utils.privtoaddr(private_key)
+        checksum_address = ethereum.utils.checksum_encode(address.hex())
+        return cls.objects.create(address=checksum_address, private_key=private_key.hex())
+
+
+class HierarchicalDeterministicWallet(BaseWallet):
+    BASE_PATH_FORMAT = "m/44'/60'/0'/0/{index}"
+
+    index = models.PositiveIntegerField(unique=True)
+
+    @property
+    def private_key(self):
+        wallet = self.__class__.get_wallet(index=self.index)
+        return wallet.private_key()
+
+    @property
+    def private_key_bytes(self) -> bytes:
+        return bytearray.fromhex(self.private_key)
+
+    @classmethod
+    def get_wallet(cls, index: int) -> HDWallet:
+        wallet = HDWallet(symbol=ETH)
+
+        if app_settings.Wallet.mnemonic:
+            wallet.from_mnemonic(mnemonic=app_settings.Wallet.mnemonic)
+        elif app_settings.Wallet.root_key:
+            wallet.from_xprivate_key(xprivate_key=app_settings.Wallet.root_key)
+        else:
+            raise ValueError("Can not generate new addresses for HD Wallets. No seed available")
+
+        wallet.from_path(cls.BASE_PATH_FORMAT.format(index=index))
+        return wallet
+
+    @classmethod
+    def generate(cls):
+        latest_generation = cls.get_latest_generation()
+        index = 0 if latest_generation is None else latest_generation + 1
+        wallet = HierarchicalDeterministicWallet.get_wallet(index)
+        return cls.objects.create(index=index, address=wallet.p2pkh_address())
+
+    @classmethod
+    def get_latest_generation(cls) -> Optional[int]:
+        return cls.objects.aggregate(generation=Max("index")).get("generation")
+
+
+# Tokens
 class NativeToken(BaseToken):
     NULL_ADDRESS = "0x0000000000000000000000000000000000000000"
     chain = models.OneToOneField(Chain, on_delete=models.CASCADE, related_name="native_token")
@@ -260,24 +376,6 @@ class Erc20Token(BaseToken):
     tradeable = QueryManager(Q(chain__providers__is_active=True) & Q(is_listed=True))
     listed = QueryManager(is_listed=True)
 
-    @property
-    def wrapped_by(self):
-        return self.__class__.objects.filter(id__in=self.wrapping_tokens.values("wrapper"))
-
-    @property
-    def wraps(self):
-        wrapping = getattr(self, "wrappedtoken", None)
-        return wrapping and wrapping.wrapper
-
-    @property
-    def is_stable(self):
-        return hasattr(self, "stable_pair")
-
-    @property
-    def tracks_currency(self):
-        pairing = getattr(self, "stable_pair", None)
-        return pairing and pairing.currency
-
     def __str__(self) -> str:
         components = [self.symbol]
         if self.is_ERC20:
@@ -285,10 +383,6 @@ class Erc20Token(BaseToken):
 
         components.append(str(self.chain_id))
         return " - ".join(components)
-
-    def from_wei(self, wei_amount: Wei) -> TokenAmount:
-        value = TokenAmount(wei_amount) / (10**self.decimals)
-        return TokenAmount(amount=value, currency=self)
 
     @classmethod
     def make(cls, address: str, chain: Chain, **defaults):
@@ -299,45 +393,6 @@ class Erc20Token(BaseToken):
         unique_together = (("chain", "address"),)
 
 
-class TokenList(AbstractTokenListModel):
-    """
-    A model to manage [token lists](https://tokenlists.org). Only
-    admins can manage/import/export them.
-    """
-
-    url = TokenlistStandardURLField()
-    version = models.CharField(max_length=32)
-
-    class Meta:
-        unique_together = ("url", "version")
-
-    @classmethod
-    def make(cls, url, token_list_data: TokenListDataModel, description=None):
-
-        token_list, _ = cls.objects.get_or_create(
-            url=url,
-            version=token_list_data.version.as_string,
-            defaults=dict(name=token_list_data.name),
-        )
-        token_list.description = description
-        token_list.keywords.add(*token_list_data.keywords)
-        token_list.save()
-
-        for token_entry in token_list_data.tokens:
-            token, _ = Token.objects.get_or_create(
-                chain_id=token_entry.chainId,
-                address=token_entry.address,
-                defaults=dict(
-                    name=token_entry.name,
-                    decimals=token_entry.decimals,
-                    symbol=token_entry.symbol,
-                    logoURI=token_entry.logoURI,
-                ),
-            )
-            token_list.tokens.add(token)
-        return token_list
-
-
 class Web3Provider(BaseProvider):
     chain = models.ForeignKey(Chain, related_name="providers", on_delete=models.CASCADE)
     url = Web3ProviderURLField()
@@ -345,7 +400,7 @@ class Web3Provider(BaseProvider):
     requires_geth_poa_middleware = models.BooleanField(default=False)
     supports_pending_filters = models.BooleanField(default=False)
     supports_eip1559 = models.BooleanField(default=False)
-    max_block_scan_range = models.PositiveIntegerField(default=BLOCK_SCAN_RANGE)
+    max_block_scan_range = models.PositiveIntegerField(default=app_settings.Blockchain.scan_range)
 
     @property
     def hostname(self):
@@ -432,7 +487,7 @@ class BlockchainPaymentRoute(PaymentRoute):
     NETWORK = "blockchain"
 
     account = models.ForeignKey(
-        BaseEthereumAccount, on_delete=models.CASCADE, related_name="blockchain_routes"
+        BaseWallet, on_delete=models.CASCADE, related_name="blockchain_routes"
     )
     payment_window = IntegerRangeField()
     objects = BlockchainRouteQuerySet.as_manager()
@@ -459,10 +514,10 @@ class BlockchainPaymentRoute(PaymentRoute):
             raise ValueError("Chain is not synced")
 
         current = chain.highest_block
-        return (current, current + PAYMENT_ROUTE_LIFETIME)
+        return (current, current + app_settings.Blockchain.payment_route_lifetime)
 
     @classmethod
-    def is_usable_for_token(cls, token: Token):
+    def is_usable_for_token(cls, token: BaseToken):
         return token.is_listed and token.chain in Chain.active.all()
 
     @classmethod
@@ -473,9 +528,7 @@ class BlockchainPaymentRoute(PaymentRoute):
             payment_window = cls.calculate_payment_window(chain)
 
             busy_routes = cls.objects.open().filter(deposit__currency=deposit.currency)
-            available_accounts = BaseEthereumAccount.objects.exclude(
-                blockchain_routes__in=busy_routes
-            )
+            available_accounts = BaseWallet.objects.exclude(blockchain_routes__in=busy_routes)
 
             account = available_accounts.order_by("?").first() or Wallet.generate()
 
@@ -519,7 +572,7 @@ class BlockchainWithdrawalConfirmation(TransferConfirmation):
 
     @property
     def fee(self) -> TokenAmount:
-        native_token = Token.make_native(chain=self.transaction.block.chain)
+        native_token = self.transaction.block.chain.native_token
         return native_token.from_wei(self.transaction.gas_fee)
 
 
@@ -535,4 +588,9 @@ __all__ = [
     "TransferEvent",
     "NativeToken",
     "Erc20Token",
+    "BaseWallet",
+    "ColdWallet",
+    "KeystoreAccount",
+    "HierarchicalDeterministicWallet",
+    "WalletBalanceRecord",
 ]

@@ -17,8 +17,7 @@ from drf_yasg.views import get_schema_view
 from rest_framework.permissions import AllowAny
 
 from hub20.apps.core.api import urlpatterns as core_urlpatterns
-
-from .views import IndexView, NetworkIndexView
+from hub20.gateway.views import IndexView, NetworkIndexView
 
 
 def make_auth_view(url_path: str, view_class, view_name: str) -> Callable:

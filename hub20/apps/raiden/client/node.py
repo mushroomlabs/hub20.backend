@@ -11,7 +11,7 @@ from django.utils.timezone import make_aware
 from ethereum.utils import checksum_encode
 from web3.datastructures import AttributeDict
 
-from hub20.apps.blockchain.models import BaseEthereumAccount, Chain
+from hub20.apps.blockchain.models import BaseWallet, Chain
 from hub20.apps.blockchain.typing import Address
 from hub20.apps.ethereum_money.models import TokenAmount
 from hub20.apps.raiden.exceptions import RaidenConnectionError, RaidenPaymentError
@@ -201,7 +201,7 @@ class RaidenClient:
     def make_raiden(cls, url, chain: Chain) -> Raiden:
         account_address: Address = cls.get_node_account_address(url)
 
-        account, _ = BaseEthereumAccount.objects.get_or_create(address=account_address)
+        account, _ = BaseWallet.objects.get_or_create(address=account_address)
         raiden_node, _ = Raiden.objects.get_or_create(url=url, account=account, chain=chain)
         return raiden_node
 

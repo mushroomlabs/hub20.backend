@@ -1,43 +1,52 @@
 from __future__ import annotations
 
-import json
 import logging
 import uuid
 from decimal import Decimal
 
-import requests
 from django.contrib.auth import get_user_model
 from django.db import models
-from django.db.models import Q, Sum
-from django.utils.translation import gettext_lazy as _
-from model_utils.managers import InheritanceManager, QueryManager
-from model_utils.models import TimeStampedModel
-from taggit.managers import TaggableManager
-from taggit.models import GenericUUIDTaggedItemBase, TaggedItemBase
+from django.db.models import Sum
+from model_utils.managers import InheritanceManager
 
 from ..choices import CURRENCIES
-from ..fields import AddressField, TokenAmountField, TokenlistStandardURLField
-from ..schemas import TokenList as TokenListDataModel, validate_token_list
+from ..fields import TokenAmountField, TokenlistStandardURLField
 from ..typing import TokenAmount_T, Wei
-from .blockchain import Chain
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
 
 
-class UUIDTaggedItem(GenericUUIDTaggedItemBase, TaggedItemBase):
-    class Meta:
-        verbose_name = _("Tag")
-        verbose_name_plural = _("Tags")
-
-
 class BaseToken(models.Model):
+    id = models.UUIDField(default=uuid.uuid4, primary_key=True)
     name = models.CharField(max_length=500)
     symbol = models.CharField(max_length=16)
     decimals = models.PositiveIntegerField(default=18)
     logoURI = TokenlistStandardURLField(max_length=512, null=True, blank=True)
     is_listed = models.BooleanField(default=False)
     objects = InheritanceManager()
+
+    def from_wei(self, wei_amount: Wei) -> TokenAmount:
+        value = TokenAmount(wei_amount) / (10**self.decimals)
+        return TokenAmount(amount=value, currency=self)
+
+    @property
+    def wrapped_by(self):
+        return self.__class__.objects.filter(id__in=self.wrapping_tokens.values("wrapper"))
+
+    @property
+    def wraps(self):
+        wrapping = getattr(self, "wrappedtoken", None)
+        return wrapping and wrapping.wrapper
+
+    @property
+    def is_stable(self):
+        return hasattr(self, "stable_pair")
+
+    @property
+    def tracks_currency(self):
+        pairing = getattr(self, "stable_pair", None)
+        return pairing and pairing.currency
 
 
 class WrappedToken(models.Model):
@@ -75,57 +84,6 @@ class StableTokenPair(models.Model):
     token = models.OneToOneField(BaseToken, related_name="stable_pair", on_delete=models.CASCADE)
     algorithmic_peg = models.BooleanField(default=True)
     currency = models.CharField(max_length=3, choices=CURRENCIES)
-
-
-class AbstractTokenListModel(models.Model):
-    id = models.UUIDField(default=uuid.uuid4, primary_key=True)
-    name = models.CharField(max_length=64)
-    description = models.TextField(null=True)
-    tokens = models.ManyToManyField(BaseToken, related_name="%(app_label)s_%(class)s_tokenlists")
-    keywords = TaggableManager(through=UUIDTaggedItem)
-
-    def __str__(self):
-        return self.name
-
-    @classmethod
-    def fetch(cls, url) -> TokenListDataModel:
-        response = requests.get(url)
-
-        try:
-            response.raise_for_status()
-        except requests.exceptions.HTTPError:
-            raise ValueError(f"Failed to fetch {url}")
-
-        try:
-            token_list_data = response.json()
-        except json.decoder.JSONDecodeError:
-            raise ValueError(f"Could not decode json response from {url}")
-
-        validate_token_list(token_list_data)
-
-        return TokenListDataModel(**token_list_data)
-
-    class Meta:
-        abstract = True
-
-
-class UserTokenList(AbstractTokenListModel, TimeStampedModel):
-    """
-    A model to manage [token lists](https://tokenlists.org). Only
-    admins can manage/import/export them.
-    """
-
-    user = models.ForeignKey(User, related_name="token_lists", on_delete=models.CASCADE)
-
-    @classmethod
-    def clone(cls, user, token_list: TokenList):
-        user_token_list = user.token_lists.create(
-            name=token_list.name,
-            description=token_list.description,
-        )
-        user_token_list.tokens.set(token_list.tokens.all())
-        user_token_list.keywords.set(token_list.keywords.all())
-        return user_token_list
 
 
 class TokenValueModel(models.Model):
@@ -212,18 +170,16 @@ class TokenAmount:
         return self.formatted
 
     @classmethod
-    def aggregated(cls, queryset, currency: Token):
+    def aggregated(cls, queryset, currency: BaseToken):
         entries = queryset.filter(currency=currency)
         amount = entries.aggregate(total=Sum("amount")).get("total") or TokenAmount(0)
         return cls(amount=amount, currency=currency)
 
 
 __all__ = [
-    "Token",
+    "BaseToken",
     "TokenAmount",
     "TokenValueModel",
     "StableTokenPair",
-    "TokenList",
-    "UserTokenList",
     "WrappedToken",
 ]

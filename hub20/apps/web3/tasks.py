@@ -14,7 +14,7 @@ from web3.exceptions import ExtraDataLengthError, LogTopicError, TransactionNotF
 from websockets.exceptions import InvalidStatusCode
 
 from hub20.apps.core.abi.tokens import EIP20_ABI
-from hub20.apps.core.models.accounts import BaseEthereumAccount
+from hub20.apps.core.models.accounts import BaseWallet
 from hub20.apps.core.models.blockchain import (
     Block,
     Chain,
@@ -85,7 +85,7 @@ def process_mined_blocks(self):
 def index_token_transfer_events(self):
     indexer_name = "ethereum_money:token_transfers"
 
-    account_addresses = BaseEthereumAccount.objects.values_list("address", flat=True)
+    account_addresses = BaseWallet.objects.values_list("address", flat=True)
 
     for provider in Web3Provider.available.select_related("chain"):
         event_indexer = EventIndexer.make(provider.chain_id, indexer_name)
@@ -328,7 +328,7 @@ def notify_new_block(chain_id, block_data, provider_url):
 @shared_task
 def record_account_transactions(chain_id, block_data, provider_url):
 
-    addresses = BaseEthereumAccount.objects.values_list("address", flat=True)
+    addresses = BaseWallet.objects.values_list("address", flat=True)
 
     txs = [
         t for t in block_data["transactions"] if (t["from"] in addresses or t["to"] in addresses)
@@ -346,9 +346,7 @@ def record_account_transactions(chain_id, block_data, provider_url):
                 tx_receipt=transaction_receipt,
                 block_data=block_data,
             )
-            for account in BaseEthereumAccount.objects.filter(
-                address__in=[tx.from_address, tx.to_address]
-            ):
+            for account in BaseWallet.objects.filter(address__in=[tx.from_address, tx.to_address]):
                 account.transactions.add(tx)
 
 
@@ -390,7 +388,7 @@ def record_token_transfers(chain_id, wallet_address, event_data, provider_url):
 
     tx_hash = event_data.transactionHash.hex()
 
-    account = BaseEthereumAccount.objects.filter(address=wallet_address).first()
+    account = BaseWallet.objects.filter(address=wallet_address).first()
 
     if not account:
         logger.warn(f"{wallet_address} is not associated with any known account")
@@ -426,7 +424,7 @@ def record_token_transfers(chain_id, wallet_address, event_data, provider_url):
 
 @shared_task
 def check_eth_transfers(chain_id, block_data, provider_url):
-    addresses = BaseEthereumAccount.objects.values_list("address", flat=True)
+    addresses = BaseWallet.objects.values_list("address", flat=True)
 
     txs = [
         t
@@ -465,7 +463,7 @@ def check_eth_transfers(chain_id, block_data, provider_url):
             amount=amount.amount,
             currency=amount.currency,
         )
-        for account in BaseEthereumAccount.objects.filter(address=sender):
+        for account in BaseWallet.objects.filter(address=sender):
             account.transactions.add(tx)
             signals.outgoing_transfer_mined.send(
                 sender=Transaction,
@@ -475,7 +473,7 @@ def check_eth_transfers(chain_id, block_data, provider_url):
                 address=recipient,
             )
 
-        for account in BaseEthereumAccount.objects.filter(address=recipient):
+        for account in BaseWallet.objects.filter(address=recipient):
             account.transactions.add(tx)
             signals.incoming_transfer_mined.send(
                 sender=Transaction,
@@ -501,7 +499,7 @@ def check_pending_transaction_for_eth_transfer(chain_id, transaction_data):
     native_token = Token.make_native(chain=chain)
     amount = native_token.from_wei(transaction_data.value)
 
-    for account in BaseEthereumAccount.objects.filter(address=sender):
+    for account in BaseWallet.objects.filter(address=sender):
         tx_data = TransactionDataRecord.make(tx_data=transaction_data, chain_id=chain_id)
 
         signals.outgoing_transfer_broadcast.send(
@@ -511,7 +509,7 @@ def check_pending_transaction_for_eth_transfer(chain_id, transaction_data):
             transaction_data=tx_data,
         )
 
-    for account in BaseEthereumAccount.objects.filter(address=recipient):
+    for account in BaseWallet.objects.filter(address=recipient):
         tx_data = TransactionDataRecord.make(tx_data=transaction_data, chain_id=chain_id)
 
         signals.incoming_transfer_broadcast.send(
@@ -532,7 +530,7 @@ def check_pending_erc20_transfer_event(chain_id, event_data, provider_url):
     sender = event_data.args._from
     recipient = event_data.args._to
 
-    if not BaseEthereumAccount.objects.filter(Q(address=sender) | Q(address=recipient)).exists():
+    if not BaseWallet.objects.filter(Q(address=sender) | Q(address=recipient)).exists():
         return
 
     amount = token.from_wei(event_data.args._value)
@@ -545,7 +543,7 @@ def check_pending_erc20_transfer_event(chain_id, event_data, provider_url):
         logger.warning(f"Failed to get transaction data {event_data.transactionHash.hex()}")
         return
 
-    for account in BaseEthereumAccount.objects.filter(address=sender):
+    for account in BaseWallet.objects.filter(address=sender):
         tx_data = TransactionDataRecord.make(tx_data=transaction_data, chain_id=chain_id)
         signals.outgoing_transfer_broadcast.send(
             sender=TransactionDataRecord,
@@ -554,7 +552,7 @@ def check_pending_erc20_transfer_event(chain_id, event_data, provider_url):
             transaction_data=tx_data,
         )
 
-    for account in BaseEthereumAccount.objects.filter(address=recipient):
+    for account in BaseWallet.objects.filter(address=recipient):
         tx_data = TransactionDataRecord.make(tx_data=transaction_data, chain_id=chain_id)
         signals.incoming_transfer_broadcast.send(
             sender=TransactionDataRecord,

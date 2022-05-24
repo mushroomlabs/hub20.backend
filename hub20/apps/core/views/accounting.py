@@ -1,35 +1,14 @@
-from django.contrib.auth import get_user_model
-from django.db.models import BooleanField, Case, Value, When
 from django.db.models.query import QuerySet
-from django.http import Http404
 from django.shortcuts import get_object_or_404
-from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import generics, status
-from rest_framework.decorators import action
+from rest_framework import generics
 from rest_framework.filters import OrderingFilter
-from rest_framework.mixins import (
-    CreateModelMixin,
-    DestroyModelMixin,
-    ListModelMixin,
-    RetrieveModelMixin,
-)
-from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
+from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.viewsets import GenericViewSet, ModelViewSet
 
-from hub20.apps.blockchain.client import make_web3
-from hub20.apps.core.serializers import AddressSerializerField
-from hub20.apps.ethereum_money.client import get_estimate_fee
-from hub20.apps.ethereum_money.models import Token
-from hub20.apps.ethereum_money.serializers import HyperlinkedRelatedTokenField, TokenValueField
-from hub20.apps.ethereum_money.views import BaseTokenViewSet, TokenViewSet
+from hub20.apps.core.models.tokens import BaseToken
 
-from . import models, serializers
-from .filters import DepositFilter, UserFilter
-from .permissions import IsStoreOwner
-
-User = get_user_model()
+from .. import models, serializers
 
 
 class AccountCreditEntryList(generics.ListAPIView):
@@ -55,23 +34,15 @@ class TokenBalanceListView(generics.ListAPIView):
     ordering = ("chain_id", "-is_native", "symbol")
 
     def get_queryset(self) -> QuerySet:
-        return self.request.user.account.get_balances().annotate(
-            is_native=Case(
-                When(address=Token.NULL_ADDRESS, then=Value(True)),
-                default=Value(False),
-                output_field=BooleanField(),
-            )
-        )
+        return self.request.user.account.get_balances()
 
 
 class TokenBalanceView(generics.RetrieveAPIView):
     permission_classes = (IsAuthenticated,)
     serializer_class = serializers.HyperlinkedTokenBalanceSerializer
 
-    def get_object(self) -> Token:
-        token = get_object_or_404(
-            Token, chain_id=self.kwargs["chain_id"], address=self.kwargs["address"]
-        )
+    def get_object(self) -> BaseToken:
+        token = get_object_or_404(BaseToken, id=self.kwargs["pk"])
         return self.request.user.account.get_balance(token)
 
 
@@ -91,34 +62,3 @@ class AccountingReportView(APIView):
                 user_accounts=self._get_serialized_book(models.UserAccount),
             )
         )
-
-
-class WalletBalanceSerializer(serializers.ModelSerializer):
-    token = HyperlinkedRelatedTokenField(source="currency")
-    balance = TokenValueField(source="amount")
-    block = serializers.IntegerField(source="block.number", read_only=True)
-
-    class Meta:
-        model = models.WalletBalanceRecord
-        fields = read_only_fields = ("token", "balance", "block")
-
-
-class WalletSerializer(serializers.HyperlinkedModelSerializer):
-    url = serializers.HyperlinkedIdentityField(view_name="wallet-detail", lookup_field="address")
-
-    address = AddressSerializerField(read_only=True)
-    balances = WalletBalanceSerializer(many=True, read_only=True)
-
-    class Meta:
-        model = models.Wallet
-        fields = read_only_fields = ("url", "address", "balances")
-
-
-class WalletViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
-    permission_classes = (IsAdminUser,)
-    serializer_class = serializers.WalletSerializer
-    lookup_url_kwarg = "address"
-    lookup_field = "address"
-
-    def get_queryset(self) -> QuerySet:
-        return models.Wallet.objects.all()

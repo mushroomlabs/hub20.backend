@@ -1,11 +1,17 @@
-from rest_framework.permissions import AllowAny
+from django.http import Http404
+from rest_framework import status
+from rest_framework.decorators import action
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.reverse import reverse_lazy
 from rest_framework.views import APIView
 
-from hub20.apps.blockchain.models import Chain
+from hub20.apps.core.serializers.tokens import HyperlinkedTokenBalanceSerializer
+from hub20.apps.core.views.tokens import TokenViewSet
+from hub20.apps.web3.client import get_estimate_fee, make_web3
+from hub20.apps.web3.models import Chain
 
-from . import VERSION
+from . import VERSION, serializers
 
 RAIDEN_DESCRIPTION = "Enables instant and ultra-cheap transfers of ERC20 tokens"
 
@@ -47,3 +53,52 @@ class NetworkIndexView(APIView):
                 "offchain": [dict(name="Raiden", code="raiden", description=RAIDEN_DESCRIPTION)],
             }
         )
+
+
+class TokenBrowserViewSet(TokenViewSet):
+    def get_serializer_class(self):
+        if self.action == "balance":
+            return HyperlinkedTokenBalanceSerializer
+        elif self.action == "routes":
+            return serializers.TokenRouteDescriptorSerializer
+
+        return super().get_serializer_class()
+
+    @action(detail=True)
+    def transfer_cost(self, request, **kwargs):
+        """
+        Returns estimated cost in Wei (estimated gas * gas price) to execute a transfer
+
+        Returns 404 if not connected to the blockchain or if token not in database
+        """
+        token = self.get_object()
+        try:
+            w3 = make_web3(provider=token.chain.provider)
+            transfer_cost = get_estimate_fee(w3=w3, token=token)
+            return Response(transfer_cost.as_wei)
+        except AttributeError:
+            raise Http404
+        except TypeError:
+            return Response(status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+    @action(detail=True, permission_classes=(IsAuthenticated,))
+    def balance(self, request, **kwargs):
+        """
+        Returns user balance for that token
+        """
+        try:
+            token = self.get_object()
+            balance = self.request.user.account.get_balance(token)
+            serializer = self.get_serializer(instance=balance)
+            return Response(serializer.data)
+        except AttributeError:
+            raise Http404
+
+    @action(detail=True)
+    def routes(self, request, **kwargs):
+        """
+        Returns list of all routes that can be used for deposits/withdrawals in the hub
+        """
+        token = self.get_object()
+        serializer = self.get_serializer(instance=token)
+        return Response(serializer.data)

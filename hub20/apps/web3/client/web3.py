@@ -21,7 +21,7 @@ from hub20.apps.web3 import analytics
 from hub20.apps.web3.app_settings import WEB3_REQUEST_TIMEOUT, WEB3_TRANSFER_GAS_LIMIT
 from hub20.apps.web3.exceptions import Web3TransactionError
 from hub20.apps.web3.factories.base import FAKER
-from hub20.apps.web3.models import BaseEthereumAccount, TransactionDataRecord, Web3Provider
+from hub20.apps.web3.models import BaseWallet, TransactionDataRecord, Web3Provider
 from hub20.apps.web3.typing import Address, EthereumAccount_T
 
 logger = logging.getLogger(__name__)
@@ -302,7 +302,7 @@ class Web3Client:
 
         ETH = transfer_fee.currency
 
-        accounts = BaseEthereumAccount.objects.all().order_by("?")
+        accounts = BaseWallet.objects.all().order_by("?")
 
         if amount.is_native_token:
             amount += transfer_fee
