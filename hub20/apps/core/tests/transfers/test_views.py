@@ -2,8 +2,8 @@ from django.test import TestCase
 from rest_framework.reverse import reverse
 from rest_framework.test import APIClient
 
-from hub20.apps.blockchain.factories import FAKER
 from hub20.apps.core import factories
+from hub20.apps.web3.factories import FAKER
 
 
 class TransferViewTestCase(TestCase):

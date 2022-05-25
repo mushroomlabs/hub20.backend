@@ -3,7 +3,6 @@ from unittest.mock import patch
 import pytest
 from django.test import TestCase
 
-from hub20.apps.blockchain.tests.mocks import BlockMock, Web3Mock
 from hub20.apps.core.factories import CheckoutFactory
 from hub20.apps.core.models import BlockchainPaymentRoute
 from hub20.apps.ethereum_money.tasks import record_token_transfers
@@ -12,6 +11,7 @@ from hub20.apps.ethereum_money.tests.mocks import (
     Erc20TransferDataMock,
     Erc20TransferReceiptMock,
 )
+from hub20.apps.web3.tests.mocks import BlockMock, Web3Mock
 
 
 @pytest.mark.django_db(transaction=True)

@@ -3,16 +3,16 @@ from typing import List
 import factory
 from hexbytes import HexBytes
 
-from hub20.apps.blockchain.constants import ERC20_TRANSFER_TOPIC
-from hub20.apps.blockchain.factories.providers import EthereumProvider
-from hub20.apps.blockchain.tests.mocks import (
+from hub20.apps.ethereum_money.client import encode_transfer_data
+from hub20.apps.ethereum_money.factories import Erc20TokenAmountFactory, EtherAmountFactory
+from hub20.apps.web3.constants import ERC20_TRANSFER_TOPIC
+from hub20.apps.web3.factories.providers import EthereumProvider
+from hub20.apps.web3.tests.mocks import (
     TransactionDataMock,
     TransactionReceiptDataMock,
     Web3DataMock,
     Web3Model,
 )
-from hub20.apps.ethereum_money.client import encode_transfer_data
-from hub20.apps.ethereum_money.factories import Erc20TokenAmountFactory, EtherAmountFactory
 
 factory.Faker.add_provider(EthereumProvider)
 

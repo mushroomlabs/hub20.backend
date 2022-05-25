@@ -6,8 +6,8 @@ import factory
 from web3 import Web3
 from web3.datastructures import AttributeDict
 
-from hub20.apps.blockchain.factories import TEST_CHAIN_ID
-from hub20.apps.blockchain.factories.providers import EthereumProvider
+from hub20.apps.web3.factories import TEST_CHAIN_ID
+from hub20.apps.web3.factories.providers import EthereumProvider
 
 factory.Faker.add_provider(EthereumProvider)
 

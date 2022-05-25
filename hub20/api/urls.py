@@ -43,7 +43,7 @@ urlpatterns = [
     path("my/profile", UserDetailsView.as_view(), name="rest_user_details"),
     path("register/", include("dj_rest_auth.registration.urls")),
     path("networks", NetworkIndexView.as_view(), name="network-index"),
-    path("networks/blockchains/", include("hub20.apps.blockchain.api", namespace="blockchain")),
+    path("networks/blockchains/", include("hub20.apps.web3.api", namespace="blockchain")),
     path("networks/raiden/", include("hub20.apps.raiden.api")),
     path("", IndexView.as_view(), name="index"),
 ]

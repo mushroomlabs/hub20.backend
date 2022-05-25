@@ -6,7 +6,7 @@ from django.conf import settings
 
 # from kombu.serialization import register
 
-# from hub20.apps.blockchain.celery import web3_deserializer, web3_serializer
+# from hub20.apps.web3.celery import web3_deserializer, web3_serializer
 
 # BLOCK_CREATION_INTERVAL = 12
 # NODE_HEALTH_CHECK_INTERVAL = 15
@@ -39,27 +39,27 @@ class Hub20CeleryConfig:
         #     "expires": 60,
         # },
         # "check-providers-connected": {
-        #     "task": "hub20.apps.blockchain.tasks.check_providers_are_connected",
+        #     "task": "hub20.apps.web3.tasks.check_providers_are_connected",
         #     "schedule": timedelta(seconds=NODE_HEALTH_CHECK_INTERVAL),
         #     "expires": NODE_HEALTH_CHECK_INTERVAL,
         # },
         # "check-providers-synced": {
-        #     "task": "hub20.apps.blockchain.tasks.check_providers_are_synced",
+        #     "task": "hub20.apps.web3.tasks.check_providers_are_synced",
         #     "schedule": timedelta(seconds=NODE_HEALTH_CHECK_INTERVAL),
         #     "expires": NODE_HEALTH_CHECK_INTERVAL,
         # },
         # "check-chain-reorgs": {
-        #     "task": "hub20.apps.blockchain.tasks.check_chains_were_reorganized",
+        #     "task": "hub20.apps.web3.tasks.check_chains_were_reorganized",
         #     "schedule": timedelta(seconds=10),
         #     "expires": NODE_HEALTH_CHECK_INTERVAL,
         # },
         # "reset-inactive-providers": {
-        #     "task": "hub20.apps.blockchain.tasks.reset_inactive_providers",
+        #     "task": "hub20.apps.web3.tasks.reset_inactive_providers",
         #     "schedule": crontab(minute="*/5"),
         #     "expires": NODE_HEALTH_CHECK_INTERVAL,
         # },
         # "refresh-priority-fee-cache": {
-        #     "task": "hub20.apps.blockchain.tasks.refresh_max_priority_fee",
+        #     "task": "hub20.apps.web3.tasks.refresh_max_priority_fee",
         #     "schedule": timedelta(seconds=30),
         #     "expires": BLOCK_CREATION_INTERVAL,
         # },
@@ -84,7 +84,7 @@ class Hub20CeleryConfig:
         #     "expires": RAIDEN_PAYMENT_CHECK_INTERVAL,
         # },
         # "process-mined-blocks": {
-        #     "task": "hub20.apps.blockchain.tasks.process_mined_blocks",
+        #     "task": "hub20.apps.web3.tasks.process_mined_blocks",
         #     "schedule": timedelta(seconds=BLOCK_CREATION_INTERVAL),
         #     "expires": BLOCK_CREATION_INTERVAL,
         # },
@@ -98,8 +98,7 @@ class Hub20CeleryConfig:
     task_always_eager = "HUB20_TEST" in os.environ
     task_eager_propagates = "HUB20_TEST" in os.environ
     task_ignore_result = True
-    task_serializer = "web3"
-    accept_content = ["web3", "json"]
+    accept_content = ["json"]
 
 
 app = Celery()

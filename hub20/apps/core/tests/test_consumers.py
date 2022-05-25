@@ -8,10 +8,6 @@ from django.core.asgi import get_asgi_application
 from eth_utils import is_0x_prefixed
 from web3 import Web3
 
-from hub20.apps.blockchain.factories import BlockFactory
-from hub20.apps.blockchain.models import BaseWallet, Block, Chain
-from hub20.apps.blockchain.signals import block_sealed
-from hub20.apps.blockchain.tests.mocks import BlockMock
 from hub20.apps.core import handlers
 from hub20.apps.core.api import consumer_patterns
 from hub20.apps.core.consumers import Events
@@ -24,6 +20,10 @@ from hub20.apps.core.middleware import TokenAuthMiddlewareStack
 from hub20.apps.core.settings import app_settings
 from hub20.apps.ethereum_money.abi import EIP20_ABI
 from hub20.apps.ethereum_money.tests.mocks import Erc20TransferDataMock, Erc20TransferReceiptMock
+from hub20.apps.web3.factories import BlockFactory
+from hub20.apps.web3.models import BaseWallet, Block, Chain
+from hub20.apps.web3.signals import block_sealed
+from hub20.apps.web3.tests.mocks import BlockMock
 
 application = ProtocolTypeRouter(
     {

@@ -1,9 +1,9 @@
 import factory
 
-from hub20.apps.blockchain.factories.providers import EthereumProvider
 from hub20.apps.core import models
 from hub20.apps.core.choices import WITHDRAWAL_NETWORKS
 from hub20.apps.ethereum_money.factories import TokenValueModelFactory
+from hub20.apps.web3.factories.providers import EthereumProvider
 
 from .base import UserFactory
 

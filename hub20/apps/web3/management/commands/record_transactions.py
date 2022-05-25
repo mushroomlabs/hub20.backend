@@ -4,8 +4,8 @@ import logging
 from django.core.management.base import BaseCommand
 from web3.exceptions import TransactionNotFound
 
-from hub20.apps.blockchain.client import make_web3
-from hub20.apps.blockchain.models import Chain, Transaction, TransactionDataRecord
+from hub20.apps.web3.client import make_web3
+from hub20.apps.web3.models import Chain, Transaction, TransactionDataRecord
 
 logger = logging.getLogger(__name__)
 
