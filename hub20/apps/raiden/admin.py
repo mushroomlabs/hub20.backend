@@ -21,12 +21,11 @@ class ReadOnlyModelAdmin(admin.ModelAdmin):
 @admin.register(models.Raiden)
 class RaidenAdmin(admin.ModelAdmin):
     form = forms.RaidenForm
-    list_display = ("url", "account", "chain")
+    list_display = ("url", "chain")
     fields = (
         "url",
         "chain",
     )
-    readonly_fields = ("account",)
 
     def save_form(self, request, form, change):
         return RaidenClient.make_raiden(**form.cleaned_data)

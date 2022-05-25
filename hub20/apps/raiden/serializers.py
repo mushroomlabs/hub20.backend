@@ -9,6 +9,26 @@ from . import models
 from .client import RaidenClient
 
 
+class RaidenSerializer(serializers.ModelSerializer):
+    url = serializers.HyperlinkedIdentityField(view_name="raiden-detail")
+    hostname = serializers.CharField()
+    chain = serializers.HyperlinkedRelatedField(
+        view_name="blockchain:chain-detail", read_only=True
+    )
+    status = serializers.HyperlinkedIdentityField(view_name="raiden-status")
+
+    class Meta:
+        model = models.Raiden
+        fields = read_only_fields = (
+            "url",
+            "id",
+            "hostname",
+            "chain",
+            "address",
+            "status",
+        )
+
+
 class RaidenStatusSerializer(serializers.ModelSerializer):
     url = serializers.HyperlinkedIdentityField(view_name="raiden-status")
     raiden = serializers.HyperlinkedIdentityField(view_name="raiden-detail")

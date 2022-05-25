@@ -567,9 +567,6 @@ class BlockchainWithdrawal(Withdrawal):
         except Exception as exc:
             raise TransferError(str(exc)) from exc
 
-    class Meta:
-        proxy = True
-
 
 class BlockchainWithdrawalConfirmation(TransferConfirmation):
     transaction = models.OneToOneField(Transaction, on_delete=models.CASCADE)

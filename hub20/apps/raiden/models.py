@@ -312,9 +312,6 @@ class RaidenWithdrawal(Withdrawal):
         except RaidenPaymentError as exc:
             raise TransferError(exc.message) from exc
 
-    class Meta:
-        proxy = True
-
 
 __all__ = [
     "TokenNetwork",
