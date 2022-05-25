@@ -200,6 +200,7 @@ __all__ = [
     "Deposit",
     "PaymentOrder",
     "PaymentRoute",
+    "PaymentRouteQuerySet",
     "InternalPaymentRoute",
     "Payment",
     "InternalPayment",

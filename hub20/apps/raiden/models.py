@@ -13,7 +13,7 @@ from model_utils.managers import QueryManager
 from model_utils.models import StatusModel
 
 from hub20.apps.core.exceptions import RoutingError, TransferError
-from hub20.apps.core.fields import AddressField, Uint256Field
+from hub20.apps.core.fields import EthereumAddressField, Uint256Field
 from hub20.apps.core.models.payments import (
     Payment as BasePayment,
     PaymentRoute,
@@ -42,7 +42,7 @@ class RaidenURLField(models.URLField):
 
 
 class TokenNetwork(models.Model):
-    address = AddressField()
+    address = EthereumAddressField()
     token = models.OneToOneField(Erc20Token, on_delete=models.CASCADE)
 
     @property
@@ -55,7 +55,7 @@ class TokenNetwork(models.Model):
 
 class Raiden(models.Model):
     url = RaidenURLField(unique=True)
-    address = AddressField()
+    address = EthereumAddressField()
     chain = models.OneToOneField(Chain, related_name="raiden_node", on_delete=models.PROTECT)
 
     @property
@@ -93,7 +93,7 @@ class Channel(StatusModel):
     raiden = models.ForeignKey(Raiden, on_delete=models.CASCADE, related_name="channels")
     token_network = models.ForeignKey(TokenNetwork, on_delete=models.CASCADE)
     identifier = models.PositiveIntegerField()
-    partner_address = AddressField(db_index=True)
+    partner_address = EthereumAddressField(db_index=True)
     balance = TokenAmountField()
     total_deposit = TokenAmountField()
     total_withdraw = TokenAmountField()
@@ -169,8 +169,8 @@ class Payment(models.Model):
     amount = TokenAmountField()
     timestamp = models.DateTimeField()
     identifier = Uint256Field()
-    sender_address = AddressField()
-    receiver_address = AddressField()
+    sender_address = EthereumAddressField()
+    receiver_address = EthereumAddressField()
     objects = models.Manager()
     sent = QueryManager(sender_address=F("channel__raiden__address"))
     received = QueryManager(receiver_address=F("channel__raiden__address"))
@@ -294,6 +294,8 @@ class RaidenWithdrawalConfirmation(TransferConfirmation):
 
 
 class RaidenWithdrawal(Withdrawal):
+    address = EthereumAddressField(db_index=True)
+
     def _execute(self):
         try:
             raiden_client = RaidenClient.select_for_transfer(

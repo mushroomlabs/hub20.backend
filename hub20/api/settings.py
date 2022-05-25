@@ -49,6 +49,8 @@ PROJECT_APPS = [
     "colorfield",
     "django.contrib.admin",
     "hub20.apps.core",
+    "hub20.apps.web3",
+    "hub20.apps.raiden",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + PROJECT_APPS

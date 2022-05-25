@@ -9,7 +9,6 @@ from model_utils.managers import InheritanceManager, InheritanceManagerMixin, Qu
 from model_utils.models import TimeStampedModel
 
 from hub20.apps.core.choices import TRANSFER_STATUS, WITHDRAWAL_NETWORKS
-from hub20.apps.core.fields import AddressField
 from hub20.apps.core.models.tokens import TokenValueModel
 
 from ..exceptions import TransferError
@@ -120,7 +119,6 @@ class InternalTransfer(Transfer):
 
 
 class Withdrawal(Transfer):
-    address = AddressField(db_index=True)
     payment_network = models.CharField(max_length=64, choices=WITHDRAWAL_NETWORKS)
 
 

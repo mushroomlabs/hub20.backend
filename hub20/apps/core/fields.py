@@ -8,7 +8,7 @@ from hexbytes import HexBytes
 from .validators import tokenlist_uri_validator, validate_checksumed_address
 
 
-class AddressField(models.CharField):
+class EthereumAddressField(models.CharField):
     default_validators = [validate_checksumed_address]
     description = "Account address"
 

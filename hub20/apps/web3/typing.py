@@ -2,9 +2,9 @@ from typing import NewType, TypeVar, Union
 
 from hexbytes import HexBytes
 
-from .fields import AddressField
+from hub20.apps.core.fields import EthereumAddressField
 
-Address = Union[str, AddressField]
+Address = Union[str, EthereumAddressField]
 
 EthereumAccount_T = TypeVar("EthereumAccount_T")
 

@@ -21,9 +21,8 @@ from web3 import Web3
 from web3.datastructures import AttributeDict
 from web3.types import BlockData, TxData, TxReceipt
 
-from hub20.apps.core import get_wallet_model
 from hub20.apps.core.exceptions import RoutingError
-from hub20.apps.core.fields import AddressField, HexField
+from hub20.apps.core.fields import EthereumAddressField, HexField
 from hub20.apps.core.models import (
     BaseProvider,
     BaseToken,
@@ -42,7 +41,6 @@ from hub20.apps.core.settings import app_settings
 from .constants import NULL_ADDRESS
 from .fields import Web3ProviderURLField
 
-Wallet = get_wallet_model()
 logger = logging.getLogger(__name__)
 
 
@@ -156,8 +154,8 @@ class Block(models.Model):
 
 class AbstractTransactionRecord(models.Model):
     hash = HexField(max_length=64, db_index=True)
-    from_address = AddressField(db_index=True)
-    to_address = AddressField(db_index=True)
+    from_address = EthereumAddressField(db_index=True)
+    to_address = EthereumAddressField(db_index=True)
 
     def __str__(self) -> str:
         return f"{self.__class__.__name__} {self.hash}"
@@ -260,7 +258,7 @@ class EventIndexer(models.Model):
 
 
 class BaseWallet(models.Model):
-    address = AddressField(unique=True, db_index=True, blank=False)
+    address = EthereumAddressField(unique=True, db_index=True, blank=False)
     transactions = models.ManyToManyField(Transaction)
     objects = InheritanceManager()
 
@@ -374,7 +372,7 @@ class NativeToken(BaseToken):
 class Erc20Token(BaseToken):
 
     chain = models.ForeignKey(Chain, on_delete=models.CASCADE, related_name="tokens")
-    address = AddressField()
+    address = EthereumAddressField()
 
     objects = models.Manager()
     tradeable = QueryManager(Q(chain__providers__is_active=True) & Q(is_listed=True))
@@ -434,8 +432,8 @@ class TransferEvent(TokenValueModel):
     transaction = models.ForeignKey(
         Transaction, on_delete=models.CASCADE, related_name="transfers"
     )
-    sender = AddressField()
-    recipient = AddressField()
+    sender = EthereumAddressField()
+    recipient = EthereumAddressField()
     log_index = models.SmallIntegerField(null=True)
 
     class Meta:
@@ -557,6 +555,8 @@ class BlockchainWithdrawalReceipt(TransferReceipt):
 
 
 class BlockchainWithdrawal(Withdrawal):
+    address = EthereumAddressField(db_index=True)
+
     def _execute(self):
         try:
             from hub20.apps.web3.client.web3 import Web3Client
