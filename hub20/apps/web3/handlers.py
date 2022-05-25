@@ -7,7 +7,6 @@ from django.dispatch import receiver
 
 from hub20.apps.core import PAYMENT_NETWORK_NAME as CORE_PAYMENT_NETWORK
 from hub20.apps.core.models.accounting import PaymentNetworkAccount
-from hub20.apps.core.models.blockchain import Block, Chain, Transaction, TransactionDataRecord
 from hub20.apps.core.models.payments import Deposit, PaymentConfirmation
 from hub20.apps.core.models.stores import Checkout
 from hub20.apps.core.settings import app_settings
@@ -22,13 +21,24 @@ from hub20.apps.core.tasks import (
 from . import PAYMENT_NETWORK_NAME as WEB3_PAYMENT_NETWORK, signals
 from .constants import Events
 from .models import (
+    Block,
     BlockchainPayment,
     BlockchainPaymentRoute,
     BlockchainWithdrawal,
     BlockchainWithdrawalConfirmation,
+    Chain,
+    ChainMetadata,
+    Transaction,
+    TransactionDataRecord,
 )
 
 logger = logging.getLogger(__name__)
+
+
+@receiver(post_save, sender=Chain)
+def on_chain_created_create_metadata_entry(sender, **kw):
+    if kw["created"]:
+        ChainMetadata.objects.get_or_create(chain=kw["instance"])
 
 
 def _check_for_blockchain_payment_confirmations(block_number):
@@ -345,6 +355,7 @@ def on_blockchain_transfer_confirmed_move_fee_from_sender_to_blockchain(sender, 
 
 
 __all__ = [
+    "on_chain_created_create_metadata_entry",
     "on_chain_updated_check_payment_confirmations",
     "on_blockchain_payment_received_send_notification",
     "on_incoming_transfer_mined_check_blockchain_payments",

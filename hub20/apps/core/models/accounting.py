@@ -11,7 +11,7 @@ from django.db.models.functions import Coalesce
 from django.db.models.query import QuerySet
 from model_utils.models import TimeStampedModel
 
-from .erc20 import Token, TokenAmount, TokenAmountField, TokenValueModel
+from .tokens import BaseToken, TokenAmount, TokenAmountField, TokenValueModel
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ class DoubleEntryAccountModelQuerySet(models.QuerySet):
 
 
 class Book(models.Model):
-    token = models.ForeignKey(Token, on_delete=models.PROTECT, related_name="books")
+    token = models.ForeignKey(BaseToken, on_delete=models.PROTECT, related_name="books")
     owner_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
     owner_id = models.PositiveIntegerField()
     owner = GenericForeignKey("owner_type", "owner_id")
@@ -86,15 +86,15 @@ class DoubleEntryAccountModel(models.Model):
     def balances(self):
         return self.get_balances()
 
-    def get_book(self, token: Token) -> Book:
+    def get_book(self, token: BaseToken) -> Book:
         book, _ = self.books.get_or_create(token=token)
         return book
 
-    def get_balance_token_amount(self, token: Token) -> Optional[TokenAmount]:
+    def get_balance_token_amount(self, token: BaseToken) -> Optional[TokenAmount]:
         balance = self.get_balance(token=token)
         return balance and TokenAmount(currency=token, amount=balance.balance)
 
-    def get_balance(self, token: Token) -> Optional[Token]:
+    def get_balance(self, token: BaseToken) -> Optional[BaseToken]:
         return self.get_balances().filter(id=token.id).first()
 
     def get_balances(self) -> QuerySet:
@@ -105,7 +105,7 @@ class DoubleEntryAccountModel(models.Model):
         credit_sqs = credit_qs.filter(token=OuterRef("pk"))
         debit_sqs = debit_qs.filter(token=OuterRef("pk"))
 
-        annotated_qs = Token.objects.annotate(
+        annotated_qs = BaseToken.objects.annotate(
             total_credit=Coalesce(
                 Subquery(credit_sqs.values("total_credit")),
                 0,
@@ -139,7 +139,7 @@ class DoubleEntryAccountModel(models.Model):
         credit_sqs = credit_qs.filter(token=OuterRef("pk"))
         debit_sqs = debit_qs.filter(token=OuterRef("pk"))
 
-        annotated_qs = Token.objects.annotate(
+        annotated_qs = BaseToken.objects.annotate(
             total_credit=Coalesce(
                 Subquery(credit_sqs.values("total_credit")),
                 0,

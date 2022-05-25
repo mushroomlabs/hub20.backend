@@ -3,7 +3,6 @@ from rest_framework.reverse import reverse
 from taggit.serializers import TaggitSerializer, TagListSerializerField
 
 from .. import models
-from .fields import AddressSerializerField
 
 
 class TokenValueField(serializers.DecimalField):
@@ -15,7 +14,7 @@ class TokenValueField(serializers.DecimalField):
 
 class HyperlinkedTokenMixin:
     def get_queryset(self):
-        return models.Token.tradeable.all()
+        return models.BaseToken.tradeable.all()
 
     def get_url(self, obj, view_name, request, format):
         url_kwargs = {"chain_id": obj.chain_id, "address": obj.address}
@@ -28,7 +27,7 @@ class HyperlinkedTokenMixin:
 
 
 class HyperlinkedRelatedTokenField(HyperlinkedTokenMixin, serializers.HyperlinkedRelatedField):
-    queryset = models.Token.tradeable.all()
+    queryset = models.BaseToken.tradeable.all()
     view_name = "token-detail"
 
     def get_attribute(self, instance):
@@ -42,16 +41,13 @@ class HyperlinkedTokenIdentityField(serializers.HyperlinkedIdentityField):
 
 
 class TokenSerializer(serializers.ModelSerializer):
-    address = AddressSerializerField()
-    chain_id = serializers.PrimaryKeyRelatedField(queryset=models.Chain.active.all())
+    url = serializers.HyperlinkedIdentityField(view_name="token-detail")
 
     class Meta:
-        model = models.Token
+        model = models.BaseToken
         fields = read_only_fields = (
             "symbol",
             "name",
-            "address",
-            "chain_id",
             "decimals",
             "logoURI",
         )
@@ -66,7 +62,7 @@ class HyperlinkedTokenSerializer(TokenSerializer):
     url = HyperlinkedTokenIdentityField(view_name="token-detail")
 
     class Meta:
-        model = models.Token
+        model = models.BaseToken
         fields = ("url",) + TokenSerializer.Meta.fields
         read_only_fields = ("url",) + TokenSerializer.Meta.read_only_fields
 
@@ -76,7 +72,7 @@ class TokenInfoSerializer(serializers.ModelSerializer):
     wraps = HyperlinkedRelatedTokenField()
 
     class Meta:
-        model = models.Token
+        model = models.BaseToken
         fields = read_only_fields = (
             "name",
             "symbol",

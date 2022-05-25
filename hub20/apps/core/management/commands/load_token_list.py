@@ -2,7 +2,7 @@ import logging
 
 from django.core.management.base import BaseCommand
 
-from hub20.apps.ethereum_money.models import TokenList
+from hub20.apps.core.models.tokenlists import TokenList
 
 logger = logging.getLogger(__name__)
 

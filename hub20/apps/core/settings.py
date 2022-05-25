@@ -8,14 +8,11 @@ logger = logging.getLogger(__name__)
 
 
 class AppSettings:
-    class Transfer:
-        minimum_confirmations = 10
-
     class Checkout:
-        minimum_confirmations = 5
-        checkout_lifetime = 15 * 60  # In seconds
+        lifetime = 15 * 60  # In seconds
 
     class Blockchain:
+        minimum_confirmations = 10
         payment_route_lifetime = 100  # In blocks
         scan_range = 5000
 
@@ -33,14 +30,13 @@ class AppSettings:
 
     def load(self):
         ATTRS = {
-            "TRANSFER_MININUM_CONFIRMATIONS": (self.Transfer, "minimum_confirmations"),
-            "PAYMENT_MININUM_CONFIRMATIONS": (self.Payment, "minimum_confirmations"),
-            "RAIDEN_MINIMUM_ETHER_REQUIRED": (self.Raiden, "minimum_ether_required"),
-            "RAIDEN_MINIMUM_RDN_REQUIRED": (self.Raiden, "minimum_service_token_required"),
-            "ETHEREUM_HD_WALLET_MNEMONIC": (self.Wallet, "mnemonic"),
-            "ETHEREUM_HD_WALLET_ROOT_KEY": (self.Wallet, "root_key"),
+            "BLOCKCHAIN_MININUM_CONFIRMATIONS": (self.Blockchain, "minimum_confirmations"),
             "BLOCKCHAIN_ROUTE_LIFETIME": (self.Blockchain, "payment_route_lifetime"),
             "BLOCKCHAIN_SCAN_BLOCK_RANGE": (self.Blockchain, "scan_range"),
+            "ETHEREUM_HD_WALLET_MNEMONIC": (self.HDWallet, "mnemonic"),
+            "ETHEREUM_HD_WALLET_ROOT_KEY": (self.HDWallet, "root_key"),
+            "RAIDEN_MINIMUM_ETHER_REQUIRED": (self.Raiden, "minimum_ether_required"),
+            "RAIDEN_MINIMUM_RDN_REQUIRED": (self.Raiden, "minimum_service_token_required"),
         }
         user_settings = getattr(settings, "HUB20", {})
 

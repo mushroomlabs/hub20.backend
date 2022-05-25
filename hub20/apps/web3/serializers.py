@@ -2,20 +2,50 @@ import logging
 
 from rest_framework import serializers
 
-from hub20.apps.core.models import Chain
 from hub20.apps.core.serializers import (
     AddressSerializerField,
     HexadecimalField,
     HyperlinkedRelatedTokenField,
     PaymentRouteSerializer,
     PaymentSerializer,
+    TokenSerializer,
     TokenValueField,
 )
 
 from .analytics import estimate_gas_price
-from .models import BlockchainPayment, BlockchainPaymentRoute, Wallet, WalletBalanceRecord
+from .models import (
+    BlockchainPayment,
+    BlockchainPaymentRoute,
+    Chain,
+    Erc20Token,
+    NativeToken,
+    Wallet,
+    WalletBalanceRecord,
+)
 
 logger = logging.getLogger(__name__)
+
+
+class ChainSerializer(serializers.ModelSerializer):
+    url = serializers.HyperlinkedIdentityField(view_name="blockchain:chain-detail")
+    token = serializers.CharField(source="native_token.symbol", read_only=True)
+    explorers = serializers.SerializerMethodField()
+    status = serializers.HyperlinkedIdentityField(view_name="blockchain:chain-status")
+
+    def get_explorers(self, obj):
+        return obj.explorers.values_list("url", flat=True)
+
+    class Meta:
+        model = Chain
+        fields = read_only_fields = (
+            "url",
+            "id",
+            "name",
+            "short_name",
+            "token",
+            "explorers",
+            "status",
+        )
 
 
 class ChainStatusSerializer(serializers.ModelSerializer):
@@ -38,6 +68,36 @@ class ChainStatusSerializer(serializers.ModelSerializer):
             "online",
             "synced",
             "gas_price_estimate",
+        )
+
+
+class NativeTokenSerializer(TokenSerializer):
+    chain_id = serializers.PrimaryKeyRelatedField(queryset=Chain.active.all())
+
+    class Meta:
+        model = NativeToken
+        fields = read_only_fields = (
+            "symbol",
+            "name",
+            "chain_id",
+            "decimals",
+            "logoURI",
+        )
+
+
+class Erc20TokenSerializer(TokenSerializer):
+    chain_id = serializers.PrimaryKeyRelatedField(queryset=Chain.active.all())
+    address = AddressSerializerField()
+
+    class Meta:
+        model = Erc20Token
+        fields = read_only_fields = (
+            "symbol",
+            "name",
+            "address",
+            "chain_id",
+            "decimals",
+            "logoURI",
         )
 
 

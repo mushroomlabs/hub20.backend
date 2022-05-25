@@ -1,9 +1,6 @@
 from django.db.models import Q
 from django.db.models.query import QuerySet
-from django.http import Http404
-from django.shortcuts import get_object_or_404
 from django_filters import rest_framework as filters
-from eth_utils import is_address
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter, SearchFilter
@@ -12,26 +9,17 @@ from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet, ModelViewSet
 
-from hub20.apps.blockchain.models import Chain
-
-from . import models, serializers, tasks
+from .. import models, serializers, tasks
 
 
-class TokenFilter(filters.FilterSet):
-    chain_id = filters.ModelChoiceFilter(queryset=Chain.active.all())
-    native = filters.BooleanFilter(label="native", method="filter_native")
+class BaseTokenFilter(filters.FilterSet):
     stable_tokens = filters.BooleanFilter(label="stable", method="filter_stable_tokens")
     fiat = filters.CharFilter(label="fiat", method="filter_fiat")
 
     def token_search(self, queryset, name, value):
         q_name = Q(name__istartswith=value)
         q_symbol = Q(symbol__iexact=value)
-        q_chain_name = Q(chain__name__icontains=value)
-        return queryset.filter(q_name | q_symbol | q_chain_name)
-
-    def filter_native(self, queryset, name, value):
-        filtered_qs = queryset.filter if value else queryset.exclude
-        return filtered_qs(address=models.Token.NULL_ADDRESS)
+        return queryset.filter(q_name | q_symbol)
 
     def filter_stable_tokens(self, queryset, name, value):
         return queryset.exclude(stable_pair__token__isnull=value)
@@ -40,37 +28,28 @@ class TokenFilter(filters.FilterSet):
         return queryset.filter(stable_pair__currency__iexact=value)
 
     class Meta:
-        model = models.Token
-        ordering_fields = ("symbol", "chain_id")
-        fields = ("chain_id", "symbol", "address", "native", "stable_tokens", "fiat")
+        model = models.BaseToken
+        ordering_fields = ("symbol",)
+        fields = ("symbol", "stable_tokens", "fiat")
 
 
 class BaseTokenViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
     serializer_class = serializers.HyperlinkedTokenSerializer
-    filterset_class = TokenFilter
+    filterset_class = BaseTokenFilter
     filter_backends = (
         OrderingFilter,
         SearchFilter,
         filters.DjangoFilterBackend,
     )
     page_size = 50
-    search_fields = ("name", "=symbol", "chain__name")
-    ordering_fields = ("symbol", "name", "chain_id")
-    ordering = ("-is_native", "chain_id", "symbol")
+    search_fields = ("name", "=symbol")
+    ordering_fields = ("symbol", "name")
+    ordering = ("symbol",)
     lookup_value_regex = "[0-9a-f-]{36}"
 
     def get_queryset(self) -> QuerySet:
         return models.BaseToken.tradeable.select_subclasses()
 
-    def get_object(self):
-        address = self.kwargs["address"]
-        if not is_address(address):
-            raise Http404(f"{address} is not a valid token address")
-
-        return get_object_or_404(models.Token, chain_id=self.kwargs["chain_id"], address=address)
-
-
-class TokenViewSet(BaseTokenViewSet):
     def get_serializer_class(self):
         if self.action == "info":
             return serializers.TokenInfoSerializer

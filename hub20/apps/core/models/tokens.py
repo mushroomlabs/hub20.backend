@@ -7,7 +7,7 @@ from decimal import Decimal
 from django.contrib.auth import get_user_model
 from django.db import models
 from django.db.models import Sum
-from model_utils.managers import InheritanceManager
+from model_utils.managers import InheritanceManager, QueryManager
 
 from ..choices import CURRENCIES
 from ..fields import TokenAmountField, TokenlistStandardURLField
@@ -25,6 +25,7 @@ class BaseToken(models.Model):
     logoURI = TokenlistStandardURLField(max_length=512, null=True, blank=True)
     is_listed = models.BooleanField(default=False)
     objects = InheritanceManager()
+    tradeable = QueryManager(is_listed=True)
 
     def from_wei(self, wei_amount: Wei) -> TokenAmount:
         value = TokenAmount(wei_amount) / (10**self.decimals)

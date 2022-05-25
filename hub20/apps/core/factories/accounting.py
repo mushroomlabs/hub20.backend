@@ -1,13 +1,10 @@
 import factory
 from django.contrib.contenttypes.models import ContentType
 
-from hub20.apps.blockchain.factories import EthereumProvider
 from hub20.apps.core import models
-from hub20.apps.ethereum_money.factories import Erc20TokenValueModelFactory, TokenValueModelFactory
 
 from .base import UserFactory
-
-factory.Faker.add_provider(EthereumProvider)
+from .tokens import Erc20TokenValueModelFactory, TokenValueModelFactory
 
 
 class EthereumBookEntryFactory(TokenValueModelFactory):

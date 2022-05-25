@@ -1,7 +1,7 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
-from ..models import Token, UserPreferences
+from ..models import BaseToken
 from .fields import AddressSerializerField
 from .tokens import (
     HyperlinkedRelatedTokenField,
@@ -34,18 +34,6 @@ class UserSerializer(serializers.ModelSerializer):
         fields = read_only_fields = ("url", "username", "first_name", "last_name", "email")
 
 
-class UserPreferencesSerializer(serializers.ModelSerializer):
-    tokens = HyperlinkedRelatedTokenField(
-        view_name="token-detail",
-        queryset=Token.tradeable.all(),
-        many=True,
-    )
-
-    class Meta:
-        model = UserPreferences
-        fields = ("tokens",)
-
-
 class UserTokenSerializer(TokenSerializer):
     url = HyperlinkedTokenIdentityField(view_name="user-token-detail")
     token = HyperlinkedTokenIdentityField(view_name="token-detail", read_only=True)
@@ -64,7 +52,7 @@ class UserTokenCreatorSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
         token = data["token"]
-        if not Token.tradeable.filter(id=token.id).exists():
+        if not BaseToken.tradeable.filter(id=token.id).exists():
             raise serializers.ValidationError(
                 f"Token {token.symbol} on chain #{token.chain_id} is not listed for trade"
             )
@@ -73,9 +61,7 @@ class UserTokenCreatorSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         request = self.context["request"]
         token = validated_data["token"]
-        native_token = Token.make_native(token.chain)
         request.user.preferences.tokens.add(token)
-        request.user.preferences.tokens.add(native_token)
         return token
 
     class Meta:

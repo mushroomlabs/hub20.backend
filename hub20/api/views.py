@@ -1,4 +1,6 @@
+from django.db.models import Q
 from django.http import Http404
+from django_filters import rest_framework as filters
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -6,14 +8,32 @@ from rest_framework.response import Response
 from rest_framework.reverse import reverse_lazy
 from rest_framework.views import APIView
 
-from hub20.apps.core.serializers.tokens import HyperlinkedTokenBalanceSerializer
-from hub20.apps.core.views.tokens import TokenViewSet
+from hub20.apps.core.serializers.accounting import HyperlinkedTokenBalanceSerializer
+from hub20.apps.core.views.tokens import BaseTokenFilter, BaseTokenViewSet
 from hub20.apps.web3.client import get_estimate_fee, make_web3
 from hub20.apps.web3.models import Chain
 
 from . import VERSION, serializers
 
 RAIDEN_DESCRIPTION = "Enables instant and ultra-cheap transfers of ERC20 tokens"
+
+
+class TokenFilter(BaseTokenFilter):
+    chain_id = filters.ModelChoiceFilter(queryset=Chain.active.all())
+    native = filters.BooleanFilter(label="native", method="filter_native")
+
+    def token_search(self, queryset, name, value):
+        q_name = Q(name__istartswith=value)
+        q_symbol = Q(symbol__iexact=value)
+        return queryset.filter(q_name | q_symbol)
+
+    def filter_native(self, queryset, name, value):
+        return queryset.exclude(nativetoken__isnull=value)
+
+    class Meta:
+        model = BaseTokenFilter.Meta.model
+        ordering_fields = ("symbol", "chain_id")
+        fields = ("chain_id", "symbol", "native", "stable_tokens", "fiat")
 
 
 class IndexView(APIView):
@@ -55,7 +75,11 @@ class NetworkIndexView(APIView):
         )
 
 
-class TokenBrowserViewSet(TokenViewSet):
+class TokenBrowserViewSet(BaseTokenViewSet):
+    search_fields = ("name", "=symbol", "chain__name")
+    ordering_fields = ("symbol", "name", "chain_id")
+    ordering = ("-is_native", "chain_id", "symbol")
+
     def get_serializer_class(self):
         if self.action == "balance":
             return HyperlinkedTokenBalanceSerializer

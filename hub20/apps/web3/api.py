@@ -6,6 +6,7 @@ app_name = "blockchain"
 
 
 router = SimpleRouter(trailing_slash=False)
-router.register("", views.ChainViewSet, basename="chain")
+router.register("chains", views.ChainViewSet, basename="chain")
+router.register("wallets", views.WalletViewSet, basename="wallet")
 
 urlpatterns = router.urls

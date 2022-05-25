@@ -10,7 +10,7 @@ from model_utils.models import TimeStampedModel
 
 from hub20.apps.core.choices import TRANSFER_STATUS, WITHDRAWAL_NETWORKS
 from hub20.apps.core.fields import AddressField
-from hub20.apps.ethereum_money.models import TokenValueModel
+from hub20.apps.core.models.tokens import TokenValueModel
 
 from ..exceptions import TransferError
 

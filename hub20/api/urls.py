@@ -15,14 +15,19 @@ from django.views.generic import TemplateView
 from drf_yasg import openapi
 from drf_yasg.views import get_schema_view
 from rest_framework.permissions import AllowAny
+from rest_framework.routers import SimpleRouter
 
 from hub20.apps.core.api import urlpatterns as core_urlpatterns
-from hub20.gateway.views import IndexView, NetworkIndexView
+
+from .views import IndexView, NetworkIndexView, TokenBrowserViewSet
 
 
 def make_auth_view(url_path: str, view_class, view_name: str) -> Callable:
     return path(url_path, view_class.as_view(), name=view_name)
 
+
+router = SimpleRouter(trailing_slash=False)
+router.register("tokens", TokenBrowserViewSet, basename="token")
 
 urlpatterns = [
     # URLs that do not require a session or valid token
@@ -43,7 +48,9 @@ urlpatterns = [
     path("", IndexView.as_view(), name="index"),
 ]
 
+urlpatterns.extend(router.urls)
 urlpatterns.extend(core_urlpatterns)
+
 
 if settings.SERVE_OPENAPI_URLS:
     schema_view = get_schema_view(

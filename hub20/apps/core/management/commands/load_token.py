@@ -6,8 +6,8 @@ from eth_utils import to_checksum_address
 
 from hub20.apps.blockchain.client import make_web3
 from hub20.apps.blockchain.models import Chain, Web3Provider
+from hub20.apps.core.models.tokens import BaseToken
 from hub20.apps.ethereum_money.client import get_token_information
-from hub20.apps.ethereum_money.models import Token
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ class Command(BaseCommand):
         logger.info(f"Checking token {token_address}...")
         try:
             token_data = get_token_information(w3=w3, address=token_address)
-            Token.make(
+            BaseToken.make(
                 address=token_address,
                 chain=provider.chain,
                 is_listed=options["listed"],

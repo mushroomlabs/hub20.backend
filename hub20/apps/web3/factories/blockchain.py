@@ -5,15 +5,7 @@ import factory.fuzzy
 from django.utils import timezone
 from faker import Faker
 
-from ..models import (
-    BaseWallet,
-    Block,
-    Chain,
-    NativeToken,
-    Transaction,
-    TransactionDataRecord,
-    Web3Provider,
-)
+from ..models import Block, Chain, Transaction, TransactionDataRecord, Web3Provider
 from .providers import EthereumProvider
 
 factory.Faker.add_provider(EthereumProvider)
@@ -31,14 +23,6 @@ def find_parent_by_block_number(block):
 def make_parent_hash(block):
     parent = find_parent_by_block_number(block)
     return parent and parent.hash or block.default_parent_hash
-
-
-class BaseWalletFactory(factory.django.DjangoModelFactory):
-    address = factory.Faker("ethereum_address")
-
-    class Meta:
-        model = BaseWallet
-        django_get_or_create = ("address",)
 
 
 class ChainFactory(factory.django.DjangoModelFactory):
@@ -149,16 +133,6 @@ class TransactionFactory(factory.django.DjangoModelFactory):
         status = 1
         gas_used = factory.fuzzy.FuzzyInteger(21000, 200000)
         gas_price = factory.fuzzy.FuzzyInteger(1e9, 100e9)
-
-
-class NativeTokenFactory(factory.django.DjangoModelFactory):
-    chain = factory.SubFactory(ChainFactory)
-    name = factory.Sequence(lambda n: f"Native Token #{n:02n}")
-    symbol = factory.Sequence(lambda n: f"ETH{n:02n}")
-
-    class Meta:
-        model = NativeToken
-        django_get_or_create = ("chain",)
 
 
 class Web3ProviderFactory(factory.django.DjangoModelFactory):

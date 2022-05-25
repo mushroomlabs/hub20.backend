@@ -10,10 +10,10 @@ from django.db import models
 from django.utils import timezone
 from model_utils.models import TimeStampedModel
 
-from hub20.apps.ethereum_money.models import Token, UserTokenList
-
 from ..settings import app_settings
 from .payments import PaymentOrder
+from .tokenlists import UserTokenList
+from .tokens import BaseToken
 
 
 def calculate_checkout_expiration_time():
@@ -38,7 +38,7 @@ class Store(models.Model):
         if self.accepted_token_list:
             qs = self.accepted_token_list.tokens.all()
         else:
-            qs = Token.tradeable.all()
+            qs = BaseToken.tradeable.all()
 
         return qs.filter(chain__providers__is_active=True)
 

@@ -14,12 +14,9 @@ class DepositFilter(filters.FilterSet):
     chain = filters.NumberFilter(field_name="currency__chain")
     token = filters.CharFilter(field_name="currency__address")
 
-    def filter_open(self, queryset, name, value):
-        return queryset.open() if value else queryset.expired()
-
     class Meta:
         model = models.Deposit
-        fields = ("token", "chain", "open")
+        fields = ("token", "chain")
 
 
 class DepositViewSet(GenericViewSet, ListModelMixin, CreateModelMixin, RetrieveModelMixin):

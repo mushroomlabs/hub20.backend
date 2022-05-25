@@ -13,7 +13,7 @@ from web3.datastructures import AttributeDict
 
 from hub20.apps.blockchain.models import BaseWallet, Chain
 from hub20.apps.blockchain.typing import Address
-from hub20.apps.ethereum_money.models import TokenAmount
+from hub20.apps.core.models.tokens import TokenAmount
 from hub20.apps.raiden.exceptions import RaidenConnectionError, RaidenPaymentError
 from hub20.apps.raiden.models import Channel, Payment, Raiden, TokenNetwork
 

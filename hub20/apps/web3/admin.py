@@ -6,7 +6,10 @@ from django.db.models import Q
 from django.http import HttpRequest
 from django.utils.translation import gettext_lazy as _
 
+from hub20.apps.core.admin import StableTokenListFilter, TradeableTokenListFilter, accept, reject
+
 from . import models
+from .forms import Erc20TokenForm, NativeTokenForm
 from .typing import EthereumAccount_T
 from .validators import web3_url_validator
 
@@ -95,6 +98,29 @@ class SidechainListFilter(admin.SimpleListFilter):
         return models.Chain.objects.filter(info__sidechain_for=selection)
 
 
+class ConnectedChainTokenListFilter(admin.SimpleListFilter):
+    title = _("connected chain")
+
+    parameter_name = "connected_chain"
+
+    def lookups(self, request, model_admin):
+        return (
+            ("yes", "Yes"),
+            ("no", "No"),
+        )
+
+    def queryset(self, request, queryset):
+        selection = self.value()
+
+        if selection is None:
+            return queryset
+
+        connected_q = Q(chain__providers__is_active=True)
+
+        filter_type = queryset.filter if selection == "yes" else queryset.exclude
+        return filter_type(connected_q)
+
+
 class Web3URLField(forms.URLField):
     default_validators = [web3_url_validator]
 
@@ -149,6 +175,44 @@ class BlockchainExplorerAdmin(admin.ModelAdmin):
     list_display = ("name", "url", "standard")
     list_filter = ("standard",)
     search_fields = ("url", "chain__name")
+
+
+@admin.register(models.NativeToken)
+class NativeTokenAdmin(admin.ModelAdmin):
+    form = NativeTokenForm
+
+    search_fields = ["symbol", "name", "chain__name"]
+    list_display = ["symbol", "name", "chain", "is_listed"]
+    list_filter = (
+        "is_listed",
+        TradeableTokenListFilter,
+        ConnectedChainListFilter,
+        StableTokenListFilter,
+    )
+    readonly_fields = ["chain", "symbol", "name", "address", "decimals"]
+    actions = [accept, reject]
+
+    def has_add_permission(self, *args, **kw) -> bool:
+        return False
+
+
+@admin.register(models.Erc20Token)
+class Erc20TokenAdmin(admin.ModelAdmin):
+    form = Erc20TokenForm
+
+    search_fields = ["symbol", "name", "address", "chain__name"]
+    list_display = ["symbol", "name", "address", "chain", "is_listed"]
+    list_filter = (
+        "is_listed",
+        TradeableTokenListFilter,
+        ConnectedChainTokenListFilter,
+        StableTokenListFilter,
+    )
+    readonly_fields = ["chain", "symbol", "name", "address", "decimals"]
+    actions = [accept, reject]
+
+    def has_add_permission(self, *args, **kw) -> bool:
+        return False
 
 
 @admin.register(models.BaseWallet)

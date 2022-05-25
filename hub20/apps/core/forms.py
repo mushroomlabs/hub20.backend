@@ -2,7 +2,7 @@ from django import forms
 
 from . import models, validators
 
-TOKEN_FILTER_QS = models.Token.tradeable.all()
+TOKEN_FILTER_QS = models.BaseToken.tradeable.all()
 
 
 class TokenlistStandardURLField(forms.URLField):
@@ -13,8 +13,8 @@ class TokenForm(forms.ModelForm):
     logoURI = TokenlistStandardURLField(required=False)
 
     class Meta:
-        model = models.Token
-        fields = ("chain", "address", "symbol", "name", "decimals", "logoURI", "is_listed")
+        model = models.BaseToken
+        fields = ("symbol", "name", "decimals", "logoURI", "is_listed")
 
 
 class TokenListForm(forms.ModelForm):

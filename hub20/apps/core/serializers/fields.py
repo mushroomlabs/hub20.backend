@@ -1,3 +1,4 @@
+from django.utils.translation import gettext_lazy as _
 from ethereum.utils import checksum_encode, normalize_address
 from hexbytes import HexBytes
 from rest_framework import serializers
