@@ -31,7 +31,6 @@ from .models import (
     Transaction,
     TransactionDataRecord,
     TransferEvent,
-    Wallet,
     WalletBalanceRecord,
     Web3Provider,
 )
@@ -601,7 +600,7 @@ def notify_node_recovered(chain_id, provider_url):
     broadcast_event(event=Events.PROVIDER_ONLINE.value, chain_id=chain_id)
 
 
-def _get_native_token_balance(wallet: Wallet, token: BaseToken, block_data):
+def _get_native_token_balance(wallet: BaseWallet, token: BaseToken, block_data):
 
     try:
         assert not token.is_ERC20, f"{token} is an ERC20-token"
@@ -629,7 +628,7 @@ def _get_native_token_balance(wallet: Wallet, token: BaseToken, block_data):
     )
 
 
-def _get_erc20_token_balance(wallet: Wallet, token: BaseToken, block_data):
+def _get_erc20_token_balance(wallet: BaseWallet, token: BaseToken, block_data):
     try:
         provider = Web3Provider.available.get(chain_id=token.chain_id)
     except Web3Provider.DoesNotExist:
@@ -662,7 +661,7 @@ def update_all_wallet_balances():
         w3 = make_web3(provider=provider)
         chain_id = w3.eth.chain_id
         block_data = w3.eth.get_block(w3.eth.block_number, full_transactions=True)
-        for wallet in Wallet.objects.all():
+        for wallet in BaseWallet.objects.all():
             for token in BaseToken.objects.filter(chain_id=chain_id):
                 action = _get_erc20_token_balance if token.is_ERC20 else _get_native_token_balance
                 action(wallet=wallet, token=token, block_data=block_data)
@@ -676,7 +675,7 @@ def update_wallet_token_balances(chain_id, wallet_address, event_data, provider_
     if not token:
         return
 
-    wallet = Wallet.objects.filter(address=wallet_address).first()
+    wallet = BaseWallet.objects.filter(address=wallet_address).first()
 
     if not wallet:
         return
@@ -691,7 +690,7 @@ def update_wallet_token_balances(chain_id, wallet_address, event_data, provider_
 
 @shared_task
 def update_wallet_native_token_balances(chain_id, block_data, provider_url):
-    addresses = Wallet.objects.values_list("address", flat=True)
+    addresses = BaseWallet.objects.values_list("address", flat=True)
 
     txs = [
         t
@@ -714,7 +713,7 @@ def update_wallet_native_token_balances(chain_id, block_data, provider_url):
         sender = transaction_data["from"]
         recipient = transaction_data["to"]
 
-        affected_wallets = Wallet.objects.filter(address__in=[sender, recipient])
+        affected_wallets = BaseWallet.objects.filter(address__in=[sender, recipient])
 
         if not affected_wallets.exists():
             return

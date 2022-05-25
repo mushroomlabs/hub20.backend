@@ -11,6 +11,7 @@ from hub20.apps.core.serializers import (
     TokenSerializer,
     TokenValueField,
 )
+from hub20.apps.web3 import get_wallet_model
 
 from .analytics import estimate_gas_price
 from .models import (
@@ -19,11 +20,12 @@ from .models import (
     Chain,
     Erc20Token,
     NativeToken,
-    Wallet,
     WalletBalanceRecord,
 )
 
 logger = logging.getLogger(__name__)
+
+Wallet = get_wallet_model()
 
 
 class ChainSerializer(serializers.ModelSerializer):

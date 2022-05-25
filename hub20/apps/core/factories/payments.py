@@ -2,8 +2,8 @@ import factory
 from factory import fuzzy
 
 from ..models import PaymentOrder
-from .base import UserFactory
 from .tokens import BaseTokenFactory
+from .users import UserFactory
 
 
 class PaymentOrderFactory(factory.django.DjangoModelFactory):

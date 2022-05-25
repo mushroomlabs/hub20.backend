@@ -3,17 +3,15 @@ from typing import List
 import factory
 import factory.fuzzy
 from django.utils import timezone
-from faker import Faker
+
+from hub20.apps.core.factories import EthereumProvider
 
 from ..models import Block, Chain, Transaction, TransactionDataRecord, Web3Provider
-from .providers import EthereumProvider
 
 factory.Faker.add_provider(EthereumProvider)
 
 
 TEST_CHAIN_ID = 2
-FAKER = Faker()
-FAKER.add_provider(EthereumProvider)
 
 
 def find_parent_by_block_number(block):

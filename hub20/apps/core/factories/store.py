@@ -2,9 +2,9 @@ import factory
 
 from hub20.apps.core import models
 
-from .base import UserFactory
 from .payments import PaymentOrderFactory
 from .tokenlists import UserTokenListFactory
+from .users import UserFactory
 
 
 class StoreFactory(factory.django.DjangoModelFactory):

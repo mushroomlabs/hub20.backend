@@ -3,7 +3,7 @@ from django.contrib.contenttypes.models import ContentType
 
 from hub20.apps.core import models
 
-from .base import UserFactory
+from .users import UserFactory
 
 
 class UserAccountFactory(factory.django.DjangoModelFactory):

@@ -2,8 +2,8 @@ import factory
 
 from hub20.apps.core import models
 
-from .base import UserFactory
 from .tokens import TokenValueModelFactory
+from .users import UserFactory
 
 
 class TransferFactory(TokenValueModelFactory):

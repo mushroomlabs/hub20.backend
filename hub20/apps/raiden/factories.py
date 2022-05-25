@@ -6,13 +6,8 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 from factory import fuzzy
 
-from hub20.apps.core.factories import PaymentNetworkFactory, TransferFactory
-from hub20.apps.web3.factories import (
-    BaseWalletFactory,
-    Erc20TokenFactory,
-    EthereumProvider,
-    SyncedChainFactory,
-)
+from hub20.apps.core.factories import EthereumProvider, PaymentNetworkFactory, TransferFactory
+from hub20.apps.web3.factories import BaseWalletFactory, Erc20TokenFactory, SyncedChainFactory
 
 from . import models
 
