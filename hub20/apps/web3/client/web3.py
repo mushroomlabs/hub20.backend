@@ -14,15 +14,14 @@ from web3.middleware import geth_poa_middleware
 from web3.providers import HTTPProvider, IPCProvider, WebsocketProvider
 from web3.types import TxReceipt
 
-from hub20.apps.core.models import Chain, Token, TokenAmount
-from hub20.apps.ethereum_money.abi import EIP20_ABI
-from hub20.apps.ethereum_money.typing import Web3Client_T
+from hub20.apps.core.abi.tokens import EIP20_ABI
+from hub20.apps.core.models import BaseToken, TokenAmount
 from hub20.apps.web3 import analytics
 from hub20.apps.web3.app_settings import WEB3_REQUEST_TIMEOUT, WEB3_TRANSFER_GAS_LIMIT
 from hub20.apps.web3.exceptions import Web3TransactionError
 from hub20.apps.web3.factories.base import FAKER
-from hub20.apps.web3.models import BaseWallet, TransactionDataRecord, Web3Provider
-from hub20.apps.web3.typing import Address, EthereumAccount_T
+from hub20.apps.web3.models import BaseWallet, Chain, TransactionDataRecord, Web3Provider
+from hub20.apps.web3.typing import Address, EthereumAccount_T, Web3Client_T
 
 logger = logging.getLogger(__name__)
 
@@ -172,7 +171,7 @@ def encode_transfer_data(recipient_address, amount: TokenAmount):
     return f"0x{encoded_data.hex()}"
 
 
-def get_transfer_gas_estimate(w3: Web3, token: Token):
+def get_transfer_gas_estimate(w3: Web3, token: BaseToken):
     if token.is_ERC20:
         contract = w3.eth.contract(abi=EIP20_ABI, address=token.address)
         return contract.functions.transfer(FAKER.ethereum_address(), 0).estimateGas(
@@ -182,8 +181,8 @@ def get_transfer_gas_estimate(w3: Web3, token: Token):
         return 21000
 
 
-def get_estimate_fee(w3: Web3, token: Token) -> TokenAmount:
-    native_token = Token.make_native(chain=token.chain)
+def get_estimate_fee(w3: Web3, token: BaseToken) -> TokenAmount:
+    native_token = BaseToken.make_native(chain=token.chain)
 
     gas_price = w3.eth.generateGasPrice()
     gas_estimate = get_transfer_gas_estimate(w3=w3, token=token)
@@ -192,13 +191,13 @@ def get_estimate_fee(w3: Web3, token: Token) -> TokenAmount:
 
 def get_max_fee(w3: Web3) -> TokenAmount:
     chain = Chain.active.get(id=w3.eth.chain_id)
-    native_token = Token.make_native(chain=chain)
+    native_token = BaseToken.make_native(chain=chain)
 
     gas_price = chain.gas_price_estimate or w3.eth.generateGasPrice()
     return native_token.from_wei(WEB3_TRANSFER_GAS_LIMIT * gas_price)
 
 
-def get_account_balance(w3: Web3, token: Token, address: Address) -> TokenAmount:
+def get_account_balance(w3: Web3, token: BaseToken, address: Address) -> TokenAmount:
     if token.is_ERC20:
         contract = w3.eth.contract(abi=EIP20_ABI, address=token.address)
         return token.from_wei(contract.functions.balanceOf(address).call())
@@ -215,10 +214,10 @@ def get_token_information(w3: Web3, address):
     }
 
 
-def make_token(w3: Web3, address) -> Token:
+def make_token(w3: Web3, address) -> BaseToken:
     token_data = get_token_information(w3=w3, address=address)
     chain = Chain.active.get(id=w3.eth.chain_id)
-    return Token.make(chain=chain, address=address, **token_data)
+    return BaseToken.make(chain=chain, address=address, **token_data)
 
 
 def mint_tokens(w3: Web3, account: EthereumAccount_T, amount: TokenAmount):
@@ -287,7 +286,7 @@ class Web3Client:
             raise NotImplementedError("Can not sign transaction without the private key")
         return w3.eth.account.signTransaction(transaction_data, self.account.private_key)
 
-    def get_balance(self, token: Token):
+    def get_balance(self, token: BaseToken):
         w3 = make_web3(provider=token.chain.provider)
         return get_account_balance(w3=w3, token=token, address=self.account.address)
 

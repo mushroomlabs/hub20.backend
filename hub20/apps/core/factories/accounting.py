@@ -4,17 +4,6 @@ from django.contrib.contenttypes.models import ContentType
 from hub20.apps.core import models
 
 from .base import UserFactory
-from .tokens import Erc20TokenValueModelFactory, TokenValueModelFactory
-
-
-class EthereumBookEntryFactory(TokenValueModelFactory):
-    class Meta:
-        model = models.BookEntry
-
-
-class Erc20TokenBookEntryFactory(Erc20TokenValueModelFactory):
-    class Meta:
-        model = models.BookEntry
 
 
 class UserAccountFactory(factory.django.DjangoModelFactory):
@@ -34,40 +23,7 @@ class UserBookFactory(factory.django.DjangoModelFactory):
         model = models.Book
 
 
-class EthereumCreditFactory(EthereumBookEntryFactory):
-    book = factory.SubFactory(UserBookFactory)
-
-    class Meta:
-        model = models.Credit
-
-
-class Erc20TokenCreditFactory(EthereumBookEntryFactory):
-    book = factory.SubFactory(UserBookFactory)
-
-    class Meta:
-        model = models.Credit
-
-
-class EthereumDebitFactory(EthereumBookEntryFactory):
-    book = factory.SubFactory(UserBookFactory)
-
-    class Meta:
-        model = models.Debit
-
-
-class Erc20TokenDebitFactory(EthereumBookEntryFactory):
-    book = factory.SubFactory(UserBookFactory)
-
-    class Meta:
-        model = models.Debit
-
-
 __all__ = [
-    "EthereumBookEntryFactory",
-    "EthereumCreditFactory",
-    "EthereumDebitFactory",
-    "Erc20TokenCreditFactory",
-    "Erc20TokenDebitFactory",
-    "Erc20TokenBookEntryFactory",
     "UserAccountFactory",
+    "UserBookFactory",
 ]

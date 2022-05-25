@@ -1,13 +1,9 @@
 import factory
 
 from hub20.apps.core import models
-from hub20.apps.core.choices import WITHDRAWAL_NETWORKS
-from hub20.apps.ethereum_money.factories import TokenValueModelFactory
-from hub20.apps.web3.factories.providers import EthereumProvider
 
 from .base import UserFactory
-
-factory.Faker.add_provider(EthereumProvider)
+from .tokens import TokenValueModelFactory
 
 
 class TransferFactory(TokenValueModelFactory):
@@ -24,21 +20,4 @@ class InternalTransferFactory(TransferFactory):
         model = models.InternalTransfer
 
 
-class BlockchainWithdrawalFactory(TransferFactory):
-    address = factory.Faker("ethereum_address")
-    payment_network = WITHDRAWAL_NETWORKS.blockchain
-
-    class Meta:
-        model = models.BlockchainWithdrawal
-
-
-class RaidenWithdrawalFactory(TransferFactory):
-    address = factory.Faker("ethereum_address")
-    payment_network = WITHDRAWAL_NETWORKS.raiden
-    identifier = factory.fuzzy.FuzzyInteger(2**48, 2**53)
-
-    class Meta:
-        model = models.RaidenWithdrawal
-
-
-__all__ = ["InternalTransferFactory", "BlockchainWithdrawalFactory", "RaidenWithdrawalFactory"]
+__all__ = ["TransferFactory", "InternalTransferFactory"]

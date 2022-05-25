@@ -2,9 +2,7 @@ import pytest
 from django.test import TestCase
 from eth_utils import is_checksum_address
 
-from hub20.apps.ethereum_money.factories import Erc20TokenFactory
-
-from ..factories import WalletBalanceRecordFactory, WalletFactory
+from hub20.apps.web3.factories import Erc20TokenFactory, WalletBalanceRecordFactory, WalletFactory
 
 
 @pytest.mark.django_db(transaction=True)

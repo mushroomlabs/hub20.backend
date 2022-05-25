@@ -1,6 +1,7 @@
 import factory
+from factory import fuzzy
 
-from hub20.apps.core.models.tokens import BaseToken, TokenList, UserTokenList
+from ..models.tokens import BaseToken
 
 
 class BaseTokenFactory(factory.django.DjangoModelFactory):
@@ -12,30 +13,9 @@ class BaseTokenFactory(factory.django.DjangoModelFactory):
         model = BaseToken
 
 
-class BaseTokenListFactory(factory.django.DjangoModelFactory):
-    name = factory.Sequence(lambda n: f"Token List #{n:02}")
-    description = factory.Sequence(lambda n: f"Description for token list #{n:02}")
-
-    @factory.post_generation
-    def tokens(self, create, tokens, **kw):
-        if not create:
-            return
-
-        if tokens:
-            for token in tokens:
-                self.tokens.add(token)
+class TokenValueModelFactory(factory.django.DjangoModelFactory):
+    amount = fuzzy.FuzzyDecimal(0, 10, precision=6)
+    currency = factory.SubFactory(BaseTokenFactory)
 
 
-class TokenListFactory(BaseTokenListFactory):
-    url = factory.Sequence(lambda n: f"http://tokenlist{n:02}.example.com")
-
-    class Meta:
-        model = TokenList
-
-
-class UserTokenListFactory(BaseTokenListFactory):
-    class Meta:
-        model = UserTokenList
-
-
-__all__ = ["BaseTokenFactory", "BaseTokenListFactory", "TokenListFactory", "UserTokenListFactory"]
+__all__ = ["BaseTokenFactory", "TokenValueModelFactory"]

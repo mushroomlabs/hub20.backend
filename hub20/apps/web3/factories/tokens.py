@@ -1,7 +1,7 @@
 import factory
 from factory import fuzzy
 
-from hub20.apps.core.factories.tokens import BaseTokenFactory
+from hub20.apps.core.factories.tokens import BaseTokenFactory, TokenValueModelFactory
 from hub20.apps.core.models.tokens import StableTokenPair, TokenAmount, WrappedToken
 
 from ..client import encode_transfer_data
@@ -9,7 +9,7 @@ from ..models import Erc20Token, NativeToken, TransferEvent
 from .blockchain import SyncedChainFactory, TransactionDataFactory, TransactionFactory
 
 
-class NativeTokenFactory(BaseTokenFactory):
+class EtherFactory(BaseTokenFactory):
     chain = factory.SubFactory(SyncedChainFactory)
     name = factory.Sequence(lambda n: f"Native Token #{n:02n}")
     symbol = factory.Sequence(lambda n: f"ETH{n:02n}")
@@ -30,7 +30,7 @@ class Erc20TokenFactory(BaseTokenFactory):
 
 class WrappedEtherFactory(factory.django.DjangoModelFactory):
     wrapper = factory.SubFactory(Erc20TokenFactory)
-    wrapped = factory.SubFactory(NativeTokenFactory)
+    wrapped = factory.SubFactory(EtherFactory)
 
     class Meta:
         model = WrappedToken
@@ -52,13 +52,11 @@ class StableTokenFactory(factory.django.DjangoModelFactory):
         model = StableTokenPair
 
 
-class TokenValueModelFactory(factory.django.DjangoModelFactory):
-    amount = fuzzy.FuzzyDecimal(0, 10, precision=6)
-    currency = factory.SubFactory(NativeTokenFactory)
+class EtherValueModelFactory(TokenValueModelFactory):
+    currency = factory.SubFactory(EtherFactory)
 
 
-class Erc20TokenValueModelFactory(factory.django.DjangoModelFactory):
-    amount = fuzzy.FuzzyDecimal(0, 1000, precision=8)
+class Erc20TokenValueModelFactory(TokenValueModelFactory):
     currency = factory.SubFactory(Erc20TokenFactory)
 
 
@@ -72,7 +70,7 @@ class Erc20TokenAmountFactory(factory.Factory):
 
 class EtherAmountFactory(factory.Factory):
     amount = fuzzy.FuzzyDecimal(0, 10, precision=6)
-    currency = factory.SubFactory(NativeTokenFactory)
+    currency = factory.SubFactory(EtherFactory)
 
     class Meta:
         model = TokenAmount
@@ -126,12 +124,12 @@ class Erc20TransferEventFactory(factory.django.DjangoModelFactory):
 
 
 __all__ = [
-    "NativeTokenFactory",
+    "EtherFactory",
     "Erc20TokenFactory",
     "WrappedEtherFactory",
     "WrappedTokenFactory",
     "StableTokenFactory",
-    "TokenValueModelFactory",
+    "EtherValueModelFactory",
     "Erc20TokenValueModelFactory",
     "Erc20TokenAmountFactory",
     "EtherAmountFactory",

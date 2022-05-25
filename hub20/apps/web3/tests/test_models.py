@@ -6,19 +6,21 @@ from django.db import IntegrityError
 from django.test import TestCase
 
 from hub20.apps.core.choices import TRANSFER_STATUS
-from hub20.apps.core.factories import BlockchainWithdrawalFactory, Erc20TokenPaymentOrderFactory
 from hub20.apps.core.models import PaymentNetwork, PaymentNetworkAccount
 from hub20.apps.core.settings import app_settings
 from hub20.apps.core.signals.tokens import outgoing_transfer_mined
 from hub20.apps.core.tests import AccountingTestCase, TransferTestCase
 from hub20.apps.core.tests.unit.base import add_eth_to_account, add_token_to_account
-from hub20.apps.ethereum_money.factories import (
-    Erc20TransactionDataFactory,
-    Erc20TransactionFactory,
-)
 from hub20.apps.web3.models import Block, BlockchainPayment, BlockchainPaymentRoute, Transaction
 
 from ..client.web3 import Web3Client
+from ..factories import (
+    BlockchainWithdrawalFactory,
+    Erc20TokenPaymentOrderFactory,
+    Erc20TransactionDataFactory,
+    Erc20TransactionFactory,
+    Erc20TransferEventFactory,
+)
 from ..signals import block_sealed
 from .mocks import BlockMock
 
@@ -201,3 +203,19 @@ class Web3AccountingTestCase(AccountingTestCase):
 
         self.assertIsNotNone(sender_book.debits.filter(**entry_filters).last())
         self.assertIsNotNone(self.blockchain_account.credits.filter(**entry_filters).last())
+
+
+class TransferEventTestCase(TestCase):
+    def setUp(self):
+        self.transfer_event = Erc20TransferEventFactory()
+
+    def test_can_get_token_amount(self):
+        self.assertIsNotNone(self.transfer_event.as_token_amount)
+
+
+__all__ = [
+    "BlockchainPaymentTestCase",
+    "BlockchainWithdrawalTestCase",
+    "Web3AccountingTestCase",
+    "TransferEventTestCase",
+]

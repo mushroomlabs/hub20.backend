@@ -69,7 +69,7 @@ class Hub20CeleryConfig:
         #     "expires": BLOCK_CREATION_INTERVAL,
         # },
         # "index-token-transfer-events": {
-        #     "task": "hub20.apps.ethereum_money.tasks.index_token_transfer_events",
+        #     "task": "hub20.apps.web3.tasks.index_token_transfer_events",
         #     "schedule": timedelta(seconds=5 * BLOCK_CREATION_INTERVAL),
         #     "expires": 5 * NODE_HEALTH_CHECK_INTERVAL,
         # },

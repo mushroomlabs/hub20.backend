@@ -2,35 +2,24 @@ from decimal import Decimal
 
 import pytest
 from asgiref.sync import sync_to_async
-from channels.routing import ProtocolTypeRouter, URLRouter
 from channels.testing import WebsocketCommunicator
-from django.core.asgi import get_asgi_application
 from eth_utils import is_0x_prefixed
 from web3 import Web3
 
 from hub20.apps.core import handlers
-from hub20.apps.core.api import consumer_patterns
+from hub20.apps.core.abi.tokens import EIP20_ABI
 from hub20.apps.core.consumers import Events
-from hub20.apps.core.factories import (
-    CheckoutFactory,
+from hub20.apps.core.factories import CheckoutFactory
+from hub20.apps.core.settings import app_settings
+from hub20.apps.core.tests.asgi import application
+from hub20.apps.web3.factories import (
+    BlockFactory,
     Erc20TokenBlockchainPaymentFactory,
     Erc20TokenPaymentOrderFactory,
 )
-from hub20.apps.core.middleware import TokenAuthMiddlewareStack
-from hub20.apps.core.settings import app_settings
-from hub20.apps.ethereum_money.abi import EIP20_ABI
-from hub20.apps.ethereum_money.tests.mocks import Erc20TransferDataMock, Erc20TransferReceiptMock
-from hub20.apps.web3.factories import BlockFactory
 from hub20.apps.web3.models import BaseWallet, Block, Chain
 from hub20.apps.web3.signals import block_sealed
-from hub20.apps.web3.tests.mocks import BlockMock
-
-application = ProtocolTypeRouter(
-    {
-        "http": get_asgi_application(),
-        "websocket": TokenAuthMiddlewareStack(URLRouter(consumer_patterns)),
-    }
-)
+from hub20.apps.web3.tests.mocks import BlockMock, Erc20TransferDataMock, Erc20TransferReceiptMock
 
 
 def deposit_account(payment_request):
@@ -84,6 +73,13 @@ def session_events_communicator(client):
 
 
 @pytest.fixture
+def checkout():
+    checkout = CheckoutFactory()
+    checkout.store.accepted_token_list.tokens.add(checkout.order.currency)
+    return checkout
+
+
+@pytest.fixture
 def erc20_payment_request(client):
     return Erc20TokenPaymentOrderFactory(session_key=client.session.session_key)
 
@@ -91,13 +87,6 @@ def erc20_payment_request(client):
 @pytest.fixture
 def erc20_blockchain_payment(erc20_payment_request):
     return Erc20TokenBlockchainPaymentFactory(route__deposit=erc20_payment_request)
-
-
-@pytest.fixture
-def checkout():
-    checkout = CheckoutFactory()
-    checkout.store.accepted_token_list.tokens.add(checkout.order.currency)
-    return checkout
 
 
 @pytest.fixture

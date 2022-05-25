@@ -1,6 +1,5 @@
 import factory
 
-from hub20.apps.ethereum_money.factories import TokenValueModelFactory
 from hub20.apps.web3.factories import BlockFactory
 
 from ..models import (
@@ -9,6 +8,7 @@ from ..models import (
     KeystoreAccount,
     WalletBalanceRecord,
 )
+from .tokens import Erc20TokenAmountFactory
 
 
 class BaseWalletFactory(factory.django.DjangoModelFactory):
@@ -31,7 +31,7 @@ class HDWalletFactory(BaseWalletFactory):
         model = HierarchicalDeterministicWallet
 
 
-class WalletBalanceRecordFactory(TokenValueModelFactory):
+class WalletBalanceRecordFactory(Erc20TokenAmountFactory):
     wallet = factory.SubFactory(BaseWalletFactory)
     block = factory.SubFactory(BlockFactory)
 

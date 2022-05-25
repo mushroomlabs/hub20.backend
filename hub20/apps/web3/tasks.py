@@ -14,24 +14,27 @@ from web3.exceptions import ExtraDataLengthError, LogTopicError, TransactionNotF
 from websockets.exceptions import InvalidStatusCode
 
 from hub20.apps.core.abi.tokens import EIP20_ABI
-from hub20.apps.core.models.accounts import BaseWallet
-from hub20.apps.core.models.blockchain import (
-    Block,
-    Chain,
-    EventIndexer,
-    Transaction,
-    TransactionDataRecord,
-)
-from hub20.apps.core.models.tokens import Token
-from hub20.apps.core.models.wallets import Wallet, WalletBalanceRecord
+from hub20.apps.core.models.tokens import BaseToken
+from hub20.apps.core.settings import app_settings
 from hub20.apps.core.tasks import broadcast_event, stream_processor_lock
 
 from . import signals
 from .analytics import MAX_PRIORITY_FEE_TRACKER, get_historical_block_data
-from .app_settings import BLOCK_SCAN_RANGE
 from .client import BLOCK_CREATION_INTERVAL, inspect_web3, make_web3
 from .constants import Events
-from .models import BlockchainPaymentRoute, TransferEvent, Web3Provider
+from .models import (
+    BaseWallet,
+    Block,
+    BlockchainPaymentRoute,
+    Chain,
+    EventIndexer,
+    Transaction,
+    TransactionDataRecord,
+    TransferEvent,
+    Wallet,
+    WalletBalanceRecord,
+    Web3Provider,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +54,9 @@ def process_mined_blocks(self):
                     logger.info(f"Getting blocks from {provider.hostname}")
                     current_block = w3.eth.block_number
                     start = chain.highest_block
-                    stop = min(current_block, chain.highest_block + BLOCK_SCAN_RANGE)
+                    stop = min(
+                        current_block, chain.highest_block + app_settings.Blockchain.scan_range
+                    )
                     for block_number in range(start, stop):
                         logger.debug(f"Getting block #{block_number} from {provider.hostname}")
                         block_data = w3.eth.get_block(block_number, full_transactions=True)
@@ -83,7 +88,7 @@ def process_mined_blocks(self):
 
 @shared_task(bind=True)
 def index_token_transfer_events(self):
-    indexer_name = "ethereum_money:token_transfers"
+    indexer_name = "erc20:token_transfers"
 
     account_addresses = BaseWallet.objects.values_list("address", flat=True)
 
@@ -262,7 +267,7 @@ def check_payments_in_open_routes():
 
     for route in open_routes:
         logger.info(f"Checking for token transfers for payment {route.deposit_id}")
-        token: Token = route.deposit.currency
+        token: BaseToken = route.deposit.currency
 
         # We are only concerned here about ERC20 tokens. Native token
         # transfers are detected directly by the blockchain listeners
@@ -353,7 +358,7 @@ def record_account_transactions(chain_id, block_data, provider_url):
 @shared_task
 def record_token_transfers(chain_id, wallet_address, event_data, provider_url):
     token_address = event_data.address
-    token = Token.objects.filter(chain_id=chain_id, address=token_address).first()
+    token = BaseToken.objects.filter(chain_id=chain_id, address=token_address).first()
 
     if not token:
         return
@@ -441,7 +446,7 @@ def check_eth_transfers(chain_id, block_data, provider_url):
 
     assert chain == provider.chain, f"{provider.hostname} not connected to {chain.name}"
 
-    native_token = Token.make_native(chain=chain)
+    native_token = BaseToken.make_native(chain=chain)
 
     for transaction_data in txs:
         sender = transaction_data["from"]
@@ -496,7 +501,7 @@ def check_pending_transaction_for_eth_transfer(chain_id, transaction_data):
     if not is_native_token_transfer:
         return
 
-    native_token = Token.make_native(chain=chain)
+    native_token = BaseToken.make_native(chain=chain)
     amount = native_token.from_wei(transaction_data.value)
 
     for account in BaseWallet.objects.filter(address=sender):
@@ -513,7 +518,7 @@ def check_pending_transaction_for_eth_transfer(chain_id, transaction_data):
         tx_data = TransactionDataRecord.make(tx_data=transaction_data, chain_id=chain_id)
 
         signals.incoming_transfer_broadcast.send(
-            sender=Token,
+            sender=BaseToken,
             account=account,
             amount=amount,
             transaction_data=tx_data,
@@ -523,8 +528,8 @@ def check_pending_transaction_for_eth_transfer(chain_id, transaction_data):
 @shared_task
 def check_pending_erc20_transfer_event(chain_id, event_data, provider_url):
     try:
-        token = Token.objects.get(chain_id=chain_id, address=event_data.address)
-    except Token.DoesNotExist:
+        token = BaseToken.objects.get(chain_id=chain_id, address=event_data.address)
+    except BaseToken.DoesNotExist:
         return
 
     sender = event_data.args._from
@@ -596,7 +601,7 @@ def notify_node_recovered(chain_id, provider_url):
     broadcast_event(event=Events.PROVIDER_ONLINE.value, chain_id=chain_id)
 
 
-def _get_native_token_balance(wallet: Wallet, token: Token, block_data):
+def _get_native_token_balance(wallet: Wallet, token: BaseToken, block_data):
 
     try:
         assert not token.is_ERC20, f"{token} is an ERC20-token"
@@ -624,7 +629,7 @@ def _get_native_token_balance(wallet: Wallet, token: Token, block_data):
     )
 
 
-def _get_erc20_token_balance(wallet: Wallet, token: Token, block_data):
+def _get_erc20_token_balance(wallet: Wallet, token: BaseToken, block_data):
     try:
         provider = Web3Provider.available.get(chain_id=token.chain_id)
     except Web3Provider.DoesNotExist:
@@ -658,7 +663,7 @@ def update_all_wallet_balances():
         chain_id = w3.eth.chain_id
         block_data = w3.eth.get_block(w3.eth.block_number, full_transactions=True)
         for wallet in Wallet.objects.all():
-            for token in Token.objects.filter(chain_id=chain_id):
+            for token in BaseToken.objects.filter(chain_id=chain_id):
                 action = _get_erc20_token_balance if token.is_ERC20 else _get_native_token_balance
                 action(wallet=wallet, token=token, block_data=block_data)
 
@@ -666,7 +671,7 @@ def update_all_wallet_balances():
 @shared_task
 def update_wallet_token_balances(chain_id, wallet_address, event_data, provider_url):
     token_address = event_data.address
-    token = Token.objects.filter(chain_id=chain_id, address=token_address).first()
+    token = BaseToken.objects.filter(chain_id=chain_id, address=token_address).first()
 
     if not token:
         return
@@ -703,7 +708,7 @@ def update_wallet_native_token_balances(chain_id, block_data, provider_url):
         logger.warning(f"Chain {chain_id} not found")
         return
 
-    native_token = Token.make_native(chain=chain)
+    native_token = BaseToken.make_native(chain=chain)
 
     for transaction_data in txs:
         sender = transaction_data["from"]

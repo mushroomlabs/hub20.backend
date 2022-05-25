@@ -1,10 +1,10 @@
 import factory
 
 from hub20.apps.core import models
-from hub20.apps.ethereum_money.factories import UserTokenListFactory
 
 from .base import UserFactory
-from .payments import Erc20TokenPaymentOrderFactory
+from .payments import PaymentOrderFactory
+from .tokenlists import UserTokenListFactory
 
 
 class StoreFactory(factory.django.DjangoModelFactory):
@@ -23,7 +23,7 @@ class StoreFactory(factory.django.DjangoModelFactory):
 class CheckoutFactory(factory.django.DjangoModelFactory):
     store = factory.SubFactory(StoreFactory, accepted_token_list__tokens=[])
     order = factory.SubFactory(
-        Erc20TokenPaymentOrderFactory,
+        PaymentOrderFactory,
         user=factory.SelfAttribute("..store.owner"),
         reference=factory.fuzzy.FuzzyText(length=30, prefix="checkout-"),
     )

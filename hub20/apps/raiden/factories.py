@@ -6,8 +6,13 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 from factory import fuzzy
 
-from hub20.apps.ethereum_money.factories import Erc20TokenFactory
-from hub20.apps.web3.factories import BaseWalletFactory, EthereumProvider, SyncedChainFactory
+from hub20.apps.core.factories import PaymentNetworkFactory, TransferFactory
+from hub20.apps.web3.factories import (
+    BaseWalletFactory,
+    Erc20TokenFactory,
+    EthereumProvider,
+    SyncedChainFactory,
+)
 
 from . import models
 
@@ -20,6 +25,11 @@ User = get_user_model()
 class UserFactory(factory.django.DjangoModelFactory):
     class Meta:
         model = User
+
+
+class RaidenPaymentNetwork(PaymentNetworkFactory):
+    name = "Raiden"
+    slug = "raiden"
 
 
 class AdminUserFactory(factory.django.DjangoModelFactory):
@@ -93,17 +103,13 @@ class PaymentEventFactory(factory.django.DjangoModelFactory):
         model = models.Payment
 
 
-class RaidenManagementOrderFactory(factory.django.DjangoModelFactory):
-    raiden = factory.SubFactory(RaidenFactory)
-    user = factory.SubFactory(AdminUserFactory)
-
-
-class UserDepositContractOrderFactory(RaidenManagementOrderFactory):
-    currency = factory.SubFactory(Erc20TokenFactory)
-    amount = factory.fuzzy.FuzzyDecimal(1, 10, precision=3)
+class RaidenWithdrawalFactory(TransferFactory):
+    address = factory.Faker("ethereum_address")
+    payment_network = factory.SubFactory(RaidenPaymentNetwork)
+    identifier = factory.fuzzy.FuzzyInteger(2**48, 2**53)
 
     class Meta:
-        model = models.UserDepositContractOrder
+        model = models.RaidenWithdrawal
 
 
 __all__ = [
@@ -113,5 +119,4 @@ __all__ = [
     "RaidenFactory",
     "ChannelFactory",
     "PaymentEventFactory",
-    "UserDepositContractOrderFactory",
 ]
