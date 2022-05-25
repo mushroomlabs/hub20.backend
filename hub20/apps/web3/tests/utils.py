@@ -1,9 +1,11 @@
 import logging
 
-from hub20.apps.core.factories import Erc20TransactionFactory, TransactionFactory
-from hub20.apps.core.models import TokenAmount, Transaction
-from hub20.apps.core.signals import incoming_transfer_mined
-from hub20.apps.core.typing import EthereumAccount_T
+from hub20.apps.core.models.tokens import TokenAmount
+
+from ..factories import Erc20TransactionFactory, TransactionFactory
+from ..models import Transaction
+from ..signals import incoming_transfer_mined
+from ..typing import EthereumAccount_T
 
 logger = logging.getLogger(__name__)
 

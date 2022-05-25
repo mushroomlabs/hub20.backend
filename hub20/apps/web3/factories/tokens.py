@@ -1,7 +1,10 @@
 import factory
-from factory import fuzzy
 
-from hub20.apps.core.factories.tokens import BaseTokenFactory, TokenValueModelFactory
+from hub20.apps.core.factories.tokens import (
+    BaseTokenFactory,
+    TokenAmountFactory,
+    TokenValueModelFactory,
+)
 from hub20.apps.core.models.tokens import StableTokenPair, TokenAmount, WrappedToken
 
 from ..client import encode_transfer_data
@@ -20,12 +23,14 @@ class EtherFactory(BaseTokenFactory):
 
 
 class Erc20TokenFactory(BaseTokenFactory):
+    chain = factory.SubFactory(SyncedChainFactory)
     name = factory.Sequence(lambda n: f"ERC20 Token #{n:03}")
     symbol = factory.Sequence(lambda n: f"ERC20_{n:03}")
     address = factory.Faker("ethereum_address")
 
     class Meta:
         model = Erc20Token
+        django_get_or_create = ("chain",)
 
 
 class WrappedEtherFactory(factory.django.DjangoModelFactory):
@@ -60,20 +65,15 @@ class Erc20TokenValueModelFactory(TokenValueModelFactory):
     currency = factory.SubFactory(Erc20TokenFactory)
 
 
-class Erc20TokenAmountFactory(factory.Factory):
-    amount = fuzzy.FuzzyDecimal(0, 10, precision=6)
+class Erc20TokenAmountFactory(TokenAmountFactory):
     currency = factory.SubFactory(Erc20TokenFactory)
 
     class Meta:
         model = TokenAmount
 
 
-class EtherAmountFactory(factory.Factory):
-    amount = fuzzy.FuzzyDecimal(0, 10, precision=6)
+class EtherAmountFactory(TokenAmountFactory):
     currency = factory.SubFactory(EtherFactory)
-
-    class Meta:
-        model = TokenAmount
 
 
 class Erc20TransactionDataFactory(TransactionDataFactory):

@@ -27,10 +27,10 @@ class ChainFactory(factory.django.DjangoModelFactory):
     id = TEST_CHAIN_ID
     highest_block = 0
     provider = factory.RelatedFactory(
-        "hub20.apps.web3.factories.base.Web3ProviderFactory", factory_related_name="chain"
+        "hub20.apps.web3.factories.Web3ProviderFactory", factory_related_name="chain"
     )
     native_token = factory.RelatedFactory(
-        "hub20.apps.web3.factories.base.NativeTokenFactory", factory_related_name="chain"
+        "hub20.apps.web3.factories.EtherFactory", factory_related_name="chain"
     )
 
     @factory.post_generation

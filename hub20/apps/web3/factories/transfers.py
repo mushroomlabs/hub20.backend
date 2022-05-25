@@ -1,7 +1,7 @@
 import factory
 
 from hub20.apps.core.choices import WITHDRAWAL_NETWORKS
-from hub20.apps.core.factories.transfers import EthereumProvider, TransferFactory
+from hub20.apps.core.factories import EthereumProvider, TransferFactory
 
 from ..models import BlockchainWithdrawal
 

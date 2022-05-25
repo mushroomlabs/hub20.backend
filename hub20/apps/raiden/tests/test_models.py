@@ -3,12 +3,17 @@ from unittest.mock import patch
 from django.contrib.contenttypes.models import ContentType
 from django.test import TestCase
 
-from hub20.apps.core.factories import Erc20TokenPaymentOrderFactory, RaidenWithdrawalFactory
+from hub20.apps.core.factories import PaymentOrderFactory
 from hub20.apps.core.models import PaymentNetwork, PaymentNetworkAccount
 from hub20.apps.core.tests import AccountingTestCase
 
 from ..client.node import RaidenClient
-from ..factories import ChannelFactory, PaymentEventFactory, TokenNetworkFactory
+from ..factories import (
+    ChannelFactory,
+    PaymentEventFactory,
+    RaidenWithdrawalFactory,
+    TokenNetworkFactory,
+)
 from ..models import RaidenPaymentRoute
 
 
@@ -17,7 +22,7 @@ class RaidenPaymentTestCase(TestCase):
         token_network = TokenNetworkFactory()
 
         self.channel = ChannelFactory(token_network=token_network)
-        self.order = Erc20TokenPaymentOrderFactory(currency=token_network.token)
+        self.order = PaymentOrderFactory(deposit__currency=token_network.token)
         self.raiden_route = RaidenPaymentRoute.make(deposit=self.order)
 
     def test_order_has_raiden_route(self):

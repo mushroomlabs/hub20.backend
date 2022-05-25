@@ -1,14 +1,52 @@
+from django.core.exceptions import ValidationError
 from django.test import TestCase
 from rest_framework.reverse import reverse
 from rest_framework.test import APIClient
 
-from hub20.apps.core import factories
+from hub20.apps.core.factories import (
+    BaseTokenFactory,
+    CheckoutFactory,
+    StoreFactory,
+    TokenAmountFactory,
+    UserFactory,
+)
+
+
+class StoreTestCase(TestCase):
+    def setUp(self):
+        self.store = StoreFactory()
+
+    def test_store_rsa_keys_are_valid_pem(self):
+        self.assertIsNotNone(self.store.rsa.pk)
+        self.assertTrue(type(self.store.rsa.public_key_pem) is str)
+        self.assertTrue(type(self.store.rsa.private_key_pem) is str)
+
+        self.assertTrue(self.store.rsa.public_key_pem.startswith("-----BEGIN PUBLIC KEY-----"))
+        self.assertTrue(
+            self.store.rsa.private_key_pem.startswith("-----BEGIN RSA PRIVATE KEY-----")
+        )
+
+
+class CheckoutTestCase(TestCase):
+    def setUp(self):
+        self.checkout = CheckoutFactory()
+        self.checkout.store.accepted_token_list.tokens.add(self.checkout.order.currency)
+
+    def test_checkout_user_and_store_owner_are_the_same(self):
+        self.assertEqual(self.checkout.store.owner, self.checkout.order.user)
+
+    def test_checkout_currency_must_be_accepted_by_store(self):
+        self.checkout.clean()
+
+        self.checkout.store.accepted_token_list.tokens.clear()
+        with self.assertRaises(ValidationError):
+            self.checkout.clean()
 
 
 class StoreViewTestCase(TestCase):
     def setUp(self):
         self.client = APIClient()
-        self.store = factories.StoreFactory()
+        self.store = StoreFactory()
 
     def test_anonymous_user_can_see_store(self):
         url = reverse("store-detail", kwargs={"pk": self.store.pk})
@@ -20,7 +58,7 @@ class StoreViewTestCase(TestCase):
 class UserStoreViewTestCase(TestCase):
     def setUp(self):
         self.client = APIClient()
-        self.store = factories.StoreFactory()
+        self.store = StoreFactory()
 
     def test_anonymous_user_can_not_list_stores(self):
         url = reverse("user-store-list")
@@ -37,7 +75,7 @@ class UserStoreViewTestCase(TestCase):
 
     def test_non_owner_can_not_see_store(self):
         url = reverse("user-store-detail", kwargs={"pk": self.store.pk})
-        another_user = factories.UserFactory()
+        another_user = UserFactory()
         self.client.force_authenticate(user=another_user)
 
         response = self.client.get(url)
@@ -71,11 +109,11 @@ class UserStoreViewTestCase(TestCase):
 
 class CheckoutViewTestCase(TestCase):
     def setUp(self):
-        self.token = factories.Erc20TokenFactory()
-        self.store = factories.StoreFactory(accepted_token_list__tokens=[self.token])
+        self.token = BaseTokenFactory()
+        self.store = StoreFactory(accepted_token_list__tokens=[self.token])
 
     def test_can_create_checkout_via_api(self):
-        amount = factories.Erc20TokenAmountFactory(currency=self.token)
+        amount = TokenAmountFactory(currency=self.token)
 
         url = reverse("checkout-list")
 
@@ -92,13 +130,15 @@ class CheckoutViewTestCase(TestCase):
         self.assertEqual(response.status_code, 201, response.data)
 
     def test_can_not_delete_checkout(self):
-        checkout = factories.CheckoutFactory(store=self.store)
+        checkout = CheckoutFactory(store=self.store)
         url = reverse("checkout-detail", kwargs={"pk": checkout.pk})
         response = self.client.delete(url)
         self.assertEqual(response.status_code, 405)
 
 
 __all__ = [
+    "StoreTestCase",
+    "CheckoutTestCase",
     "StoreViewTestCase",
     "UserStoreViewTestCase",
     "CheckoutViewTestCase",

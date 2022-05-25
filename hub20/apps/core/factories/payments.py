@@ -1,7 +1,7 @@
 import factory
 from factory import fuzzy
 
-from ..models import PaymentOrder
+from ..models import Payment, PaymentConfirmation, PaymentOrder, PaymentRoute
 from .tokens import BaseTokenFactory
 from .users import UserFactory
 
@@ -17,4 +17,30 @@ class PaymentOrderFactory(factory.django.DjangoModelFactory):
         model = PaymentOrder
 
 
-__all__ = ["PaymentOrderFactory"]
+class PaymentRouteFactory(factory.django.DjangoModelFactory):
+    deposit = factory.SubFactory(PaymentOrderFactory)
+
+    class Meta:
+        model = PaymentRoute
+
+
+class PaymentFactory(factory.django.DjangoModelFactory):
+    route = factory.SubFactory(PaymentRouteFactory)
+
+    class Meta:
+        model = Payment
+
+
+class PaymentConfirmationFactory(factory.django.DjangoModelFactory):
+    payment = factory.SubFactory(PaymentFactory)
+
+    class Meta:
+        model = PaymentConfirmation
+
+
+__all__ = [
+    "PaymentOrderFactory",
+    "PaymentRouteFactory",
+    "PaymentFactory",
+    "PaymentConfirmationFactory",
+]

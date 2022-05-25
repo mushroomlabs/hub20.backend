@@ -9,13 +9,13 @@ from web3 import Web3
 from hub20.apps.core import handlers
 from hub20.apps.core.abi.tokens import EIP20_ABI
 from hub20.apps.core.consumers import Events
-from hub20.apps.core.factories import CheckoutFactory
+from hub20.apps.core.factories import CheckoutFactory, PaymentOrderFactory
 from hub20.apps.core.settings import app_settings
 from hub20.apps.core.tests.asgi import application
 from hub20.apps.web3.factories import (
     BlockFactory,
     Erc20TokenBlockchainPaymentFactory,
-    Erc20TokenPaymentOrderFactory,
+    Erc20TokenFactory,
 )
 from hub20.apps.web3.models import BaseWallet, Block, Chain
 from hub20.apps.web3.signals import block_sealed
@@ -81,7 +81,9 @@ def checkout():
 
 @pytest.fixture
 def erc20_payment_request(client):
-    return Erc20TokenPaymentOrderFactory(session_key=client.session.session_key)
+    return PaymentOrderFactory(
+        session_key=client.session.session_key, deposit__currency=Erc20TokenFactory()
+    )
 
 
 @pytest.fixture

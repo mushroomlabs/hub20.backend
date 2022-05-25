@@ -4,7 +4,7 @@ import pytest
 from django.test import TestCase
 
 from hub20.apps.core.factories import CheckoutFactory
-from hub20.apps.core.models import BlockchainPaymentRoute
+from hub20.apps.web3.models import BlockchainPaymentRoute
 from hub20.apps.web3.tasks import record_token_transfers
 from hub20.apps.web3.tests.mocks import (
     BlockMock,

@@ -6,12 +6,12 @@ from hub20.apps.core.models.payments import PaymentConfirmation
 
 from ..models import BlockchainPayment, BlockchainPaymentRoute
 from .blockchain import TransactionFactory
-from .tokens import Erc20TokenFactory, NativeTokenFactory
+from .tokens import Erc20TokenFactory, EtherFactory
 from .wallets import BaseWalletFactory
 
 
 class EtherBlockchainPaymentRouteFactory(factory.django.DjangoModelFactory):
-    deposit = factory.SubFactory(PaymentOrderFactory, currency=NativeTokenFactory)
+    deposit = factory.SubFactory(PaymentOrderFactory, currency=EtherFactory)
     account = factory.SubFactory(BaseWalletFactory)
     payment_window = factory.LazyAttribute(
         lambda obj: (

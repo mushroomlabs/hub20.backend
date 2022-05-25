@@ -1,5 +1,6 @@
-from .test_consumers import *  # noqa
-from .test_managers import *  # noqa
-from .test_models import *  # noqa
-from .test_views import *  # noqa
-from .test_web3_client import *  # noqa
+from .test_accounting import *  # noqa
+from .test_payments import *  # noqa
+from .test_stores import *  # noqa
+from .test_tokens import *  # noqa
+from .test_transfers import *  # noqa
+from .test_users import *  # noqa

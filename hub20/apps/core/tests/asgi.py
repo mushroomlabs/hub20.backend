@@ -10,3 +10,5 @@ application = ProtocolTypeRouter(
         "websocket": TokenAuthMiddlewareStack(URLRouter(consumer_patterns)),
     }
 )
+
+__all__ = ["application"]

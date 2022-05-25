@@ -1,34 +1,35 @@
 from unittest.mock import patch
 
-import pytest
 from django.contrib.contenttypes.models import ContentType
 from django.db import IntegrityError
 from django.test import TestCase
+from eth_utils import is_checksum_address
 
 from hub20.apps.core.choices import TRANSFER_STATUS
+from hub20.apps.core.factories import PaymentOrderFactory
 from hub20.apps.core.models import PaymentNetwork, PaymentNetworkAccount
 from hub20.apps.core.settings import app_settings
-from hub20.apps.core.signals.tokens import outgoing_transfer_mined
 from hub20.apps.core.tests import AccountingTestCase, TransferTestCase
-from hub20.apps.core.tests.unit.base import add_eth_to_account, add_token_to_account
-from hub20.apps.web3.models import Block, BlockchainPayment, BlockchainPaymentRoute, Transaction
 
 from ..client.web3 import Web3Client
 from ..factories import (
+    BaseWalletFactory,
     BlockchainWithdrawalFactory,
-    Erc20TokenPaymentOrderFactory,
+    Erc20TokenFactory,
     Erc20TransactionDataFactory,
     Erc20TransactionFactory,
     Erc20TransferEventFactory,
+    WalletBalanceRecordFactory,
 )
-from ..signals import block_sealed
+from ..models import Block, BlockchainPayment, BlockchainPaymentRoute, Transaction
+from ..signals import block_sealed, outgoing_transfer_mined
 from .mocks import BlockMock
+from .utils import add_eth_to_account, add_token_to_account
 
 
-@pytest.mark.django_db(transaction=True)
 class BlockchainPaymentTestCase(TestCase):
     def setUp(self):
-        self.order = Erc20TokenPaymentOrderFactory()
+        self.order = PaymentOrderFactory()
         self.blockchain_route = BlockchainPaymentRoute.make(deposit=self.order)
         self.chain = self.blockchain_route.chain
 
@@ -213,9 +214,48 @@ class TransferEventTestCase(TestCase):
         self.assertIsNotNone(self.transfer_event.as_token_amount)
 
 
+class WalletTestCase(TestCase):
+    def setUp(self):
+        self.wallet = BaseWalletFactory()
+
+    def test_address_is_checksummed(self):
+        self.assertTrue(is_checksum_address(self.wallet.address))
+
+    def test_can_read_current_balances(self):
+        first_token = Erc20TokenFactory()
+        second_token = Erc20TokenFactory()
+        third_token = Erc20TokenFactory()
+
+        WalletBalanceRecordFactory(wallet=self.wallet, currency=first_token, block__number=1)
+        WalletBalanceRecordFactory(wallet=self.wallet, currency=second_token, block__number=1)
+
+        # Let's create two more records for each token
+        updated_first = WalletBalanceRecordFactory(
+            wallet=self.wallet, currency=first_token, block__number=5
+        )
+        updated_second = WalletBalanceRecordFactory(
+            wallet=self.wallet, currency=second_token, block__number=20
+        )
+
+        self.assertEqual(self.wallet.balances.count(), 2)
+        self.assertTrue(updated_first in self.wallet.balances)
+        self.assertTrue(updated_second in self.wallet.balances)
+
+        WalletBalanceRecordFactory(wallet=self.wallet, currency=third_token, block__number=5)
+        updated_third = WalletBalanceRecordFactory(
+            wallet=self.wallet, currency=third_token, block__number=20
+        )
+
+        self.assertEqual(self.wallet.balances.count(), 3)
+        self.assertTrue(updated_first in self.wallet.balances)
+        self.assertTrue(updated_second in self.wallet.balances)
+        self.assertTrue(updated_third in self.wallet.balances)
+
+
 __all__ = [
     "BlockchainPaymentTestCase",
     "BlockchainWithdrawalTestCase",
     "Web3AccountingTestCase",
     "TransferEventTestCase",
+    "WalletTestCase",
 ]
