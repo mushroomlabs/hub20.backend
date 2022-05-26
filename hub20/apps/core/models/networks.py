@@ -4,8 +4,8 @@ from model_utils.managers import InheritanceManager, QueryManager
 
 class PaymentNetwork(models.Model):
     name = models.CharField(max_length=300, unique=True)
-    slug = models.SlugField()
-    description = models.TextField()
+    slug = models.SlugField(unique=True)
+    description = models.TextField(null=True)
 
 
 class BaseProvider(models.Model):
