@@ -9,9 +9,13 @@ from web3 import Web3
 from web3.datastructures import AttributeDict
 
 from hub20.apps.core.factories import EthereumProvider
-from hub20.apps.web3.client import encode_transfer_data
-from hub20.apps.web3.constants import ERC20_TRANSFER_TOPIC
-from hub20.apps.web3.factories import TEST_CHAIN_ID, Erc20TokenAmountFactory, EtherAmountFactory
+from hub20.apps.ethereum.client import encode_transfer_data
+from hub20.apps.ethereum.constants import ERC20_TRANSFER_TOPIC
+from hub20.apps.ethereum.factories import (
+    TEST_CHAIN_ID,
+    Erc20TokenAmountFactory,
+    EtherAmountFactory,
+)
 
 factory.Faker.add_provider(EthereumProvider)
 

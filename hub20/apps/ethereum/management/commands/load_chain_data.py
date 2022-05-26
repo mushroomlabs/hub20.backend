@@ -4,8 +4,8 @@ import requests
 from django.core.management.base import BaseCommand
 from django.template.defaultfilters import slugify
 
-from hub20.apps.web3 import models
-from hub20.apps.web3.schemas import chainlist
+from hub20.apps.ethereum import models
+from hub20.apps.ethereum.schemas import chainlist
 
 logger = logging.getLogger(__name__)
 

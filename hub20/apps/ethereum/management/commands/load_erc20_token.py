@@ -4,8 +4,8 @@ import sys
 from django.core.management.base import BaseCommand
 from eth_utils import to_checksum_address
 
-from hub20.apps.web3.client import get_token_information, make_web3
-from hub20.apps.web3.models import Chain, Erc20Token, Web3Provider
+from hub20.apps.ethereum.client import get_token_information, make_web3
+from hub20.apps.ethereum.models import Chain, Erc20Token, Web3Provider
 
 logger = logging.getLogger(__name__)
 

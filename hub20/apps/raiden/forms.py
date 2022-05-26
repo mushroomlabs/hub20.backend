@@ -1,7 +1,7 @@
 from django import forms
 
-from hub20.apps.web3.models import Chain
-from hub20.apps.web3.validators import uri_parsable_scheme_validator
+from hub20.apps.ethereum.models import Chain
+from hub20.apps.ethereum.validators import uri_parsable_scheme_validator
 
 from . import models
 from .client.node import RaidenClient

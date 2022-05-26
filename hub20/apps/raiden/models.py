@@ -23,7 +23,7 @@ from hub20.apps.core.models.tokens import TokenAmount, TokenAmountField
 from hub20.apps.core.models.transfers import TransferConfirmation, TransferReceipt, Withdrawal
 from hub20.apps.core.settings import app_settings
 from hub20.apps.core.validators import uri_parsable_scheme_validator
-from hub20.apps.web3.models import Chain, Erc20Token
+from hub20.apps.ethereum.models import Chain, Erc20Token
 
 from .exceptions import RaidenPaymentError
 

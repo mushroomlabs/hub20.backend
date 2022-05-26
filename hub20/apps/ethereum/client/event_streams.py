@@ -5,8 +5,8 @@ from requests.exceptions import ConnectionError, HTTPError
 from web3 import Web3
 from web3.exceptions import TransactionNotFound
 
-from hub20.apps.web3.exceptions import Web3UnsupportedMethod
-from hub20.apps.web3.models import Web3Provider
+from hub20.apps.ethereum.exceptions import Web3UnsupportedMethod
+from hub20.apps.ethereum.models import Web3Provider
 
 from .web3 import make_web3
 

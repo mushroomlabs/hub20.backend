@@ -12,10 +12,10 @@ from ethereum.utils import checksum_encode
 from web3.datastructures import AttributeDict
 
 from hub20.apps.core.models.tokens import TokenAmount
+from hub20.apps.ethereum.models import BaseWallet, Chain
+from hub20.apps.ethereum.typing import Address
 from hub20.apps.raiden.exceptions import RaidenConnectionError, RaidenPaymentError
 from hub20.apps.raiden.models import Channel, Payment, Raiden, TokenNetwork
-from hub20.apps.web3.models import BaseWallet, Chain
-from hub20.apps.web3.typing import Address
 
 User = get_user_model()
 

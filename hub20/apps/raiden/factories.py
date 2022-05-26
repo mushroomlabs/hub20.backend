@@ -7,7 +7,7 @@ from django.utils import timezone
 from factory import fuzzy
 
 from hub20.apps.core.factories import EthereumProvider, PaymentNetworkFactory, TransferFactory
-from hub20.apps.web3.factories import BaseWalletFactory, Erc20TokenFactory, SyncedChainFactory
+from hub20.apps.ethereum.factories import BaseWalletFactory, Erc20TokenFactory, SyncedChainFactory
 
 from . import models
 

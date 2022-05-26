@@ -1,9 +1,9 @@
 from hub20.apps.core.apps import Hub20PaymentNetworkConfig
 
 
-class Web3Config(Hub20PaymentNetworkConfig):
-    name = "hub20.apps.web3"
-    verbose_name = "Web3 - Base Layer"
+class EthereumConfig(Hub20PaymentNetworkConfig):
+    name = "hub20.apps.ethereum"
+    verbose_name = "Ethereum Blockchains"
 
     network_name = "ethereum"
     description = "Ethereum and Ethereum-compatible blockchains"

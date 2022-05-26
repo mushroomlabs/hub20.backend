@@ -1,6 +1,6 @@
 import factory
 
-from hub20.apps.web3.factories import BlockFactory
+from hub20.apps.ethereum.factories import BlockFactory
 
 from ..models import (
     BaseWallet,

@@ -12,14 +12,18 @@ from hub20.apps.core.consumers import Events
 from hub20.apps.core.factories import CheckoutFactory, PaymentOrderFactory
 from hub20.apps.core.settings import app_settings
 from hub20.apps.core.tests.asgi import application
-from hub20.apps.web3.factories import (
+from hub20.apps.ethereum.factories import (
     BlockFactory,
     Erc20TokenBlockchainPaymentFactory,
     Erc20TokenFactory,
 )
-from hub20.apps.web3.models import BaseWallet, Block, Chain
-from hub20.apps.web3.signals import block_sealed
-from hub20.apps.web3.tests.mocks import BlockMock, Erc20TransferDataMock, Erc20TransferReceiptMock
+from hub20.apps.ethereum.models import BaseWallet, Block, Chain
+from hub20.apps.ethereum.signals import block_sealed
+from hub20.apps.ethereum.tests.mocks import (
+    BlockMock,
+    Erc20TransferDataMock,
+    Erc20TransferReceiptMock,
+)
 
 
 def deposit_account(payment_request):

@@ -6,8 +6,8 @@ from django.core.management.base import BaseCommand
 from eth_utils import to_checksum_address
 
 from hub20.apps.core.models import BaseWallet, KeystoreAccount, Token, TokenAmount
-from hub20.apps.web3.client import make_web3, mint_tokens
-from hub20.apps.web3.models import Web3Provider
+from hub20.apps.ethereum.client import make_web3, mint_tokens
+from hub20.apps.ethereum.models import Web3Provider
 
 logger = logging.getLogger(__name__)
 

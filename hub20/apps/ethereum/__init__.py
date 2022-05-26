@@ -2,8 +2,7 @@ from django.apps import apps as django_apps
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 
-default_app_config = "hub20.apps.web3.apps.Web3Config"
-PAYMENT_NETWORK_NAME = "web3"
+default_app_config = "hub20.apps.ethereum.apps.EthereumConfig"
 
 
 def get_wallet_model():

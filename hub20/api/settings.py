@@ -49,7 +49,7 @@ PROJECT_APPS = [
     "colorfield",
     "django.contrib.admin",
     "hub20.apps.core",
-    "hub20.apps.web3",
+    "hub20.apps.ethereum",
     "hub20.apps.raiden",
 ]
 
@@ -537,7 +537,7 @@ ACCOUNT_USERNAME_BLACKLIST = [
 ]
 
 # Wallet model configuration
-WALLET_MODEL = os.getenv("HUB20_WALLET_MODEL", "web3.KeystoreAccount")
+WALLET_MODEL = os.getenv("HUB20_WALLET_MODEL", "ethereum.KeystoreAccount")
 
 ETHEREUM_HD_WALLET_MNEMONIC = os.getenv("HUB20_ETHEREUM_HD_WALLET_MNEMONIC")
 ETHEREUM_HD_WALLET_ROOT_KEY = os.getenv("HUB20_ETHEREUM_HD_WALLET_ROOT_KEY")

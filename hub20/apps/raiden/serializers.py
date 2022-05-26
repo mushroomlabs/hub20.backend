@@ -2,8 +2,8 @@ from raiden_contracts.contract_manager import gas_measurements
 from rest_framework import serializers
 
 from hub20.apps.core.serializers import PaymentSerializer
-from hub20.apps.web3.client import make_web3
-from hub20.apps.web3.models import Web3Provider
+from hub20.apps.ethereum.client import make_web3
+from hub20.apps.ethereum.models import Web3Provider
 
 from . import models
 from .client import RaidenClient

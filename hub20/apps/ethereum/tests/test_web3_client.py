@@ -4,9 +4,9 @@ import pytest
 from django.test import TestCase
 
 from hub20.apps.core.factories import CheckoutFactory
-from hub20.apps.web3.models import BlockchainPaymentRoute
-from hub20.apps.web3.tasks import record_token_transfers
-from hub20.apps.web3.tests.mocks import (
+from hub20.apps.ethereum.models import BlockchainPaymentRoute
+from hub20.apps.ethereum.tasks import record_token_transfers
+from hub20.apps.ethereum.tests.mocks import (
     BlockMock,
     Erc20LogFilterMock,
     Erc20TransferDataMock,
@@ -24,8 +24,8 @@ class PaymentTransferTestCase(BaseTestCase):
     def setUp(self):
         self.w3 = Web3Mock
 
-    @patch("hub20.apps.web3.tasks.Web3Provider")
-    @patch("hub20.apps.web3.tasks.make_web3")
+    @patch("hub20.apps.ethereum.tasks.Web3Provider")
+    @patch("hub20.apps.ethereum.tasks.make_web3")
     def test_can_detect_erc20_transfers(self, make_web3_mock, MockWeb3Provider):
 
         checkout = CheckoutFactory()

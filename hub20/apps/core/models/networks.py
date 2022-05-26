@@ -8,7 +8,7 @@ class PaymentNetwork(models.Model):
     description = models.TextField(null=True)
 
 
-class BaseProvider(models.Model):
+class PaymentNetworkProvider(models.Model):
     is_active = models.BooleanField(default=True)
     synced = models.BooleanField(default=False)
     connected = models.BooleanField(default=False)
@@ -22,4 +22,4 @@ class BaseProvider(models.Model):
         return self.connected and self.synced
 
 
-__all__ = ["PaymentNetwork", "BaseProvider"]
+__all__ = ["PaymentNetwork", "PaymentNetworkProvider"]

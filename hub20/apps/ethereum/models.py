@@ -24,9 +24,9 @@ from web3.types import BlockData, TxData, TxReceipt
 from hub20.apps.core.exceptions import RoutingError
 from hub20.apps.core.fields import EthereumAddressField, HexField
 from hub20.apps.core.models import (
-    BaseProvider,
     BaseToken,
     Payment,
+    PaymentNetworkProvider,
     PaymentRoute,
     PaymentRouteQuerySet,
     TokenAmount,
@@ -395,7 +395,7 @@ class Erc20Token(BaseToken):
         unique_together = (("chain", "address"),)
 
 
-class Web3Provider(BaseProvider):
+class Web3Provider(PaymentNetworkProvider):
     chain = models.ForeignKey(Chain, related_name="providers", on_delete=models.CASCADE)
     url = Web3ProviderURLField()
     client_version = models.CharField(max_length=300, null=True)
@@ -559,7 +559,7 @@ class BlockchainWithdrawal(Withdrawal):
 
     def _execute(self):
         try:
-            from hub20.apps.web3.client.web3 import Web3Client
+            from hub20.apps.ethereum.client.web3 import Web3Client
 
             web3_client = Web3Client.select_for_transfer(amount=self.amount, address=self.address)
             tx_data = web3_client.transfer(amount=self.as_token_amount, address=self.address)

@@ -2,8 +2,8 @@ import logging
 
 from django.core.management.base import BaseCommand
 
-from hub20.apps.web3.client import get_web3, inspect_web3
-from hub20.apps.web3.models import Chain, Web3Provider
+from hub20.apps.ethereum.client import get_web3, inspect_web3
+from hub20.apps.ethereum.models import Chain, Web3Provider
 
 logger = logging.getLogger(__name__)
 

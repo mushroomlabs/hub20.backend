@@ -11,7 +11,7 @@ from hub20.apps.core.serializers import (
     TokenSerializer,
     TokenValueField,
 )
-from hub20.apps.web3 import get_wallet_model
+from hub20.apps.ethereum import get_wallet_model
 
 from .analytics import estimate_gas_price
 from .models import (

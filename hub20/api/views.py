@@ -10,8 +10,8 @@ from rest_framework.views import APIView
 
 from hub20.apps.core.serializers.accounting import HyperlinkedTokenBalanceSerializer
 from hub20.apps.core.views.tokens import BaseTokenFilter, BaseTokenViewSet
-from hub20.apps.web3.client import get_estimate_fee, make_web3
-from hub20.apps.web3.models import Chain
+from hub20.apps.ethereum.client import get_estimate_fee, make_web3
+from hub20.apps.ethereum.models import Chain
 
 from . import VERSION, serializers
 
