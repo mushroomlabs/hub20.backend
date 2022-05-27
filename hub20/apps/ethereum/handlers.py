@@ -5,8 +5,7 @@ from django.db.models.signals import post_save
 from django.db.transaction import atomic
 from django.dispatch import receiver
 
-from hub20.apps.core import PAYMENT_NETWORK_NAME as CORE_PAYMENT_NETWORK
-from hub20.apps.core.models.accounting import PaymentNetworkAccount
+from hub20.apps.core.models import get_treasury_account
 from hub20.apps.core.models.payments import Deposit, PaymentConfirmation
 from hub20.apps.core.models.stores import Checkout
 from hub20.apps.core.settings import app_settings
@@ -18,14 +17,15 @@ from hub20.apps.core.tasks import (
     send_session_event,
 )
 
-from . import PAYMENT_NETWORK_NAME as WEB3_PAYMENT_NETWORK, signals
+from . import signals
 from .constants import Events
 from .models import (
     Block,
     BlockchainPayment,
+    BlockchainPaymentNetwork,
     BlockchainPaymentRoute,
-    BlockchainWithdrawal,
-    BlockchainWithdrawalConfirmation,
+    BlockchainTransfer,
+    BlockchainTransferConfirmation,
     Chain,
     ChainMetadata,
     Transaction,
@@ -33,6 +33,15 @@ from .models import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+@receiver(post_save, sender=Chain)
+def on_chain_created_register_payment_network(sender, **kw):
+    chain = kw["instance"]
+    if kw["created"]:
+        BlockchainPaymentNetwork.objects.update_or_create(
+            chain=chain, defaults={"name": chain.name}
+        )
 
 
 @receiver(post_save, sender=Chain)
@@ -231,20 +240,18 @@ def on_blockchain_transfer_mined_record_confirmation(sender, **kw):
     transaction = kw["transaction"]
     address = kw["address"]
 
-    transfer = BlockchainWithdrawal.processed.filter(
+    transfer = BlockchainTransfer.processed.filter(
         amount=amount.amount,
         currency=amount.currency,
         address=address,
-        receipt__blockchainwithdrawalreceipt__transaction_data__hash=transaction.hash,
+        receipt__blockchaintransferreceipt__transaction_data__hash=transaction.hash,
     ).first()
 
     if transfer:
-        BlockchainWithdrawalConfirmation.objects.create(transfer=transfer, transaction=transaction)
+        BlockchainTransferConfirmation.objects.create(transfer=transfer, transaction=transaction)
 
 
 # Accounting
-
-
 @atomic()
 @receiver(signals.incoming_transfer_mined, sender=Transaction)
 def on_incoming_transfer_mined_move_funds_from_blockchain_to_treasury(sender, **kw):
@@ -259,8 +266,8 @@ def on_incoming_transfer_mined_move_funds_from_blockchain_to_treasury(sender, **
         currency=amount.currency,
         amount=amount.amount,
     )
-    blockchain_account = PaymentNetworkAccount.make(WEB3_PAYMENT_NETWORK)
-    treasury = PaymentNetworkAccount.make(CORE_PAYMENT_NETWORK)
+    blockchain_account = transaction.chain.blockchainpaymentnetwork.account
+    treasury = get_treasury_account()
 
     blockchain_book = blockchain_account.get_book(token=amount.currency)
     treasury_book = treasury.get_book(token=amount.currency)
@@ -283,8 +290,8 @@ def on_outgoing_transfer_mined_move_funds_from_treasury_to_blockchain(sender, **
         currency=amount.currency,
         amount=amount.amount,
     )
-    blockchain_account = PaymentNetworkAccount.make(WEB3_PAYMENT_NETWORK)
-    treasury = PaymentNetworkAccount.make(CORE_PAYMENT_NETWORK)
+    blockchain_account = transaction.chain.blockchainpaymentnetwork.account
+    treasury = get_treasury_account()
 
     treasury_book = treasury.get_book(token=amount.currency)
     blockchain_book = blockchain_account.get_book(token=amount.currency)
@@ -294,15 +301,15 @@ def on_outgoing_transfer_mined_move_funds_from_treasury_to_blockchain(sender, **
 
 
 @atomic()
-@receiver(post_save, sender=BlockchainWithdrawalConfirmation)
+@receiver(post_save, sender=BlockchainTransferConfirmation)
 def on_blockchain_transfer_confirmed_move_funds_from_treasury_to_blockchain(sender, **kw):
     if kw["created"]:
         confirmation = kw["instance"]
         transaction = confirmation.transaction
         transfer = confirmation.transfer
 
-        treasury = PaymentNetworkAccount.make(CORE_PAYMENT_NETWORK)
-        blockchain_account = PaymentNetworkAccount.make(WEB3_PAYMENT_NETWORK)
+        treasury = get_treasury_account()
+        blockchain_account = transaction.chain.blockchainpaymentnetwork.account
 
         blockchain_book = blockchain_account.get_book(token=transfer.currency)
         treasury_book = treasury.get_book(token=transfer.currency)
@@ -320,7 +327,7 @@ def on_blockchain_transfer_confirmed_move_funds_from_treasury_to_blockchain(send
 
 
 @atomic()
-@receiver(post_save, sender=BlockchainWithdrawalConfirmation)
+@receiver(post_save, sender=BlockchainTransferConfirmation)
 def on_blockchain_transfer_confirmed_move_fee_from_sender_to_blockchain(sender, **kw):
     if kw["created"]:
         confirmation = kw["instance"]
@@ -329,8 +336,8 @@ def on_blockchain_transfer_confirmed_move_fee_from_sender_to_blockchain(sender, 
         fee = confirmation.fee
         native_token = confirmation.fee.currency
 
-        treasury = PaymentNetworkAccount.make(CORE_PAYMENT_NETWORK)
-        blockchain_account = PaymentNetworkAccount.make(WEB3_PAYMENT_NETWORK)
+        treasury = get_treasury_account()
+        blockchain_account = transaction.chain.blockchainpaymentnetwork.account
 
         blockchain_book = blockchain_account.get_book(token=native_token)
         treasury_book = treasury.get_book(token=native_token)
@@ -355,6 +362,7 @@ def on_blockchain_transfer_confirmed_move_fee_from_sender_to_blockchain(sender, 
 
 
 __all__ = [
+    "on_chain_created_register_payment_network",
     "on_chain_created_create_metadata_entry",
     "on_chain_updated_check_payment_confirmations",
     "on_blockchain_payment_received_send_notification",

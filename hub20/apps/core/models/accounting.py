@@ -11,6 +11,7 @@ from django.db.models.functions import Coalesce
 from django.db.models.query import QuerySet
 from model_utils.models import TimeStampedModel
 
+from .networks import PaymentNetwork
 from .tokens import BaseToken, TokenAmount, TokenAmountField, TokenValueModel
 
 logger = logging.getLogger(__name__)
@@ -47,7 +48,7 @@ class Book(models.Model):
 class BookEntry(TimeStampedModel, TokenValueModel):
     book = models.ForeignKey(Book, on_delete=models.CASCADE, related_name="entries")
     reference_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
-    reference_id = models.PositiveIntegerField()
+    reference_id = models.UUIDField()
     reference = GenericForeignKey("reference_type", "reference_id")
 
     def clean(self):
@@ -204,7 +205,9 @@ class PaymentNetworkAccount(DoubleEntryAccountModel):
     book_relation_attr = "book__network"
     token_balance_relation_attr = "books__network"
 
-    payment_network = models.CharField(max_length=100, unique=True)
+    payment_network = models.OneToOneField(
+        PaymentNetwork, on_delete=models.CASCADE, related_name="account"
+    )
 
     books = GenericRelation(
         Book,

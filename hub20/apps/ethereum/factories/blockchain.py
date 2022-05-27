@@ -52,7 +52,7 @@ class ChainFactory(factory.django.DjangoModelFactory):
 class SyncedChainFactory(ChainFactory):
     highest_block = 0
     provider = factory.RelatedFactory(
-        "hub20.apps.ethereum.factories.base.SyncedWeb3ProviderFactory",
+        "hub20.apps.ethereum.factories.blockchain.SyncedWeb3ProviderFactory",
         factory_related_name="chain",
     )
 

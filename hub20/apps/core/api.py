@@ -12,10 +12,6 @@ class UUIDRouter(SimpleRouter):
     lookup_value_regex = "[0-9a-f-]{36}"
 
 
-class TransferRouter(UUIDRouter):
-    lookup_field = "reference"
-
-
 router = SimpleRouter(trailing_slash=False)
 router.register("checkout", views.CheckoutViewSet, basename="checkout")
 router.register("payments", views.PaymentViewSet, basename="payments")
@@ -26,10 +22,8 @@ router.register("my/stores", views.UserStoreViewSet, basename="user-store")
 router.register("my/tokens", views.UserTokenViewSet, basename="user-token")
 router.register("my/tokenlists", views.UserTokenListViewSet, basename="user-tokenlist")
 router.register("my/deposits", views.DepositViewSet, basename="user-deposit")
+router.register("my/transfers", views.TransferViewSet, basename="user-transfer")
 
-transfer_router = TransferRouter(trailing_slash=False)
-transfer_router.register("my/transfers", views.TransferViewSet, basename="user-transfer")
-transfer_router.register("my/withdrawals", views.WithdrawalViewSet, basename="user-withdrawal")
 
 checkout_router = NestedSimpleRouter(router, "checkout", lookup="checkout")
 checkout_router.register("routes", views.CheckoutRoutesViewSet, basename="checkout-routes")
@@ -52,7 +46,6 @@ urlpatterns = (
         path("my/settings", views.UserPreferencesView.as_view(), name="user-preferences"),
     ]
     + router.urls
-    + transfer_router.urls
     + checkout_router.urls
     + deposit_router.urls
 )

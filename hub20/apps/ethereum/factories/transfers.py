@@ -1,19 +1,19 @@
 import factory
 
-from hub20.apps.core.choices import WITHDRAWAL_NETWORKS
 from hub20.apps.core.factories import EthereumProvider, TransferFactory
 
-from ..models import BlockchainWithdrawal
+from ..models import BlockchainTransfer
+from .networks import BlockchainPaymentNetworkFactory
 
 factory.Faker.add_provider(EthereumProvider)
 
 
-class BlockchainWithdrawalFactory(TransferFactory):
+class BlockchainTransferFactory(TransferFactory):
     address = factory.Faker("ethereum_address")
-    payment_network = WITHDRAWAL_NETWORKS.blockchain
+    network = factory.SubFactory(BlockchainPaymentNetworkFactory)
 
     class Meta:
-        model = BlockchainWithdrawal
+        model = BlockchainTransfer
 
 
-__all__ = ["BlockchainWithdrawalFactory"]
+__all__ = ["BlockchainTransferFactory"]

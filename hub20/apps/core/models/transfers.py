@@ -8,10 +8,11 @@ from django.db import models
 from model_utils.managers import InheritanceManager, InheritanceManagerMixin, QueryManagerMixin
 from model_utils.models import TimeStampedModel
 
-from hub20.apps.core.choices import TRANSFER_STATUS, WITHDRAWAL_NETWORKS
+from hub20.apps.core.choices import TRANSFER_STATUS
 from hub20.apps.core.models.tokens import TokenValueModel
 
 from ..exceptions import TransferError
+from .networks import PaymentNetwork
 
 logger = logging.getLogger(__name__)
 
@@ -25,12 +26,14 @@ class TransferStatusQueryManager(InheritanceManagerMixin, QueryManagerMixin, mod
 
 
 class Transfer(TimeStampedModel, TokenValueModel):
-    reference = models.UUIDField(default=uuid.uuid4, unique=True)
+    id = models.UUIDField(default=uuid.uuid4, primary_key=True)
     sender = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="transfers_sent"
     )
     memo = models.TextField(null=True, blank=True)
     identifier = models.CharField(max_length=300, null=True, blank=True)
+    network = models.ForeignKey(PaymentNetwork, on_delete=models.PROTECT, related_name="transfers")
+
     execute_on = models.DateTimeField(auto_now_add=True)
 
     objects = InheritanceManager()
@@ -118,10 +121,6 @@ class InternalTransfer(Transfer):
         TransferConfirmation.objects.create(transfer=self)
 
 
-class Withdrawal(Transfer):
-    payment_network = models.CharField(max_length=64, choices=WITHDRAWAL_NETWORKS)
-
-
 class TransferReceipt(TimeStampedModel):
     transfer = models.OneToOneField(Transfer, on_delete=models.CASCADE, related_name="receipt")
 
@@ -152,5 +151,4 @@ __all__ = [
     "TransferReceipt",
     "TransferError",
     "InternalTransfer",
-    "Withdrawal",
 ]

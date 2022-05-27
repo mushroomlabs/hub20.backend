@@ -3,8 +3,6 @@ from model_utils import Choices
 DEPOSIT_STATUS = Choices("open", "paid", "confirmed", "expired")
 TRANSFER_STATUS = Choices("scheduled", "processed", "failed", "canceled", "confirmed")
 
-WITHDRAWAL_NETWORKS = Choices("blockchain", "raiden")
-
 CURRENCIES = Choices(
     ("AED", "United Arab Emirates dirham"),
     ("AFN", "Afghan afghani"),

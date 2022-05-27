@@ -1,11 +1,19 @@
+from django.contrib.sites.models import Site
 from django.db import models
 from model_utils.managers import InheritanceManager, QueryManager
 
 
 class PaymentNetwork(models.Model):
     name = models.CharField(max_length=300, unique=True)
-    slug = models.SlugField(unique=True)
     description = models.TextField(null=True)
+
+    @property
+    def type(self):
+        return self._meta.label_lower
+
+
+class InternalPaymentNetwork(PaymentNetwork):
+    site = models.OneToOneField(Site, on_delete=models.PROTECT, related_name="treasury")
 
 
 class PaymentNetworkProvider(models.Model):
@@ -22,4 +30,4 @@ class PaymentNetworkProvider(models.Model):
         return self.connected and self.synced
 
 
-__all__ = ["PaymentNetwork", "PaymentNetworkProvider"]
+__all__ = ["PaymentNetwork", "InternalPaymentNetwork", "PaymentNetworkProvider"]

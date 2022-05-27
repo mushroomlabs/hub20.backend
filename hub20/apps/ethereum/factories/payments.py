@@ -6,12 +6,17 @@ from hub20.apps.core.models.payments import PaymentConfirmation
 
 from ..models import BlockchainPayment, BlockchainPaymentRoute
 from .blockchain import TransactionFactory
+from .networks import BlockchainPaymentNetworkFactory
 from .tokens import Erc20TokenFactory, EtherFactory
 from .wallets import BaseWalletFactory
 
 
+class BlockchainPaymentOrderFactory(PaymentOrderFactory):
+    network = factory.SubFactory(BlockchainPaymentNetworkFactory)
+
+
 class EtherBlockchainPaymentRouteFactory(factory.django.DjangoModelFactory):
-    deposit = factory.SubFactory(PaymentOrderFactory, currency=EtherFactory)
+    deposit = factory.SubFactory(BlockchainPaymentOrderFactory, currency=EtherFactory)
     account = factory.SubFactory(BaseWalletFactory)
     payment_window = factory.LazyAttribute(
         lambda obj: (
@@ -26,7 +31,7 @@ class EtherBlockchainPaymentRouteFactory(factory.django.DjangoModelFactory):
 
 
 class Erc20TokenBlockchainPaymentRouteFactory(EtherBlockchainPaymentRouteFactory):
-    deposit = factory.SubFactory(PaymentOrderFactory, currency=Erc20TokenFactory)
+    deposit = factory.SubFactory(BlockchainPaymentOrderFactory, currency=Erc20TokenFactory)
 
 
 class EtherBlockchainPaymentFactory(factory.django.DjangoModelFactory):

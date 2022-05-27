@@ -175,7 +175,7 @@ class InternalPaymentRoute(PaymentRoute):
 
 
 class Payment(TimeStampedModel, TokenValueModel):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4)
+    id = models.UUIDField(default=uuid.uuid4, primary_key=True)
     route = models.ForeignKey(PaymentRoute, on_delete=models.PROTECT, related_name="payments")
     objects = InheritanceManager()
 

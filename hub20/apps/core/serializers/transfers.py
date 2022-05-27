@@ -1,7 +1,6 @@
 from rest_framework import serializers
 
-from ..models import InternalTransfer, TokenAmount, TransferConfirmation, Withdrawal
-from .fields import AddressSerializerField
+from ..models import InternalTransfer, TokenAmount, TransferConfirmation
 from .tokens import HyperlinkedRelatedTokenField, TokenValueField
 from .users import UserRelatedField
 
@@ -65,32 +64,6 @@ class InternalTransferSerializer(TransferSerializer):
         read_only_fields = ("reference", "status")
 
 
-class WithdrawalSerializer(TransferSerializer):
-    url = serializers.HyperlinkedIdentityField(view_name="user-withdrawal-detail")
-    address = AddressSerializerField()
-
-    def validate_recipient(self, value):
-        request = self.context["request"]
-        if value == request.user:
-            raise serializers.ValidationError("You can not make a transfer to yourself")
-        return value
-
-    class Meta:
-        model = Withdrawal
-        fields = (
-            "url",
-            "reference",
-            "address",
-            "payment_network",
-            "amount",
-            "token",
-            "memo",
-            "identifier",
-            "status",
-        )
-        read_only_fields = ("reference", "status")
-
-
 class TransferConfirmationSerializer(serializers.ModelSerializer):
     token = HyperlinkedRelatedTokenField(source="transfer.currency")
     target = serializers.CharField(source="transfer.target", read_only=True)
@@ -105,5 +78,4 @@ __all__ = [
     "TransferSerializer",
     "TransferConfirmationSerializer",
     "InternalTransferSerializer",
-    "WithdrawalSerializer",
 ]

@@ -14,13 +14,14 @@ from model_utils.models import StatusModel
 
 from hub20.apps.core.exceptions import RoutingError, TransferError
 from hub20.apps.core.fields import EthereumAddressField, Uint256Field
+from hub20.apps.core.models.networks import PaymentNetwork
 from hub20.apps.core.models.payments import (
     Payment as BasePayment,
     PaymentRoute,
     PaymentRouteQuerySet,
 )
 from hub20.apps.core.models.tokens import TokenAmount, TokenAmountField
-from hub20.apps.core.models.transfers import TransferConfirmation, TransferReceipt, Withdrawal
+from hub20.apps.core.models.transfers import Transfer, TransferConfirmation, TransferReceipt
 from hub20.apps.core.settings import app_settings
 from hub20.apps.core.validators import uri_parsable_scheme_validator
 from hub20.apps.ethereum.models import Chain, Erc20Token
@@ -214,6 +215,11 @@ class Payment(models.Model):
         unique_together = ("channel", "identifier", "sender_address", "receiver_address")
 
 
+# Payment Network
+class RaidenPaymentNetwork(PaymentNetwork):
+    chain = models.OneToOneField(Chain, on_delete=models.CASCADE)
+
+
 # Payments
 class RaidenRouteQuerySet(PaymentRouteQuerySet):
     def with_expiration(self) -> models.QuerySet:
@@ -285,15 +291,15 @@ class RaidenPayment(BasePayment):
 
 
 # Transfers
-class RaidenWithdrawalReceipt(TransferReceipt):
+class RaidenTransferReceipt(TransferReceipt):
     payment_data = HStoreField()
 
 
-class RaidenWithdrawalConfirmation(TransferConfirmation):
+class RaidenTransferConfirmation(TransferConfirmation):
     payment = models.OneToOneField(Payment, on_delete=models.CASCADE)
 
 
-class RaidenWithdrawal(Withdrawal):
+class RaidenTransfer(Transfer):
     address = EthereumAddressField(db_index=True)
 
     def _execute(self):
@@ -306,7 +312,7 @@ class RaidenWithdrawal(Withdrawal):
                 address=self.address,
                 identifier=raiden_client._ensure_valid_identifier(self.identifier),
             )
-            RaidenWithdrawalReceipt.objects.create(transfer=self, payment_data=payment_data)
+            RaidenTransferReceipt.objects.create(transfer=self, payment_data=payment_data)
         except AssertionError:
             raise TransferError("Incorrect transfer method")
         except RaidenPaymentError as exc:
@@ -318,7 +324,8 @@ __all__ = [
     "Raiden",
     "Channel",
     "Payment",
-    "RaidenWithdrawal",
-    "RaidenWithdrawalReceipt",
-    "RaidenWithdrawalConfirmation",
+    "RaidenPaymentNetwork",
+    "RaidenTransfer",
+    "RaidenTransferReceipt",
+    "RaidenTransferConfirmation",
 ]

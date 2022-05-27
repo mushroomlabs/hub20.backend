@@ -14,7 +14,7 @@ from hub20.apps.core.tests import AccountingTestCase, TransferTestCase
 from ..client.web3 import Web3Client
 from ..factories import (
     BaseWalletFactory,
-    BlockchainWithdrawalFactory,
+    BlockchainTransferFactory,
     Erc20TokenFactory,
     Erc20TransactionDataFactory,
     Erc20TransactionFactory,
@@ -65,13 +65,13 @@ class BlockchainPaymentTestCase(TestCase):
         self.assertEqual(balance_amount, self.order.as_token_amount)
 
 
-class BlockchainWithdrawalTestCase(TransferTestCase):
+class BlockchainTransferTestCase(TransferTestCase):
     def setUp(self):
         super().setUp()
         add_token_to_account(self.wallet, self.credit)
         add_eth_to_account(self.wallet, self.fee_amount)
 
-        self.transfer = BlockchainWithdrawalFactory(
+        self.transfer = BlockchainTransferFactory(
             sender=self.sender, currency=self.credit.currency, amount=self.credit.amount
         )
 
@@ -109,7 +109,7 @@ class Web3AccountingTestCase(AccountingTestCase):
     def test_external_transfers_generate_accounting_entries_for_treasury_and_external_address(
         self, web3_execute_transfer, select_for_transfer
     ):
-        transfer = BlockchainWithdrawalFactory(
+        transfer = BlockchainTransferFactory(
             sender=self.sender, currency=self.credit.currency, amount=self.credit.amount
         )
 
@@ -147,7 +147,7 @@ class Web3AccountingTestCase(AccountingTestCase):
             address=transfer.address,
         )
 
-        transaction = transfer.confirmation.blockchainwithdrawalconfirmation.transaction
+        transaction = transfer.confirmation.blockchaintransferconfirmation.transaction
         transaction_type = ContentType.objects.get_for_model(transaction)
 
         blockchain_credit = self.blockchain_account.credits.filter(
@@ -161,7 +161,7 @@ class Web3AccountingTestCase(AccountingTestCase):
         self.assertEqual(treasury_debit.as_token_amount, blockchain_credit.as_token_amount)
 
     def test_blockchain_transfers_create_fee_entries(self):
-        transfer = BlockchainWithdrawalFactory(
+        transfer = BlockchainTransferFactory(
             sender=self.sender, currency=self.credit.currency, amount=self.credit.amount
         )
 
@@ -192,11 +192,11 @@ class Web3AccountingTestCase(AccountingTestCase):
         )
 
         self.assertTrue(hasattr(transfer, "confirmation"))
-        self.assertTrue(hasattr(transfer.confirmation, "blockchainwithdrawalconfirmation"))
+        self.assertTrue(hasattr(transfer.confirmation, "blockchaintransferconfirmation"))
 
-        transaction = transfer.confirmation.blockchainwithdrawalconfirmation.transaction
+        transaction = transfer.confirmation.blockchaintransferconfirmation.transaction
         transaction_type = ContentType.objects.get_for_model(transaction)
-        native_token = transfer.confirmation.blockchainwithdrawalconfirmation.fee.currency
+        native_token = transfer.confirmation.blockchaintransferconfirmation.fee.currency
 
         sender_book = transfer.sender.account.get_book(token=native_token)
 
@@ -254,7 +254,7 @@ class WalletTestCase(TestCase):
 
 __all__ = [
     "BlockchainPaymentTestCase",
-    "BlockchainWithdrawalTestCase",
+    "BlockchainTransferTestCase",
     "Web3AccountingTestCase",
     "TransferEventTestCase",
     "WalletTestCase",

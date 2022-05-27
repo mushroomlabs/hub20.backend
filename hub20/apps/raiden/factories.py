@@ -45,9 +45,9 @@ class TokenNetworkFactory(factory.django.DjangoModelFactory):
 
 
 class RaidenFactory(factory.django.DjangoModelFactory):
-    account = factory.SubFactory(BaseWalletFactory)
-    chain = factory.SubFactory(SyncedChainFactory)
     url = factory.Sequence(lambda n: "http://raiden:{0}".format(5000 + n))
+    address = factory.Faker("ethereum_address")
+    chain = factory.SubFactory(SyncedChainFactory)
 
     @factory.post_generation
     def channels(obj, create, extracted, **kw):
@@ -98,13 +98,13 @@ class PaymentEventFactory(factory.django.DjangoModelFactory):
         model = models.Payment
 
 
-class RaidenWithdrawalFactory(TransferFactory):
+class RaidenTransferFactory(TransferFactory):
     address = factory.Faker("ethereum_address")
     payment_network = factory.SubFactory(RaidenPaymentNetwork)
     identifier = factory.fuzzy.FuzzyInteger(2**48, 2**53)
 
     class Meta:
-        model = models.RaidenWithdrawal
+        model = models.RaidenTransfer
 
 
 __all__ = [
@@ -114,4 +114,5 @@ __all__ = [
     "RaidenFactory",
     "ChannelFactory",
     "PaymentEventFactory",
+    "RaidenTransferFactory",
 ]

@@ -26,15 +26,16 @@ from hub20.apps.core.fields import EthereumAddressField, HexField
 from hub20.apps.core.models import (
     BaseToken,
     Payment,
+    PaymentNetwork,
     PaymentNetworkProvider,
     PaymentRoute,
     PaymentRouteQuerySet,
     TokenAmount,
     TokenValueModel,
+    Transfer,
     TransferConfirmation,
     TransferError,
     TransferReceipt,
-    Withdrawal,
 )
 from hub20.apps.core.settings import app_settings
 
@@ -441,6 +442,11 @@ class TransferEvent(TokenValueModel):
         ordering = ("transaction", "log_index")
 
 
+# Payment Network
+class BlockchainPaymentNetwork(PaymentNetwork):
+    chain = models.OneToOneField(Chain, on_delete=models.CASCADE)
+
+
 # Payments
 class BlockchainRouteQuerySet(PaymentRouteQuerySet):
     def in_chain(self, chain_id) -> models.QuerySet:
@@ -550,11 +556,11 @@ class BlockchainPayment(Payment):
 
 
 # Transfers
-class BlockchainWithdrawalReceipt(TransferReceipt):
+class BlockchainTransferReceipt(TransferReceipt):
     transaction_data = models.OneToOneField(TransactionDataRecord, on_delete=models.CASCADE)
 
 
-class BlockchainWithdrawal(Withdrawal):
+class BlockchainTransfer(Transfer):
     address = EthereumAddressField(db_index=True)
 
     def _execute(self):
@@ -563,12 +569,12 @@ class BlockchainWithdrawal(Withdrawal):
 
             web3_client = Web3Client.select_for_transfer(amount=self.amount, address=self.address)
             tx_data = web3_client.transfer(amount=self.as_token_amount, address=self.address)
-            BlockchainWithdrawalReceipt.objects.create(transfer=self, transaction_data=tx_data)
+            BlockchainTransferReceipt.objects.create(transfer=self, transaction_data=tx_data)
         except Exception as exc:
             raise TransferError(str(exc)) from exc
 
 
-class BlockchainWithdrawalConfirmation(TransferConfirmation):
+class BlockchainTransferConfirmation(TransferConfirmation):
     transaction = models.OneToOneField(Transaction, on_delete=models.CASCADE)
 
     @property
@@ -594,4 +600,7 @@ __all__ = [
     "KeystoreAccount",
     "HierarchicalDeterministicWallet",
     "WalletBalanceRecord",
+    "BlockchainTransfer",
+    "BlockchainTransferConfirmation",
+    "BlockchainTransferReceipt",
 ]

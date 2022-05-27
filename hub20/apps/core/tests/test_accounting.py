@@ -68,12 +68,7 @@ class TokenBalanceViewTestCase(TestCase):
         self.assertEqual(len(response.data), 1)
 
     def test_balance_view(self):
-        response = self.client.get(
-            reverse(
-                "balance-detail",
-                kwargs={"chain_id": self.token.chain_id, "address": self.token.address},
-            )
-        )
+        response = self.client.get(reverse("balance-detail", kwargs={"pk": self.token.id}))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(Decimal(response.data["amount"]), 10)
 

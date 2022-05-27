@@ -11,7 +11,7 @@ from ..client.node import RaidenClient
 from ..factories import (
     ChannelFactory,
     PaymentEventFactory,
-    RaidenWithdrawalFactory,
+    RaidenTransferFactory,
     TokenNetworkFactory,
 )
 from ..models import RaidenPaymentRoute
@@ -49,7 +49,7 @@ class RaidenAccountingTestCase(AccountingTestCase):
     def test_raiden_transfers_create_entries_for_raiden_account_and_treasury(
         self, raiden_transfer, select_for_transfer
     ):
-        transfer = RaidenWithdrawalFactory(
+        transfer = RaidenTransferFactory(
             sender=self.sender,
             currency=self.credit.currency,
             amount=self.credit.amount,
@@ -71,10 +71,10 @@ class RaidenAccountingTestCase(AccountingTestCase):
         raiden_payment.save()
 
         self.assertTrue(hasattr(transfer, "confirmation"))
-        self.assertTrue(hasattr(transfer.confirmation, "raidenwithdrawalconfirmation"))
-        self.assertIsNotNone(transfer.confirmation.raidenwithdrawalconfirmation.payment)
+        self.assertTrue(hasattr(transfer.confirmation, "raidentransferconfirmation"))
+        self.assertIsNotNone(transfer.confirmation.raidentransferconfirmation.payment)
 
-        payment = transfer.confirmation.raidenwithdrawalconfirmation.payment
+        payment = transfer.confirmation.raidentransferconfirmation.payment
         transfer_type = ContentType.objects.get_for_model(transfer)
 
         self.assertEqual(payment.receiver_address, transfer.address)

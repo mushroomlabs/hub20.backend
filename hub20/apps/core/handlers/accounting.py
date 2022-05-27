@@ -1,14 +1,16 @@
 import logging
 
 from django.contrib.auth import get_user_model
+from django.contrib.sites.models import Site
 from django.db.models.signals import post_save
 from django.db.transaction import atomic
 from django.dispatch import receiver
 
-from hub20.apps.core import PAYMENT_NETWORK_NAME as CORE_PAYMENT_NETWORK
-from hub20.apps.core.models.accounting import PaymentNetworkAccount, UserAccount
-from hub20.apps.core.models.payments import PaymentConfirmation
-from hub20.apps.core.models.transfers import (
+from ..models import get_treasury_account
+from ..models.accounting import PaymentNetworkAccount, UserAccount
+from ..models.networks import InternalPaymentNetwork, PaymentNetwork
+from ..models.payments import PaymentConfirmation
+from ..models.transfers import (
     Transfer,
     TransferCancellation,
     TransferConfirmation,
@@ -17,6 +19,24 @@ from hub20.apps.core.models.transfers import (
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
+
+
+@receiver(post_save)
+def on_payment_network_created_create_account(sender, **kw):
+    if not issubclass(sender, PaymentNetwork):
+        return
+
+    network = kw["instance"]
+    if kw["created"]:
+        PaymentNetworkAccount.objects.get_or_create(payment_network=network)
+
+
+@receiver(post_save, sender=Site)
+def on_site_saved_make_payment_network(sender, **kw):
+    site = kw["instance"]
+    InternalPaymentNetwork.objects.update_or_create(
+        site=site, defaults={"name": f"{site.name} Treasury"}
+    )
 
 
 @receiver(post_save, sender=User)
@@ -36,7 +56,7 @@ def on_transfer_created_move_funds_from_sender_to_treasury(sender, **kw):
         transfer = kw["instance"]
         params = dict(reference=transfer, currency=transfer.currency, amount=transfer.amount)
 
-        treasury = PaymentNetworkAccount.make(CORE_PAYMENT_NETWORK)
+        treasury = get_treasury_account()
 
         user_book = transfer.sender.account.get_book(token=transfer.currency)
         treasury_book = treasury.get_book(token=transfer.currency)
@@ -53,7 +73,7 @@ def on_internal_transfer_confirmed_move_funds_from_treasury_to_receiver(sender, 
         confirmation = kw["instance"]
         transfer = confirmation.transfer.internaltransfer
 
-        treasury = PaymentNetworkAccount.make(CORE_PAYMENT_NETWORK)
+        treasury = get_treasury_account()
         params = dict(reference=transfer, currency=transfer.currency, amount=transfer.amount)
 
         treasury_book = treasury.get_book(token=transfer.currency)
@@ -75,7 +95,7 @@ def on_payment_confirmed_move_funds_from_treasury_to_payee(sender, **kw):
 
         if is_raiden_payment or is_blockchain_payment:
             params = dict(reference=confirmation, amount=payment.amount, currency=payment.currency)
-            treasury = PaymentNetworkAccount.make(CORE_PAYMENT_NETWORK)
+            treasury = get_treasury_account()
             treasury_book = treasury.get_book(token=payment.currency)
             payee_book = payment.route.deposit.user.account.get_book(token=payment.currency)
 
@@ -98,7 +118,7 @@ def on_reverted_transaction_move_funds_from_treasury_to_sender(sender, **kw):
             return
 
         try:
-            treasury = PaymentNetworkAccount.make(CORE_PAYMENT_NETWORK)
+            treasury = get_treasury_account()
             treasury_book = treasury.get_book(token=transfer.currency)
 
             sender_book = transfer.sender.account.get_book(token=transfer.currency)
@@ -114,6 +134,8 @@ def on_reverted_transaction_move_funds_from_treasury_to_sender(sender, **kw):
 
 
 __all__ = [
+    "on_payment_network_created_create_account",
+    "on_site_saved_make_payment_network",
     "on_user_created_create_account",
     "on_transfer_created_move_funds_from_sender_to_treasury",
     "on_internal_transfer_confirmed_move_funds_from_treasury_to_receiver",

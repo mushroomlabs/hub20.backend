@@ -8,17 +8,10 @@ from .. import models, serializers
 
 class TransferViewSet(GenericViewSet, ListModelMixin, CreateModelMixin, RetrieveModelMixin):
     permission_classes = (IsAuthenticated,)
-    serializer_class = serializers.InternalTransferSerializer
+    serializer_class = serializers.TransferSerializer
 
     def get_queryset(self) -> QuerySet:
-        return models.InternalTransfer.objects.filter(sender=self.request.user)
+        return models.Transfer.objects.filter(sender=self.request.user).select_subclasses()
 
 
-class WithdrawalViewSet(GenericViewSet, ListModelMixin, CreateModelMixin, RetrieveModelMixin):
-    permission_classes = (IsAuthenticated,)
-    serializer_class = serializers.WithdrawalSerializer
-
-    def get_queryset(self) -> QuerySet:
-        return self.request.user.transfers_sent.filter(
-            internaltransfer__isnull=True
-        ).select_subclasses()
+__all__ = ["TransferViewSet"]

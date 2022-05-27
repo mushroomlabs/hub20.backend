@@ -5,24 +5,34 @@ from django.db.models.signals import post_save
 from django.db.transaction import atomic
 from django.dispatch import receiver
 
-from hub20.apps.core import PAYMENT_NETWORK_NAME as CORE_PAYMENT_NETWORK
-from hub20.apps.core.models.accounting import PaymentNetworkAccount
+from hub20.apps.core.models import get_treasury_account
 from hub20.apps.core.models.payments import PaymentConfirmation
 
-from . import PAYMENT_NETWORK_NAME as RAIDEN_PAYMENT_NETWORK
 # FIXME: need to find a better distinction between Payment / RaidenPayment
 # Payment -> the record of the payment on the node
 # RaidenPayment -> a payment made to the Hub done on the route provided
 from .models import (
     Payment,
+    Raiden,
     RaidenPayment,
+    RaidenPaymentNetwork,
     RaidenPaymentRoute,
-    RaidenWithdrawal,
-    RaidenWithdrawalConfirmation,
+    RaidenTransfer,
+    RaidenTransferConfirmation,
 )
 from .signals import raiden_payment_received, raiden_payment_sent
 
 logger = logging.getLogger(__name__)
+
+
+@receiver(post_save, sender=Raiden)
+def on_raiden_created_create_payment_network(sender, **kw):
+    raiden = kw["instance"]
+    if kw["created"]:
+        RaidenPaymentNetwork.objects.update_or_create(
+            chain=raiden.chain,
+            defaults={"name": f"Raiden Node {raiden.address} @ {raiden.chain.name}"},
+        )
 
 
 @receiver(post_save, sender=Payment)
@@ -77,15 +87,15 @@ def on_raiden_payment_sent_record_confirmation(sender, **kw):
     if kw["created"]:
         payment = kw["instance"]
 
-        transfer = RaidenWithdrawal.processed.filter(
+        transfer = RaidenTransfer.processed.filter(
             amount=payment.amount,
             currency=payment.token,
             address=payment.receiver_address,
-            receipt__raidenwithdrawalreceipt__payment_data__identifier=payment.identifier,
+            receipt__raidentransferreceipt__payment_data__identifier=payment.identifier,
         ).first()
 
         if transfer:
-            RaidenWithdrawalConfirmation.objects.create(transfer=transfer, payment=payment)
+            RaidenTransferConfirmation.objects.create(transfer=transfer, payment=payment)
 
 
 # Accounting
@@ -107,8 +117,8 @@ def on_raiden_payment_received_move_funds_from_raiden_to_treasury(sender, **kw):
                 amount=payment.amount,
             )
 
-            treasury = PaymentNetworkAccount.make(CORE_PAYMENT_NETWORK)
-            raiden_account = PaymentNetworkAccount.make(RAIDEN_PAYMENT_NETWORK)
+            treasury = get_treasury_account()
+            raiden_account = raiden.chain.raidenpaymentnetwork.account
 
             treasury_book = treasury.get_book(token=payment.token)
             raiden_book = raiden_account.get_book(token=payment.token)
@@ -118,7 +128,7 @@ def on_raiden_payment_received_move_funds_from_raiden_to_treasury(sender, **kw):
 
 
 @atomic()
-@receiver(post_save, sender=RaidenWithdrawalConfirmation)
+@receiver(post_save, sender=RaidenTransferConfirmation)
 def on_raiden_transfer_confirmed_move_funds_from_treasury_to_raiden(sender, **kw):
     if kw["created"]:
         confirmation = kw["instance"]
@@ -132,8 +142,8 @@ def on_raiden_transfer_confirmed_move_funds_from_treasury_to_raiden(sender, **kw
             amount=transfer.amount,
         )
 
-        treasury = PaymentNetworkAccount.make(CORE_PAYMENT_NETWORK)
-        raiden_account = PaymentNetworkAccount.make(RAIDEN_PAYMENT_NETWORK)
+        treasury = get_treasury_account()
+        raiden_account = transfer.currency.chain.raidenpaymentnetwork.account
 
         treasury_book = treasury.get_book(token=transfer.currency)
         raiden_book = raiden_account.get_book(token=transfer.currency)
@@ -143,6 +153,7 @@ def on_raiden_transfer_confirmed_move_funds_from_treasury_to_raiden(sender, **kw
 
 
 __all__ = [
+    "on_raiden_created_create_payment_network",
     "on_payment_created_check_received",
     "on_payment_created_check_sent",
     "on_raiden_payment_received_check_raiden_payments",
