@@ -90,19 +90,13 @@ def on_payment_confirmed_move_funds_from_treasury_to_payee(sender, **kw):
         confirmation = kw["instance"]
         payment = confirmation.payment
 
-        is_raiden_payment = hasattr(payment.route, "raidenpaymentroute")
-        is_blockchain_payment = hasattr(payment.route, "blockchainpaymentroute")
+        params = dict(reference=confirmation, amount=payment.amount, currency=payment.currency)
+        treasury = get_treasury_account()
+        treasury_book = treasury.get_book(token=payment.currency)
+        payee_book = payment.route.deposit.user.account.get_book(token=payment.currency)
 
-        if is_raiden_payment or is_blockchain_payment:
-            params = dict(reference=confirmation, amount=payment.amount, currency=payment.currency)
-            treasury = get_treasury_account()
-            treasury_book = treasury.get_book(token=payment.currency)
-            payee_book = payment.route.deposit.user.account.get_book(token=payment.currency)
-
-            treasury_book.debits.create(**params)
-            payee_book.credits.create(**params)
-        else:
-            logger.info(f"Payment {payment} was not routed through any external network")
+        treasury_book.debits.create(**params)
+        payee_book.credits.create(**params)
 
 
 @atomic()

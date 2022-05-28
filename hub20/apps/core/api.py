@@ -23,7 +23,7 @@ router.register("my/tokens", views.UserTokenViewSet, basename="user-token")
 router.register("my/tokenlists", views.UserTokenListViewSet, basename="user-tokenlist")
 router.register("my/deposits", views.DepositViewSet, basename="user-deposit")
 router.register("my/transfers", views.TransferViewSet, basename="user-transfer")
-
+router.register("my/balances", views.TokenBalanceListViewSet, basename="balance"),
 
 checkout_router = NestedSimpleRouter(router, "checkout", lookup="checkout")
 checkout_router.register("routes", views.CheckoutRoutesViewSet, basename="checkout-routes")
@@ -36,12 +36,6 @@ urlpatterns = (
     [
         path("credits", views.AccountCreditEntryList.as_view(), name="credit-list"),
         path("debits", views.AccountDebitEntryList.as_view(), name="debit-list"),
-        path("balances", views.TokenBalanceListView.as_view(), name="balance-list"),
-        path(
-            "balances/<int:chain_id>-<str:address>",
-            views.TokenBalanceView.as_view(),
-            name="balance-detail",
-        ),
         path("accounting/report", views.AccountingReportView.as_view(), name="accounting-report"),
         path("my/settings", views.UserPreferencesView.as_view(), name="user-preferences"),
     ]
