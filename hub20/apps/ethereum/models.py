@@ -370,6 +370,10 @@ class NativeToken(BaseToken):
         return f"{self.name} ({self.symbol}): Native Token @ {self.chain_id}"
 
     @property
+    def natural_data(self):
+        return dict(name=self.name, symbol=self.symbol, chain_id=self.chain_id)
+
+    @property
     def address(self):
         return NULL_ADDRESS
 
@@ -385,6 +389,12 @@ class Erc20Token(BaseToken):
 
     def __str__(self) -> str:
         return f"{self.name} ({self.symbol}): {self.address} @ {self.chain_id}"
+
+    @property
+    def natural_data(self):
+        return dict(
+            name=self.name, symbol=self.symbol, chain_id=self.chain_id, address=self.address
+        )
 
     @classmethod
     def make(cls, address: str, chain: Chain, **defaults):

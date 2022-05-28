@@ -119,10 +119,7 @@ class CheckoutViewTestCase(TestCase):
 
         post_data = {
             "amount": amount.amount,
-            "token": reverse(
-                "token-detail",
-                kwargs=dict(address=self.token.address, chain_id=self.token.chain_id),
-            ),
+            "token": reverse("token-detail", kwargs={"pk": self.token.pk}),
             "store": self.store.id,
             "reference": "API Test",
         }

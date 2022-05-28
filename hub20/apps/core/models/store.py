@@ -17,7 +17,7 @@ from .tokens import BaseToken
 
 
 def calculate_checkout_expiration_time():
-    return timezone.now() + datetime.timedelta(seconds=app_settings.Payment.checkout_lifetime)
+    return timezone.now() + datetime.timedelta(seconds=app_settings.Checkout.lifetime)
 
 
 class Store(models.Model):
@@ -40,7 +40,7 @@ class Store(models.Model):
         else:
             qs = BaseToken.tradeable.all()
 
-        return qs.filter(chain__providers__is_active=True)
+        return qs.select_subclasses()
 
     def issue_jwt(self, **data):
         data.update(
@@ -89,18 +89,14 @@ class Checkout(TimeStampedModel):
         return {
             "checkout_id": str(self.id),
             "reference": self.order.reference,
-            "token": {
-                "symbol": self.order.currency.symbol,
-                "address": self.order.currency.address,
-                "chain_id": self.order.currency.chain_id,
-            },
+            "token": str(self.order.currency.id),
             "payments": [
                 {
                     "id": str(p.id),
                     "amount": str(p.amount),
                     "confirmed": p.is_confirmed,
                     "identifier": p.identifier,
-                    "route": p.route.deposit.network.slug,
+                    "route": p.route.network.type,
                 }
                 for p in self.order.payments
             ],

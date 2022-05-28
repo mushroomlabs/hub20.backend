@@ -36,6 +36,14 @@ class BaseToken(models.Model):
         return TokenAmount(amount=value, currency=self)
 
     @property
+    def subclassed(self):
+        return BaseToken.objects.get_subclass(id=self.id)
+
+    @property
+    def natural_data(self):
+        return dict(name=self.name, symbol=self.symbol)
+
+    @property
     def wrapped_by(self):
         return self.__class__.objects.filter(id__in=self.wrapping_tokens.values("wrapper"))
 
