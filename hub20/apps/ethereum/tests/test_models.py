@@ -9,7 +9,7 @@ from hub20.apps.core.choices import TRANSFER_STATUS
 from hub20.apps.core.factories import PaymentOrderFactory
 from hub20.apps.core.models import PaymentNetwork, PaymentNetworkAccount
 from hub20.apps.core.settings import app_settings
-from hub20.apps.core.tests import AccountingTestCase, TransferTestCase
+from hub20.apps.core.tests import AccountingTestCase, TransferModelTestCase
 
 from ..client.web3 import Web3Client
 from ..factories import (
@@ -65,7 +65,7 @@ class BlockchainPaymentTestCase(TestCase):
         self.assertEqual(balance_amount, self.order.as_token_amount)
 
 
-class BlockchainTransferTestCase(TransferTestCase):
+class BlockchainTransferTestCase(TransferModelTestCase):
     def setUp(self):
         super().setUp()
         add_token_to_account(self.wallet, self.credit)

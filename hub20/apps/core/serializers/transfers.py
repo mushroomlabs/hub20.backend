@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from ..models import InternalTransfer, TokenAmount, TransferConfirmation
+from ..models import InternalTransfer, TokenAmount, Transfer, TransferConfirmation
 from .tokens import HyperlinkedRelatedTokenField, TokenValueField
 from .users import UserRelatedField
 
@@ -38,6 +38,18 @@ class TransferSerializer(serializers.ModelSerializer):
 
         return self.Meta.model.objects.create(sender=request.user, **validated_data)
 
+    class Meta:
+        model = Transfer
+        fields = (
+            "url",
+            "amount",
+            "token",
+            "memo",
+            "identifier",
+            "status",
+        )
+        read_only_fields = ("status",)
+
 
 class InternalTransferSerializer(TransferSerializer):
     url = serializers.HyperlinkedIdentityField(view_name="user-transfer-detail")
@@ -51,17 +63,8 @@ class InternalTransferSerializer(TransferSerializer):
 
     class Meta:
         model = InternalTransfer
-        fields = (
-            "url",
-            "reference",
-            "recipient",
-            "amount",
-            "token",
-            "memo",
-            "identifier",
-            "status",
-        )
-        read_only_fields = ("reference", "status")
+        fields = TransferSerializer.Meta.fields + ("recipient",)
+        read_only_fields = TransferSerializer.Meta.read_only_fields
 
 
 class TransferConfirmationSerializer(serializers.ModelSerializer):

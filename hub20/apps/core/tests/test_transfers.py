@@ -6,6 +6,7 @@ from hub20.apps.core.choices import TRANSFER_STATUS
 from hub20.apps.core.factories import (
     FAKER,
     BaseTokenFactory,
+    InternalPaymentNetworkFactory,
     InternalTransferFactory,
     PaymentConfirmationFactory,
     UserAccountFactory,
@@ -14,7 +15,12 @@ from hub20.apps.core.factories import (
 from hub20.apps.core.models import Transfer, TransferConfirmation
 
 
-class TransferManagerTestCase(TestCase):
+class BaseTransferTestCase(TestCase):
+    def setUp(self):
+        InternalPaymentNetworkFactory()
+
+
+class TransferManagerTestCase(BaseTransferTestCase):
     def test_pending_query_manager(self):
         self.transfer = InternalTransferFactory()
 
@@ -32,8 +38,9 @@ class TransferManagerTestCase(TestCase):
         self.assertEqual(Transfer.pending.select_subclasses().first(), another_transfer)
 
 
-class TransferTestCase(TestCase):
+class TransferModelTestCase(BaseTransferTestCase):
     def setUp(self):
+        super().setUp()
         self.sender_account = UserAccountFactory()
         self.receiver_account = UserAccountFactory()
         self.sender = self.sender_account.user
@@ -46,7 +53,7 @@ class TransferTestCase(TestCase):
         self.credit = self.deposit.payment.as_token_amount
 
 
-class InternalTransferTestCase(TransferTestCase):
+class InternalTransferTestCase(TransferModelTestCase):
     def test_transfers_are_finalized_as_confirmed(self):
         transfer = InternalTransferFactory(
             sender=self.sender,
@@ -90,8 +97,9 @@ class InternalTransferTestCase(TransferTestCase):
         self.assertEqual(transfer.status, TRANSFER_STATUS.failed)
 
 
-class TransferViewTestCase(TestCase):
+class TransferViewTestCase(BaseTransferTestCase):
     def setUp(self):
+        super().setUp()
         self.user = UserFactory()
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
@@ -100,15 +108,12 @@ class TransferViewTestCase(TestCase):
 
     def test_no_balance_returns_error(self):
         response = self.client.post(
-            reverse("user-withdrawal-list"),
+            reverse("user-transfer-list"),
             {
                 "address": self.target_address,
                 "payment_network": "blockchain",
                 "amount": 10,
-                "token": reverse(
-                    "token-detail",
-                    kwargs=dict(address=self.token.address, chain_id=self.token.chain_id),
-                ),
+                "token": reverse("token-detail", kwargs=dict(pk=self.token.pk)),
             },
         )
         self.assertEqual(response.status_code, 400)
@@ -129,14 +134,14 @@ class TransferViewTestCase(TestCase):
         )
 
         response = self.client.post(
-            reverse("user-withdrawal-list"),
+            reverse("user-transfer-list"),
             {
                 "address": self.target_address,
                 "payment_network": "blockchain",
                 "amount": TRANSFER_AMOUNT,
                 "token": reverse(
                     "token-detail",
-                    kwargs=dict(address=self.token.address, chain_id=self.token.chain_id),
+                    kwargs=dict(pk=self.token.pk),
                 ),
             },
         )
@@ -150,8 +155,9 @@ class TransferViewTestCase(TestCase):
 
 
 __all__ = [
+    "BaseTransferTestCase",
     "TransferManagerTestCase",
-    "TransferTestCase",
+    "TransferModelTestCase",
     "InternalTransferTestCase",
     "TransferViewTestCase",
 ]
