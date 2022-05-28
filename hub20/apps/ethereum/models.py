@@ -41,6 +41,7 @@ from hub20.apps.core.settings import app_settings
 
 from .constants import NULL_ADDRESS
 from .fields import Web3ProviderURLField
+from .typing import Token_T
 
 logger = logging.getLogger(__name__)
 
@@ -365,6 +366,9 @@ class HierarchicalDeterministicWallet(BaseWallet):
 class NativeToken(BaseToken):
     chain = models.OneToOneField(Chain, on_delete=models.CASCADE, related_name="native_token")
 
+    def __str__(self) -> str:
+        return f"{self.name} ({self.symbol}): Native Token @ {self.chain_id}"
+
     @property
     def address(self):
         return NULL_ADDRESS
@@ -380,12 +384,7 @@ class Erc20Token(BaseToken):
     listed = QueryManager(is_listed=True)
 
     def __str__(self) -> str:
-        components = [self.symbol]
-        if self.is_ERC20:
-            components.append(self.address)
-
-        components.append(str(self.chain_id))
-        return " - ".join(components)
+        return f"{self.name} ({self.symbol}): {self.address} @ {self.chain_id}"
 
     @classmethod
     def make(cls, address: str, chain: Chain, **defaults):
@@ -446,6 +445,10 @@ class TransferEvent(TokenValueModel):
 class BlockchainPaymentNetwork(PaymentNetwork):
     chain = models.OneToOneField(Chain, on_delete=models.CASCADE)
 
+    def supports_token(self, token: Token_T):
+
+        return token.chain_id == self.chain_id and token.is_listed
+
 
 # Payments
 class BlockchainRouteQuerySet(PaymentRouteQuerySet):
@@ -492,7 +495,7 @@ class BlockchainRouteQuerySet(PaymentRouteQuerySet):
 
 
 class BlockchainPaymentRoute(PaymentRoute):
-    NETWORK = "blockchain"
+    NETWORK = BlockchainPaymentNetwork
 
     account = models.ForeignKey(
         BaseWallet, on_delete=models.CASCADE, related_name="blockchain_routes"

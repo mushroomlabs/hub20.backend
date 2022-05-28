@@ -1,7 +1,7 @@
 import factory
 from factory import fuzzy
 
-from ..models.tokens import BaseToken, TokenAmount
+from ..models.tokens import BaseToken, StableTokenPair, TokenAmount
 
 
 class BaseTokenFactory(factory.django.DjangoModelFactory):
@@ -26,4 +26,17 @@ class TokenAmountFactory(factory.Factory):
         model = TokenAmount
 
 
-__all__ = ["BaseTokenFactory", "TokenValueModelFactory", "TokenAmountFactory"]
+class StableTokenFactory(factory.django.DjangoModelFactory):
+    token = factory.SubFactory(BaseTokenFactory)
+    currency = factory.Iterator(["USD", "EUR", "GBP"])
+
+    class Meta:
+        model = StableTokenPair
+
+
+__all__ = [
+    "BaseTokenFactory",
+    "TokenValueModelFactory",
+    "TokenAmountFactory",
+    "StableTokenFactory",
+]

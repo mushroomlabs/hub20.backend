@@ -11,7 +11,6 @@ class PaymentOrderFactory(factory.django.DjangoModelFactory):
     user = factory.SubFactory(UserFactory)
     amount = fuzzy.FuzzyDecimal(0, 10, precision=6)
     reference = factory.fuzzy.FuzzyText(length=30, prefix="order-")
-    network = factory.SubFactory(PaymentNetworkFactory, name="Test Deposit Network")
     currency = factory.SubFactory(BaseTokenFactory)
 
     class Meta:

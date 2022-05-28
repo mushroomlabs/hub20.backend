@@ -15,6 +15,7 @@ from ..models import (
     InternalPaymentRoute,
     Payment,
     PaymentConfirmation,
+    PaymentNetwork,
     PaymentOrder,
     PaymentRoute,
     Store,
@@ -26,19 +27,27 @@ PAYMENT_ROUTE_CHOICES = (c.NETWORK for c in PAYMENT_ROUTE_TYPES)
 DEPOSIT_ROUTE_CHOICES = (c.NETWORK for c in PAYMENT_ROUTE_TYPES if c.NETWORK != "internal")
 
 
-class PaymentRouteSerializer(serializers.ModelSerializer):
-    network = serializers.SerializerMethodField()
+class PaymentRouteNetworkSelectorField(serializers.SlugRelatedField):
+    def get_queryset(self):
+        return PaymentNetwork.objects.all().select_subclasses()
 
-    def get_network(self, obj):
-        return obj.network
+
+class PaymentRouteSerializer(serializers.ModelSerializer):
+    network = PaymentRouteNetworkSelectorField(slug_field="type")
 
     class Meta:
         model = PaymentRoute
-        fields = ("id", "identifier", "network", "is_expired", "is_open", "is_used")
-        read_only_fields = ("id", "network", "identifier", "is_expired", "is_open", "is_used")
+        fields = read_only_fields = (
+            "id",
+            "network",
+            "identifier",
+            "is_expired",
+            "is_open",
+            "is_used",
+        )
 
     @staticmethod
-    def get_route_model(network: str):
+    def get_route_model(network: PaymentNetwork):
         """
         Selects the model (subclass) of PaymentRoute model to use
         """
@@ -156,7 +165,7 @@ class DepositRouteSerializer(NestedHyperlinkedModelSerializer, PaymentRouteSeria
         },
     )
     deposit = serializers.HyperlinkedRelatedField(view_name="user-deposit-detail", read_only=True)
-    network = serializers.ChoiceField(choices=list(DEPOSIT_ROUTE_CHOICES))
+    network = PaymentRouteNetworkSelectorField(slug_field="type")
 
     def _get_deposit(self):
         view = self.context["view"]
@@ -164,14 +173,13 @@ class DepositRouteSerializer(NestedHyperlinkedModelSerializer, PaymentRouteSeria
 
     def validate(self, data):
         network = data["network"]
-        route_type = PaymentRouteSerializer.get_route_model(network)
-
         deposit = self._get_deposit()
+        route_type = PaymentRouteSerializer.get_route_model(network)
 
         if route_type.objects.filter(deposit=deposit).available().exists():
             raise serializers.ValidationError(f"Already has valid route for {network} deposits")
 
-        if not route_type.is_usable_for_token(deposit.currency):
+        if not deposit.network.supports_token(deposit.currency):
             raise serializers.ValidationError(
                 f"Can not make {network} deposits with {deposit.currency.name}"
             )

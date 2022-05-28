@@ -13,7 +13,7 @@ from model_utils.managers import InheritanceManager
 from model_utils.models import TimeStampedModel
 
 from ..choices import DEPOSIT_STATUS
-from .networks import PaymentNetwork
+from .networks import InternalPaymentNetwork
 from .tokens import BaseToken, TokenAmountField, TokenValueModel
 
 logger = logging.getLogger(__name__)
@@ -76,7 +76,6 @@ class Deposit(TimeStampedModel):
 
     id = models.UUIDField(default=uuid.uuid4, primary_key=True)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    network = models.ForeignKey(PaymentNetwork, on_delete=models.PROTECT)
     session_key = models.SlugField(null=True)
     currency = models.ForeignKey(BaseToken, on_delete=models.PROTECT)
 
@@ -138,10 +137,6 @@ class PaymentRoute(TimeStampedModel):
     objects = InheritanceManager()
 
     @property
-    def network(self):
-        return self._get_route_network_name()
-
-    @property
     def is_expired(self):
         return False
 
@@ -153,24 +148,13 @@ class PaymentRoute(TimeStampedModel):
     def is_open(self):
         return not self.is_expired
 
-    def _get_route_network_name(self):
-        if not self.NETWORK:
-            route = PaymentRoute.objects.get_subclass(id=self.id)
-            return route.NETWORK
-        return self.NETWORK
-
-    @classmethod
-    def is_usable_for_token(cls, token: BaseToken):
-        return False
-
     @classmethod
     def make(cls, deposit):
         raise NotImplementedError
 
 
 class InternalPaymentRoute(PaymentRoute):
-    NETWORK = "internal"
-
+    NETWORK = InternalPaymentNetwork
     objects = InternalPaymentRouteQuerySet.as_manager()
 
 

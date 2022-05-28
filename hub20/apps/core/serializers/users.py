@@ -3,12 +3,7 @@ from rest_framework import serializers
 
 from ..models import BaseToken
 from .fields import AddressSerializerField
-from .tokens import (
-    HyperlinkedRelatedTokenField,
-    HyperlinkedTokenIdentityField,
-    HyperlinkedTokenMixin,
-    TokenSerializer,
-)
+from .tokens import HyperlinkedRelatedTokenField, TokenSerializer
 
 User = get_user_model()
 
@@ -21,7 +16,7 @@ class UserRelatedField(serializers.SlugRelatedField):
         super().__init__(*args, **kw)
 
 
-class UserTokenSelectorField(HyperlinkedRelatedTokenField, HyperlinkedTokenMixin):
+class UserTokenSelectorField(HyperlinkedRelatedTokenField):
     def get_attribute(self, instance):
         return instance
 
@@ -35,8 +30,8 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 class UserTokenSerializer(TokenSerializer):
-    url = HyperlinkedTokenIdentityField(view_name="user-token-detail")
-    token = HyperlinkedTokenIdentityField(view_name="token-detail", read_only=True)
+    url = serializers.HyperlinkedIdentityField(view_name="user-token-detail")
+    token = serializers.HyperlinkedIdentityField(view_name="token-detail", read_only=True)
     address = AddressSerializerField(read_only=True)
     chain_id = serializers.PrimaryKeyRelatedField(read_only=True)
 
@@ -47,15 +42,13 @@ class UserTokenSerializer(TokenSerializer):
 
 
 class UserTokenCreatorSerializer(serializers.ModelSerializer):
-    url = HyperlinkedTokenIdentityField(view_name="user-token-detail")
-    token = UserTokenSelectorField(view_name="token-detail")
+    url = serializers.HyperlinkedIdentityField(view_name="user-token-detail")
+    token = UserTokenSelectorField(view_name="token-detail", queryset=BaseToken.tradeable.all())
 
     def validate(self, data):
         token = data["token"]
-        if not BaseToken.tradeable.filter(id=token.id).exists():
-            raise serializers.ValidationError(
-                f"Token {token.symbol} on chain #{token.chain_id} is not listed for trade"
-            )
+        if not token.is_listed:
+            raise serializers.ValidationError(f"Token {token} is not listed for trading")
         return data
 
     def create(self, validated_data):

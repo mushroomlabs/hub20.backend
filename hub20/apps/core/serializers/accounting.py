@@ -2,12 +2,7 @@ from rest_framework import serializers
 from rest_framework.reverse import reverse
 
 from ..models import Credit, Debit, PaymentConfirmation, Transfer, TransferConfirmation
-from .tokens import (
-    HyperlinkedTokenIdentityField,
-    HyperlinkedTokenMixin,
-    TokenSerializer,
-    TokenValueField,
-)
+from .tokens import TokenSerializer, TokenValueField
 
 
 class HyperlinkedBalanceIdentityField(serializers.HyperlinkedIdentityField):
@@ -21,7 +16,7 @@ class HyperlinkedBalanceIdentityField(serializers.HyperlinkedIdentityField):
 
 
 class TokenBalanceSerializer(TokenSerializer):
-    token = HyperlinkedTokenIdentityField(view_name="token-detail")
+    token = serializers.HyperlinkedIdentityField(view_name="token-detail")
     amount = TokenValueField(read_only=True, source="balance")
 
     class Meta:
@@ -32,8 +27,8 @@ class TokenBalanceSerializer(TokenSerializer):
         )
 
 
-class HyperlinkedTokenBalanceSerializer(HyperlinkedTokenMixin, TokenBalanceSerializer):
-    url = HyperlinkedTokenIdentityField(view_name="balance-detail")
+class HyperlinkedTokenBalanceSerializer(TokenBalanceSerializer):
+    url = serializers.HyperlinkedIdentityField(view_name="balance-detail")
 
     view_name = "balance-detail"
 
@@ -44,7 +39,7 @@ class HyperlinkedTokenBalanceSerializer(HyperlinkedTokenMixin, TokenBalanceSeria
 
 
 class AccountingBookSerializer(serializers.Serializer):
-    token = HyperlinkedTokenIdentityField(view_name="token-detail", source="*")
+    token = serializers.HyperlinkedIdentityField(view_name="token-detail", source="*")
     total_credit = TokenValueField(read_only=True)
     total_debit = TokenValueField(read_only=True)
     balance = TokenValueField(read_only=True)

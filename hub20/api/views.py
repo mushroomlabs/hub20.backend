@@ -1,4 +1,5 @@
-from django.db.models import Q
+from django.db.models import BooleanField, Case, Q, Value, When
+from django.db.models.query import QuerySet
 from django.http import Http404
 from django_filters import rest_framework as filters
 from rest_framework import status
@@ -9,6 +10,7 @@ from rest_framework.reverse import reverse_lazy
 from rest_framework.views import APIView
 
 from hub20.apps.core.serializers.accounting import HyperlinkedTokenBalanceSerializer
+from hub20.apps.core.serializers.tokens import TokenSerializer
 from hub20.apps.core.views.tokens import BaseTokenFilter, BaseTokenViewSet
 from hub20.apps.ethereum.client import get_estimate_fee, make_web3
 from hub20.apps.ethereum.models import Chain
@@ -32,8 +34,8 @@ class TokenFilter(BaseTokenFilter):
 
     class Meta:
         model = BaseTokenFilter.Meta.model
-        ordering_fields = ("symbol", "chain_id")
-        fields = ("chain_id", "symbol", "native", "stable_tokens", "fiat")
+        ordering_fields = ("symbol",)
+        fields = ("symbol", "native", "stable_tokens", "fiat")
 
 
 class IndexView(APIView):
@@ -76,17 +78,31 @@ class NetworkIndexView(APIView):
 
 
 class TokenBrowserViewSet(BaseTokenViewSet):
-    search_fields = ("name", "=symbol", "chain__name")
-    ordering_fields = ("symbol", "name", "chain_id")
-    ordering = ("-is_native", "chain_id", "symbol")
+    search_fields = ("name", "=symbol", "nativetoken__chain__name", "erc20token__chain__name")
+    ordering_fields = ("symbol", "name")
+    ordering = ("-is_native", "symbol")
 
     def get_serializer_class(self):
         if self.action == "balance":
             return HyperlinkedTokenBalanceSerializer
         elif self.action == "routes":
             return serializers.TokenRouteDescriptorSerializer
+        elif self.action == "retrieve":
+            token_model = type(self.get_object())
+            serializer_classes = TokenSerializer.__subclasses__()
+            return {s.Meta.model: s for s in serializer_classes}.get(token_model, TokenSerializer)
+        else:
+            return super().get_serializer_class()
 
-        return super().get_serializer_class()
+    def get_queryset(self) -> QuerySet:
+        qs = super().get_queryset()
+        return qs.annotate(
+            is_native=Case(
+                When(nativetoken__isnull=False, then=Value(True)),
+                default=Value(False),
+                output_field=BooleanField(),
+            )
+        )
 
     @action(detail=True)
     def transfer_cost(self, request, **kwargs):

@@ -2,10 +2,11 @@ import factory
 
 from hub20.apps.core.factories.tokens import (
     BaseTokenFactory,
+    StableTokenFactory,
     TokenAmountFactory,
     TokenValueModelFactory,
 )
-from hub20.apps.core.models.tokens import StableTokenPair, TokenAmount, WrappedToken
+from hub20.apps.core.models.tokens import TokenAmount, WrappedToken
 
 from ..client import encode_transfer_data
 from ..models import Erc20Token, NativeToken, TransferEvent
@@ -49,12 +50,8 @@ class WrappedTokenFactory(factory.django.DjangoModelFactory):
         model = WrappedToken
 
 
-class StableTokenFactory(factory.django.DjangoModelFactory):
+class Erc20StableTokenFactory(StableTokenFactory):
     token = factory.SubFactory(Erc20TokenFactory)
-    currency = factory.Iterator(["USD", "EUR", "GBP"])
-
-    class Meta:
-        model = StableTokenPair
 
 
 class EtherValueModelFactory(TokenValueModelFactory):
@@ -128,11 +125,11 @@ __all__ = [
     "Erc20TokenFactory",
     "WrappedEtherFactory",
     "WrappedTokenFactory",
-    "StableTokenFactory",
     "EtherValueModelFactory",
     "Erc20TokenValueModelFactory",
     "Erc20TokenAmountFactory",
     "EtherAmountFactory",
+    "Erc20StableTokenFactory",
     "Erc20TransactionDataFactory",
     "Erc20TransactionFactory",
     "Erc20TransferEventFactory",

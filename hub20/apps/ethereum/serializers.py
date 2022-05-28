@@ -78,13 +78,7 @@ class NativeTokenSerializer(TokenSerializer):
 
     class Meta:
         model = NativeToken
-        fields = read_only_fields = (
-            "symbol",
-            "name",
-            "chain_id",
-            "decimals",
-            "logoURI",
-        )
+        fields = read_only_fields = TokenSerializer.Meta.read_only_fields + ("chain_id",)
 
 
 class Erc20TokenSerializer(TokenSerializer):
@@ -93,13 +87,9 @@ class Erc20TokenSerializer(TokenSerializer):
 
     class Meta:
         model = Erc20Token
-        fields = read_only_fields = (
-            "symbol",
-            "name",
-            "address",
+        fields = read_only_fields = TokenSerializer.Meta.read_only_fields + (
             "chain_id",
-            "decimals",
-            "logoURI",
+            "address",
         )
 
 

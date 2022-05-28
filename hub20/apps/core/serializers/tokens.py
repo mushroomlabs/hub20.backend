@@ -1,5 +1,4 @@
 from rest_framework import serializers
-from rest_framework.reverse import reverse
 from taggit.serializers import TaggitSerializer, TagListSerializerField
 
 from .. import models
@@ -12,32 +11,12 @@ class TokenValueField(serializers.DecimalField):
         super().__init__(*args, **kw)
 
 
-class HyperlinkedTokenMixin:
-    def get_queryset(self):
-        return models.BaseToken.tradeable.all()
-
-    def get_url(self, obj, view_name, request, format):
-        url_kwargs = {"chain_id": obj.chain_id, "address": obj.address}
-        return reverse(view_name, kwargs=url_kwargs, request=request, format=format)
-
-    def get_object(self, view_name, view_args, view_kwargs):
-        lookup_kwargs = {"chain_id": view_kwargs["chain_id"], "address": view_kwargs["address"]}
-        queryset = self.get_queryset()
-        return queryset.get(**lookup_kwargs)
-
-
-class HyperlinkedRelatedTokenField(HyperlinkedTokenMixin, serializers.HyperlinkedRelatedField):
+class HyperlinkedRelatedTokenField(serializers.HyperlinkedRelatedField):
     queryset = models.BaseToken.tradeable.all()
     view_name = "token-detail"
 
     def get_attribute(self, instance):
         return getattr(instance, self.source)
-
-
-class HyperlinkedTokenIdentityField(serializers.HyperlinkedIdentityField):
-    def get_url(self, obj, view_name, request, format):
-        url_kwargs = {"chain_id": obj.chain_id, "address": obj.address}
-        return reverse(view_name, kwargs=url_kwargs, request=request, format=format)
 
 
 class TokenSerializer(serializers.ModelSerializer):
@@ -46,6 +25,7 @@ class TokenSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.BaseToken
         fields = read_only_fields = (
+            "url",
             "symbol",
             "name",
             "decimals",
@@ -59,7 +39,7 @@ class TokenAmountSerializer(serializers.ModelSerializer):
 
 
 class HyperlinkedTokenSerializer(TokenSerializer):
-    url = HyperlinkedTokenIdentityField(view_name="token-detail")
+    url = serializers.HyperlinkedIdentityField(view_name="token-detail")
 
     class Meta:
         model = models.BaseToken
@@ -68,7 +48,9 @@ class HyperlinkedTokenSerializer(TokenSerializer):
 
 
 class TokenInfoSerializer(serializers.ModelSerializer):
-    wrapped_by = HyperlinkedTokenIdentityField(view_name="token-detail", read_only=True, many=True)
+    wrapped_by = serializers.HyperlinkedIdentityField(
+        view_name="token-detail", read_only=True, many=True
+    )
     wraps = HyperlinkedRelatedTokenField()
 
     class Meta:

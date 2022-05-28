@@ -11,9 +11,15 @@ class PaymentNetwork(models.Model):
     def type(self):
         return self._meta.label_lower
 
+    def supports_token(self, token) -> bool:
+        return False
+
 
 class InternalPaymentNetwork(PaymentNetwork):
     site = models.OneToOneField(Site, on_delete=models.PROTECT, related_name="treasury")
+
+    def supports_token(self, token) -> bool:
+        return token.is_listed
 
 
 class PaymentNetworkProvider(models.Model):

@@ -246,7 +246,7 @@ class RaidenRouteQuerySet(PaymentRouteQuerySet):
 
 
 class RaidenPaymentRoute(PaymentRoute):
-    NETWORK = "raiden"
+    NETWORK = RaidenPaymentNetwork
 
     payment_window = models.DurationField(default=calculate_raiden_payment_window)
     raiden = models.ForeignKey(Raiden, on_delete=models.CASCADE, related_name="payment_routes")
