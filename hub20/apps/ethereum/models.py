@@ -39,6 +39,7 @@ from hub20.apps.core.models import (
 )
 from hub20.apps.core.settings import app_settings
 
+from . import get_wallet_model
 from .constants import NULL_ADDRESS
 from .fields import Web3ProviderURLField
 from .typing import Token_T
@@ -465,28 +466,25 @@ class BlockchainRouteQuerySet(PaymentRouteQuerySet):
     def in_chain(self, chain_id) -> models.QuerySet:
         return self.filter(deposit__currency__chain__id=chain_id)
 
-    def with_provider(self) -> models.QuerySet:
-        return self.filter(deposit__currency__chain__providers__is_active=True)
-
     def with_expiration(self) -> models.QuerySet:
         return self.annotate(
             start_block=Lower("payment_window"), expiration_block=Upper("payment_window")
         )
 
     def expired(self, block_number: Optional[int] = None) -> models.QuerySet:
-        highest_block = F("deposit__currency__chain__highest_block")
+        highest_block = F("network__blockchainpaymentnetwork__chain__highest_block")
         at_block = block_number if block_number is not None else highest_block
         return self.filter(expiration_block__lt=at_block)
 
     def available(self, block_number: Optional[int] = None) -> models.QuerySet:
-        highest_block = F("deposit__currency__chain__highest_block")
+        highest_block = F("network__blockchainpaymentnetwork__chain__highest_block")
         qs = self.with_expiration()
         at_block = block_number if block_number is not None else highest_block
 
         return qs.filter(start_block__lte=at_block, expiration_block__gte=at_block)
 
     def open(self, block_number: Optional[int] = None) -> models.QuerySet:
-        highest_block = F("deposit__currency__chain__highest_block")
+        highest_block = F("network__blockchainpaymentnetwork__chain__highest_block")
         at_block = block_number if block_number is not None else highest_block
 
         no_defined_amount = Q(deposit__paymentorder__isnull=True)
@@ -543,7 +541,7 @@ class BlockchainPaymentRoute(PaymentRoute):
 
     @classmethod
     def make(cls, deposit):
-        chain = deposit.currency.chain
+        chain = deposit.currency.subclassed.chain
         chain.refresh_from_db()
         if chain.synced:
             payment_window = cls.calculate_payment_window(chain)
@@ -551,7 +549,10 @@ class BlockchainPaymentRoute(PaymentRoute):
             busy_routes = cls.objects.open().filter(deposit__currency=deposit.currency)
             available_accounts = BaseWallet.objects.exclude(blockchain_routes__in=busy_routes)
 
-            account = available_accounts.order_by("?").first() or Wallet.generate()
+            account = available_accounts.order_by("?").first()
+            if not account:
+                Wallet = get_wallet_model()
+                account = Wallet.generate()
 
             return cls.objects.create(
                 account=account, deposit=deposit, payment_window=payment_window

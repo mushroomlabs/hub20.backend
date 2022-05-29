@@ -1,12 +1,12 @@
 from django.apps import AppConfig
 
 
-class Hub20PaymentNetworkConfig(AppConfig):
+class Hub20PaymentNetworkConfig:
     network_name = None
     description = None
 
 
-class Hub20Config(Hub20PaymentNetworkConfig):
+class Hub20Config(AppConfig, Hub20PaymentNetworkConfig):
     name = "hub20.apps.core"
     network_name = "internal"
 

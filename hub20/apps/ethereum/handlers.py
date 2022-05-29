@@ -7,7 +7,7 @@ from django.dispatch import receiver
 
 from hub20.apps.core.models import get_treasury_account
 from hub20.apps.core.models.payments import Deposit, PaymentConfirmation
-from hub20.apps.core.models.stores import Checkout
+from hub20.apps.core.models.store import Checkout
 from hub20.apps.core.settings import app_settings
 from hub20.apps.core.signals import payment_received
 from hub20.apps.core.tasks import (
@@ -51,7 +51,7 @@ def on_chain_created_create_metadata_entry(sender, **kw):
 
 
 def _check_for_blockchain_payment_confirmations(block_number):
-    confirmed_block = block_number - app_settings.Payment.minimum_confirmations
+    confirmed_block = block_number - app_settings.Blockchain.minimum_confirmations
 
     unconfirmed_payments = BlockchainPayment.objects.filter(
         confirmation__isnull=True, transaction__block__number__lte=confirmed_block
@@ -266,7 +266,7 @@ def on_incoming_transfer_mined_move_funds_from_blockchain_to_treasury(sender, **
         currency=amount.currency,
         amount=amount.amount,
     )
-    blockchain_account = transaction.chain.blockchainpaymentnetwork.account
+    blockchain_account = transaction.block.chain.blockchainpaymentnetwork.account
     treasury = get_treasury_account()
 
     blockchain_book = blockchain_account.get_book(token=amount.currency)
@@ -290,7 +290,7 @@ def on_outgoing_transfer_mined_move_funds_from_treasury_to_blockchain(sender, **
         currency=amount.currency,
         amount=amount.amount,
     )
-    blockchain_account = transaction.chain.blockchainpaymentnetwork.account
+    blockchain_account = transaction.block.chain.blockchainpaymentnetwork.account
     treasury = get_treasury_account()
 
     treasury_book = treasury.get_book(token=amount.currency)
@@ -309,7 +309,7 @@ def on_blockchain_transfer_confirmed_move_funds_from_treasury_to_blockchain(send
         transfer = confirmation.transfer
 
         treasury = get_treasury_account()
-        blockchain_account = transaction.chain.blockchainpaymentnetwork.account
+        blockchain_account = transaction.block.chain.blockchainpaymentnetwork.account
 
         blockchain_book = blockchain_account.get_book(token=transfer.currency)
         treasury_book = treasury.get_book(token=transfer.currency)
@@ -337,7 +337,7 @@ def on_blockchain_transfer_confirmed_move_fee_from_sender_to_blockchain(sender, 
         native_token = confirmation.fee.currency
 
         treasury = get_treasury_account()
-        blockchain_account = transaction.chain.blockchainpaymentnetwork.account
+        blockchain_account = transaction.block.chain.blockchainpaymentnetwork.account
 
         blockchain_book = blockchain_account.get_book(token=native_token)
         treasury_book = treasury.get_book(token=native_token)

@@ -13,7 +13,7 @@ from model_utils.managers import InheritanceManager
 from model_utils.models import TimeStampedModel
 
 from ..choices import DEPOSIT_STATUS
-from .networks import InternalPaymentNetwork
+from .networks import InternalPaymentNetwork, PaymentNetwork
 from .tokens import BaseToken, TokenAmountField, TokenValueModel
 
 logger = logging.getLogger(__name__)
@@ -133,6 +133,7 @@ class PaymentOrder(Deposit, TokenValueModel):
 class PaymentRoute(TimeStampedModel):
     id = models.UUIDField(default=uuid.uuid4, primary_key=True)
     deposit = models.ForeignKey(Deposit, on_delete=models.CASCADE, related_name="routes")
+    network = models.ForeignKey(PaymentNetwork, on_delete=models.CASCADE, related_name="routes")
     identifier = models.BigIntegerField(default=generate_payment_route_id, unique=True)
     objects = InheritanceManager()
 

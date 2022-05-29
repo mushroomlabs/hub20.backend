@@ -258,7 +258,7 @@ async def test_checkout_receives_confirmation_notification(
     assert ok, "Failed to connect"
 
     tx_block_number = erc20_blockchain_checkout_payment.transaction.block.number
-    confirmation_block_number = tx_block_number + app_settings.Payment.minimum_confirmations
+    confirmation_block_number = tx_block_number + app_settings.Blockchain.minimum_confirmations
 
     block = await sync_to_async(BlockFactory)(number=confirmation_block_number)
     block.chain.highest_block = confirmation_block_number

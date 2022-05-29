@@ -57,7 +57,7 @@ class BlockchainPaymentTestCase(TestCase):
     def test_user_balance_is_updated_on_completed_payment(self):
         tx = add_token_to_account(self.blockchain_route.account, self.order.as_token_amount)
 
-        block_number = tx.block.number + app_settings.Payment.minimum_confirmations
+        block_number = tx.block.number + app_settings.Blockchain.minimum_confirmations
         block_data = BlockMock(number=block_number)
         block_sealed.send(sender=Block, chain_id=tx.block.chain_id, block_data=block_data)
 

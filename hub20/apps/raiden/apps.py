@@ -1,7 +1,9 @@
+from django.apps import AppConfig
+
 from hub20.apps.core.apps import Hub20PaymentNetworkConfig
 
 
-class RaidenConfig(Hub20PaymentNetworkConfig):
+class RaidenConfig(AppConfig, Hub20PaymentNetworkConfig):
     name = "hub20.apps.raiden"
 
     network_name = "raiden"
