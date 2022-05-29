@@ -31,7 +31,7 @@ class HDWalletFactory(BaseWalletFactory):
         model = HierarchicalDeterministicWallet
 
 
-class WalletBalanceRecordFactory(Erc20TokenAmountFactory):
+class WalletBalanceRecordFactory(factory.django.DjangoModelFactory, Erc20TokenAmountFactory):
     wallet = factory.SubFactory(BaseWalletFactory)
     block = factory.SubFactory(BlockFactory)
 

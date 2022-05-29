@@ -22,4 +22,11 @@ class InternalTransferFactory(TransferFactory):
         model = models.InternalTransfer
 
 
-__all__ = ["TransferFactory", "InternalTransferFactory"]
+class TransferConfirmationFactory(factory.django.DjangoModelFactory):
+    transfer = factory.SubFactory(TransferFactory)
+
+    class Meta:
+        model = models.TransferConfirmation
+
+
+__all__ = ["TransferFactory", "InternalTransferFactory", "TransferConfirmationFactory"]

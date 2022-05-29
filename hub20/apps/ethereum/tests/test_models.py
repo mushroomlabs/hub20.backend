@@ -6,30 +6,35 @@ from django.test import TestCase
 from eth_utils import is_checksum_address
 
 from hub20.apps.core.choices import TRANSFER_STATUS
-from hub20.apps.core.factories import PaymentOrderFactory
-from hub20.apps.core.models import PaymentNetwork, PaymentNetworkAccount
+from hub20.apps.core.factories import InternalPaymentNetworkFactory, PaymentOrderFactory
+from hub20.apps.core.models.accounting import PaymentNetworkAccount
 from hub20.apps.core.settings import app_settings
 from hub20.apps.core.tests import AccountingTestCase, TransferModelTestCase
 
 from ..client.web3 import Web3Client
 from ..factories import (
     BaseWalletFactory,
+    BlockchainTransferConfirmationFactory,
     BlockchainTransferFactory,
     Erc20TokenFactory,
+    Erc20TokenPaymentConfirmationFactory,
     Erc20TransactionDataFactory,
     Erc20TransactionFactory,
     Erc20TransferEventFactory,
+    EtherAmountFactory,
+    EtherPaymentConfirmationFactory,
     WalletBalanceRecordFactory,
 )
-from ..models import Block, BlockchainPayment, BlockchainPaymentRoute, Transaction
-from ..signals import block_sealed, outgoing_transfer_mined
+from ..models import Block, BlockchainPayment, BlockchainPaymentRoute
+from ..signals import block_sealed
 from .mocks import BlockMock
 from .utils import add_eth_to_account, add_token_to_account
 
 
 class BlockchainPaymentTestCase(TestCase):
     def setUp(self):
-        self.order = PaymentOrderFactory()
+        InternalPaymentNetworkFactory()
+        self.order = PaymentOrderFactory(currency=Erc20TokenFactory())
         self.blockchain_route = BlockchainPaymentRoute.make(deposit=self.order)
         self.chain = self.blockchain_route.chain
 
@@ -68,6 +73,14 @@ class BlockchainPaymentTestCase(TestCase):
 class BlockchainTransferTestCase(TransferModelTestCase):
     def setUp(self):
         super().setUp()
+        confirmation = Erc20TokenPaymentConfirmationFactory(
+            payment__route__deposit__user=self.sender,
+        )
+        self.credit = confirmation.payment.as_token_amount
+
+        self.fee_amount = EtherAmountFactory()
+
+        self.wallet = BaseWalletFactory()
         add_token_to_account(self.wallet, self.credit)
         add_eth_to_account(self.wallet, self.fee_amount)
 
@@ -101,8 +114,13 @@ class BlockchainTransferTestCase(TransferModelTestCase):
 class Web3AccountingTestCase(AccountingTestCase):
     def setUp(self):
         super().setUp()
-        self.treasury = PaymentNetworkAccount.make(PaymentNetwork._meta.app_label)
-        self.blockchain_account = PaymentNetworkAccount.make(Block._meta.app_label)
+        self.wallet = BaseWalletFactory()
+        self.treasury = PaymentNetworkAccount.make(network=self.hub)
+        payment_confirmation = EtherPaymentConfirmationFactory()
+        self.blockchain_account = PaymentNetworkAccount.make(
+            network=payment_confirmation.payment.route.network.blockchainpaymentnetwork
+        )
+        self.credit = payment_confirmation.payment.as_token_amount
 
     @patch.object(Web3Client, "select_for_transfer")
     @patch.object(Web3Client, "transfer")
@@ -110,7 +128,7 @@ class Web3AccountingTestCase(AccountingTestCase):
         self, web3_execute_transfer, select_for_transfer
     ):
         transfer = BlockchainTransferFactory(
-            sender=self.sender, currency=self.credit.currency, amount=self.credit.amount
+            sender=self.user, currency=self.credit.currency, amount=self.credit.amount
         )
 
         payout_tx_data = Erc20TransactionDataFactory(
@@ -124,13 +142,7 @@ class Web3AccountingTestCase(AccountingTestCase):
 
         transfer.execute()
 
-        # Transfer is executed, now we generate the transaction to get
-        # the confirmation
-
-        # TODO: make a more robust method to test mined transaction,
-        # without relying on the knowledge from
-        # outgoing_transfer_mined.
-
+        # Transfer is executed, now we generate the transaction to create confirmation
         payout_tx = Erc20TransactionFactory(
             hash=payout_tx_data.hash,
             amount=transfer.as_token_amount,
@@ -139,16 +151,9 @@ class Web3AccountingTestCase(AccountingTestCase):
         )
 
         self.wallet.transactions.add(payout_tx)
-        outgoing_transfer_mined.send(
-            sender=Transaction,
-            account=self.wallet,
-            transaction=payout_tx,
-            amount=transfer.as_token_amount,
-            address=transfer.address,
-        )
+        BlockchainTransferConfirmationFactory(transfer=transfer, transaction=payout_tx)
 
-        transaction = transfer.confirmation.blockchaintransferconfirmation.transaction
-        transaction_type = ContentType.objects.get_for_model(transaction)
+        transaction_type = ContentType.objects.get_for_model(payout_tx)
 
         blockchain_credit = self.blockchain_account.credits.filter(
             reference_type=transaction_type
@@ -162,7 +167,7 @@ class Web3AccountingTestCase(AccountingTestCase):
 
     def test_blockchain_transfers_create_fee_entries(self):
         transfer = BlockchainTransferFactory(
-            sender=self.sender, currency=self.credit.currency, amount=self.credit.amount
+            sender=self.user, currency=self.credit.currency, amount=self.credit.amount
         )
 
         with patch.object(Web3Client, "select_for_transfer") as select:
@@ -183,24 +188,18 @@ class Web3AccountingTestCase(AccountingTestCase):
             from_address=self.wallet.address,
         )
 
-        outgoing_transfer_mined.send(
-            sender=Transaction,
-            account=self.wallet,
-            amount=transfer.as_token_amount,
-            address=transfer.address,
-            transaction=payout_tx,
-        )
+        BlockchainTransferConfirmationFactory(transfer=transfer, transaction=payout_tx)
 
         self.assertTrue(hasattr(transfer, "confirmation"))
         self.assertTrue(hasattr(transfer.confirmation, "blockchaintransferconfirmation"))
 
-        transaction = transfer.confirmation.blockchaintransferconfirmation.transaction
-        transaction_type = ContentType.objects.get_for_model(transaction)
-        native_token = transfer.confirmation.blockchaintransferconfirmation.fee.currency
+        transaction_fee = transfer.confirmation.blockchaintransferconfirmation.transaction.fee
+        transaction_fee_type = ContentType.objects.get_for_model(transaction_fee)
+        native_token = transaction_fee.currency
 
         sender_book = transfer.sender.account.get_book(token=native_token)
 
-        entry_filters = dict(reference_type=transaction_type, reference_id=transaction.id)
+        entry_filters = dict(reference_type=transaction_fee_type, reference_id=transaction_fee.id)
 
         self.assertIsNotNone(sender_book.debits.filter(**entry_filters).last())
         self.assertIsNotNone(self.blockchain_account.credits.filter(**entry_filters).last())

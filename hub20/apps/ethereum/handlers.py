@@ -30,24 +30,11 @@ from .models import (
     ChainMetadata,
     Transaction,
     TransactionDataRecord,
+    TransactionFee,
+    serialize_web3_data,
 )
 
 logger = logging.getLogger(__name__)
-
-
-@receiver(post_save, sender=Chain)
-def on_chain_created_register_payment_network(sender, **kw):
-    chain = kw["instance"]
-    if kw["created"]:
-        BlockchainPaymentNetwork.objects.update_or_create(
-            chain=chain, defaults={"name": chain.name}
-        )
-
-
-@receiver(post_save, sender=Chain)
-def on_chain_created_create_metadata_entry(sender, **kw):
-    if kw["created"]:
-        ChainMetadata.objects.get_or_create(chain=kw["instance"])
 
 
 def _check_for_blockchain_payment_confirmations(block_number):
@@ -65,7 +52,7 @@ def _publish_block_created_event(chain_id, block_data):
     block_number = block_data.get("number")
     routes = BlockchainPaymentRoute.objects.in_chain(chain_id).open(block_number=block_number)
 
-    notify_block_created.delay(chain_id, block_data)
+    notify_block_created.delay(chain_id, serialize_web3_data(block_data))
 
     for checkout in Checkout.objects.filter(order__routes__in=routes):
         logger.debug(
@@ -77,6 +64,21 @@ def _publish_block_created_event(chain_id, block_data):
             block=block_number,
             chain_id=chain_id,
         )
+
+
+@receiver(post_save, sender=Chain)
+def on_chain_created_register_payment_network(sender, **kw):
+    chain = kw["instance"]
+    if kw["created"]:
+        BlockchainPaymentNetwork.objects.update_or_create(
+            chain=chain, defaults={"name": chain.name}
+        )
+
+
+@receiver(post_save, sender=Chain)
+def on_chain_created_create_metadata_entry(sender, **kw):
+    if kw["created"]:
+        ChainMetadata.objects.get_or_create(chain=kw["instance"])
 
 
 @receiver(post_save, sender=Chain)
@@ -193,6 +195,16 @@ def on_incoming_transfer_broadcast_send_notification_to_open_checkouts(sender, *
             amount=str(payment_amount.amount),
             token=payment_amount.currency.address,
             transaction=tx_data.hash.hex(),
+        )
+
+
+@receiver(post_save, sender=Transaction)
+def on_transaction_created_record_fee(sender, **kw):
+    if kw["created"]:
+        transaction = kw["instance"]
+        fee = transaction.block.chain.native_token.from_wei(transaction.gas_fee)
+        TransactionFee.objects.create(
+            transaction=transaction, amount=fee.amount, currency=fee.currency
         )
 
 
@@ -332,9 +344,7 @@ def on_blockchain_transfer_confirmed_move_fee_from_sender_to_blockchain(sender, 
     if kw["created"]:
         confirmation = kw["instance"]
         transaction = confirmation.transaction
-
-        fee = confirmation.fee
-        native_token = confirmation.fee.currency
+        native_token = transaction.fee.currency
 
         treasury = get_treasury_account()
         blockchain_account = transaction.block.chain.blockchainpaymentnetwork.account
@@ -343,12 +353,12 @@ def on_blockchain_transfer_confirmed_move_fee_from_sender_to_blockchain(sender, 
         treasury_book = treasury.get_book(token=native_token)
         sender_book = confirmation.transfer.sender.account.get_book(token=native_token)
 
-        transaction_type = ContentType.objects.get_for_model(transaction)
+        transaction_fee_type = ContentType.objects.get_for_model(TransactionFee)
         params = dict(
-            reference_type=transaction_type,
-            reference_id=transaction.id,
+            reference_type=transaction_fee_type,
+            reference_id=transaction.fee.id,
             currency=native_token,
-            amount=fee.amount,
+            amount=transaction.fee.amount,
         )
 
         # All transfers from users are mediated by the treasury account
@@ -371,6 +381,7 @@ __all__ = [
     "on_incoming_transfer_broadcast_send_notification_to_open_checkouts",
     "on_block_sealed_publish_block_created_event",
     "on_block_sealed_check_confirmed_payments",
+    "on_transaction_created_record_fee",
     "on_block_created_check_confirmed_payments",
     "on_block_added_publish_expired_blockchain_routes",
     "on_blockchain_transfer_mined_record_confirmation",

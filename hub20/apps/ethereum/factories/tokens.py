@@ -6,7 +6,7 @@ from hub20.apps.core.factories.tokens import (
     TokenAmountFactory,
     TokenValueModelFactory,
 )
-from hub20.apps.core.models.tokens import TokenAmount, WrappedToken
+from hub20.apps.core.models.tokens import WrappedToken
 
 from ..client import encode_transfer_data
 from ..models import Erc20Token, NativeToken, TransferEvent
@@ -31,7 +31,7 @@ class Erc20TokenFactory(BaseTokenFactory):
 
     class Meta:
         model = Erc20Token
-        django_get_or_create = ("chain",)
+        django_get_or_create = ("chain", "address")
 
 
 class WrappedEtherFactory(factory.django.DjangoModelFactory):
@@ -65,9 +65,6 @@ class Erc20TokenValueModelFactory(TokenValueModelFactory):
 class Erc20TokenAmountFactory(TokenAmountFactory):
     currency = factory.SubFactory(Erc20TokenFactory)
 
-    class Meta:
-        model = TokenAmount
-
 
 class EtherAmountFactory(TokenAmountFactory):
     currency = factory.SubFactory(EtherFactory)
@@ -90,14 +87,14 @@ class Erc20TransactionDataFactory(TransactionDataFactory):
         recipient = factory.Faker("ethereum_address")
         gas_used = factory.fuzzy.FuzzyInteger(50000, 200000)
         amount = factory.SubFactory(Erc20TokenAmountFactory)
-        to_address = factory.LazyAttribute(lambda obj: obj.amount.currency.address)
+        to_address = factory.LazyAttribute(lambda obj: obj.amount.currency.subclassed.address)
 
 
 class Erc20TransactionFactory(TransactionFactory):
     class Params:
         recipient = factory.Faker("ethereum_address")
         amount = factory.SubFactory(Erc20TokenAmountFactory)
-        to_address = factory.LazyAttribute(lambda obj: obj.amount.currency.address)
+        to_address = factory.LazyAttribute(lambda obj: obj.amount.currency.subclassed.address)
 
 
 class Erc20TransferEventFactory(factory.django.DjangoModelFactory):

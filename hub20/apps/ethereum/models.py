@@ -3,6 +3,7 @@ import functools
 import json
 import logging
 import os
+import uuid
 from typing import Optional
 from urllib.parse import urlparse
 
@@ -156,6 +157,7 @@ class Block(models.Model):
 
 
 class AbstractTransactionRecord(models.Model):
+    id = models.UUIDField(default=uuid.uuid4, primary_key=True)
     hash = HexField(max_length=64, db_index=True)
     from_address = EthereumAddressField(db_index=True)
     to_address = EthereumAddressField(db_index=True)
@@ -452,6 +454,12 @@ class TransferEvent(TokenValueModel):
         ordering = ("transaction", "log_index")
 
 
+# Accounting
+class TransactionFee(TokenValueModel):
+    id = models.UUIDField(default=uuid.uuid4, primary_key=True)
+    transaction = models.OneToOneField(Transaction, on_delete=models.CASCADE, related_name="fee")
+
+
 # Payment Network
 class BlockchainPaymentNetwork(PaymentNetwork):
     chain = models.OneToOneField(Chain, on_delete=models.CASCADE)
@@ -464,7 +472,7 @@ class BlockchainPaymentNetwork(PaymentNetwork):
 # Payments
 class BlockchainRouteQuerySet(PaymentRouteQuerySet):
     def in_chain(self, chain_id) -> models.QuerySet:
-        return self.filter(deposit__currency__chain__id=chain_id)
+        return self.filter(network__blockchainpaymentnetwork__chain_id=chain_id)
 
     def with_expiration(self) -> models.QuerySet:
         return self.annotate(
@@ -513,7 +521,7 @@ class BlockchainPaymentRoute(PaymentRoute):
 
     @property
     def chain(self):
-        return self.deposit.currency.chain
+        return self.network.blockchainpaymentnetwork.chain
 
     @property
     def start_block_number(self):
@@ -542,6 +550,7 @@ class BlockchainPaymentRoute(PaymentRoute):
     @classmethod
     def make(cls, deposit):
         chain = deposit.currency.subclassed.chain
+
         chain.refresh_from_db()
         if chain.synced:
             payment_window = cls.calculate_payment_window(chain)
@@ -555,7 +564,10 @@ class BlockchainPaymentRoute(PaymentRoute):
                 account = Wallet.generate()
 
             return cls.objects.create(
-                account=account, deposit=deposit, payment_window=payment_window
+                network=chain.blockchainpaymentnetwork,
+                account=account,
+                deposit=deposit,
+                payment_window=payment_window,
             )
         else:
             raise RoutingError("Failed to create blockchain route. Chain data not synced")
@@ -609,6 +621,7 @@ __all__ = [
     "TransferEvent",
     "NativeToken",
     "Erc20Token",
+    "TransactionFee",
     "BaseWallet",
     "ColdWallet",
     "KeystoreAccount",

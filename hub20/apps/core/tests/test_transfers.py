@@ -46,14 +46,16 @@ class TransferModelTestCase(BaseTransferTestCase):
         self.sender = self.sender_account.user
         self.receiver = self.receiver_account.user
 
-        self.deposit = PaymentConfirmationFactory(
+
+class InternalTransferTestCase(TransferModelTestCase):
+    def setUp(self):
+        super().setUp()
+        confirmation = PaymentConfirmationFactory(
             payment__route__deposit__user=self.sender,
         )
 
-        self.credit = self.deposit.payment.as_token_amount
+        self.credit = confirmation.payment.as_token_amount
 
-
-class InternalTransferTestCase(TransferModelTestCase):
     def test_transfers_are_finalized_as_confirmed(self):
         transfer = InternalTransferFactory(
             sender=self.sender,

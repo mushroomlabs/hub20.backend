@@ -32,7 +32,7 @@ class BaseToken(models.Model):
     tradeable = TradeableTokenManager(is_listed=True)
 
     def from_wei(self, wei_amount: Wei) -> TokenAmount:
-        value = TokenAmount(wei_amount) / (10**self.decimals)
+        value = Decimal(wei_amount) / (10**self.decimals)
         return TokenAmount(amount=value, currency=self)
 
     @property

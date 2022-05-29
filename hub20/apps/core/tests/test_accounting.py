@@ -19,14 +19,14 @@ class AccountingTestCase(TestCase):
         self.user_account = UserAccountFactory()
         self.user = self.user_account.user
 
-        self.payment_confirmation = PaymentConfirmationFactory(
-            payment__route__deposit__user=self.user
-        )
-
-        self.credit = self.payment_confirmation.payment.as_token_amount
-
 
 class InternalAccountingTestCase(AccountingTestCase):
+    def setUp(self):
+        super().setUp()
+        confirmation = PaymentConfirmationFactory(payment__route__deposit__user=self.user)
+
+        self.credit = confirmation.payment.as_token_amount
+
     def test_cancelled_transfer_generate_refunds(self):
         receiver_account = UserAccountFactory()
         transfer = InternalTransferFactory(
@@ -53,6 +53,7 @@ class TokenBalanceViewTestCase(AccountingTestCase):
         super().setUp()
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
+        self.confirmation = PaymentConfirmationFactory(payment__route__deposit__user=self.user)
 
     def test_balance_list_includes_token(self):
         response = self.client.get(reverse("balance-list"))
@@ -60,8 +61,9 @@ class TokenBalanceViewTestCase(AccountingTestCase):
         self.assertEqual(len(response.data), 1)
 
     def test_balance_view(self):
-        token = self.payment_confirmation.payment.currency
-        amount = self.payment_confirmation.payment.amount
+
+        token = self.confirmation.payment.currency
+        amount = self.confirmation.payment.amount
         response = self.client.get(reverse("balance-detail", kwargs={"pk": token.id}))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(Decimal(response.data["amount"]), amount)
