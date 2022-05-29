@@ -27,6 +27,7 @@ from .models import (
     Block,
     BlockchainPaymentRoute,
     Chain,
+    Erc20Token,
     EventIndexer,
     Transaction,
     TransactionDataRecord,
@@ -357,7 +358,7 @@ def record_account_transactions(chain_id, block_data, provider_url):
 @shared_task
 def record_token_transfers(chain_id, wallet_address, event_data, provider_url):
     token_address = event_data.address
-    token = BaseToken.objects.filter(chain_id=chain_id, address=token_address).first()
+    token = Erc20Token.objects.filter(chain_id=chain_id, address=token_address).first()
 
     if not token:
         return
