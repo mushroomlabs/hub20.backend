@@ -12,6 +12,7 @@ from model_utils.managers import InheritanceManager
 from model_utils.models import TimeStampedModel
 
 from ..choices import DEPOSIT_STATUS
+from ..exceptions import RoutingError
 from .base import BaseModel
 from .networks import InternalPaymentNetwork, PaymentNetwork
 from .tokens import BaseToken, TokenAmountField, TokenValueModel
@@ -146,6 +147,14 @@ class PaymentRoute(BaseModel, TimeStampedModel):
     @property
     def is_open(self):
         return not self.is_expired
+
+    @staticmethod
+    def find_route_model(network):
+        network_type = type(network)
+        try:
+            return [rt for rt in PaymentRoute.__subclasses__() if rt.NETWORK == network_type].pop()
+        except IndexError:
+            raise RoutingError(f"Could not find route model for {network.type} payment network")
 
     @classmethod
     def make(cls, deposit):

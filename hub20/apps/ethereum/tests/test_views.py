@@ -11,7 +11,8 @@ class CheckoutRoutesViewTestCase(TestCase):
         self.network = BlockchainPaymentNetwork.objects.get(
             chain=self.checkout.order.currency.chain
         )
-        self.post_data = {"network": self.network.type}
+        network_url = reverse("network-detail", kwargs={"pk": self.network.pk})
+        self.post_data = {"network": network_url}
         self.url = reverse("checkout-routes-list", kwargs={"checkout_pk": self.checkout.pk})
 
     def test_can_add_route(self):

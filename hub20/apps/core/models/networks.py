@@ -17,6 +17,9 @@ class PaymentNetwork(BaseModel):
     def supports_token(self, token) -> bool:
         return False
 
+    class Meta:
+        ordering = ("name",)
+
 
 class InternalPaymentNetwork(PaymentNetwork):
     site = models.OneToOneField(Site, on_delete=models.PROTECT, related_name="treasury")
