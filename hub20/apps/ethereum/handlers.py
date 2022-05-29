@@ -6,8 +6,8 @@ from django.db.transaction import atomic
 from django.dispatch import receiver
 
 from hub20.apps.core.models import get_treasury_account
+from hub20.apps.core.models.checkout import Checkout
 from hub20.apps.core.models.payments import Deposit, PaymentConfirmation
-from hub20.apps.core.models.store import Checkout
 from hub20.apps.core.settings import app_settings
 from hub20.apps.core.signals import payment_received
 from hub20.apps.core.tasks import (
