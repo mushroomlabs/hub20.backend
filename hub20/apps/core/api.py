@@ -13,6 +13,7 @@ class UUIDRouter(SimpleRouter):
 
 
 router = SimpleRouter(trailing_slash=False)
+router.register("networks", views.PaymentNetworkViewSet, basename="network")
 router.register("checkout", views.CheckoutViewSet, basename="checkout")
 router.register("payments", views.PaymentViewSet, basename="payments")
 router.register("tokenlists", views.TokenListViewSet, basename="tokenlist")

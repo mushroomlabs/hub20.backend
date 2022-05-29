@@ -2,7 +2,7 @@ import logging
 from typing import Optional
 
 from django.conf import settings
-from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
+from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -11,6 +11,7 @@ from django.db.models.functions import Coalesce
 from django.db.models.query import QuerySet
 from model_utils.models import TimeStampedModel
 
+from .base import BaseModel
 from .networks import PaymentNetwork
 from .tokens import BaseToken, TokenAmount, TokenAmountField, TokenValueModel
 
@@ -35,17 +36,11 @@ class DoubleEntryAccountModelQuerySet(models.QuerySet):
         )
 
 
-class Book(models.Model):
+class Book(BaseModel):
     token = models.ForeignKey(BaseToken, on_delete=models.PROTECT, related_name="books")
-    owner_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
-    owner_id = models.PositiveIntegerField()
-    owner = GenericForeignKey("owner_type", "owner_id")
-
-    class Meta:
-        unique_together = ("token", "owner_type", "owner_id")
 
 
-class BookEntry(TimeStampedModel, TokenValueModel):
+class BookEntry(BaseModel, TimeStampedModel, TokenValueModel):
     book = models.ForeignKey(Book, on_delete=models.CASCADE, related_name="entries")
     reference_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
     reference_id = models.UUIDField()
@@ -59,6 +54,7 @@ class BookEntry(TimeStampedModel, TokenValueModel):
 
     class Meta:
         abstract = True
+        ordering = ("created",)
         unique_together = ("book", "reference_type", "reference_id")
 
 
@@ -70,9 +66,8 @@ class Debit(BookEntry):
     book = models.ForeignKey(Book, on_delete=models.CASCADE, related_name="debits")
 
 
-class DoubleEntryAccountModel(models.Model):
+class DoubleEntryAccountModel(BaseModel):
     book_relation_attr: Optional[str] = None
-    token_balance_relation_attr: Optional[str] = None
     objects = DoubleEntryAccountModelQuerySet.as_manager()
 
     @property
@@ -200,41 +195,45 @@ class DoubleEntryAccountModel(models.Model):
 # All of these operations are now defined at the handlers.accounting module.
 #
 #############################################################################
+
+
+class PaymentNetworkBook(Book):
+    network = models.ForeignKey(PaymentNetwork, on_delete=models.CASCADE, related_name="books")
+
+
+class UserBook(Book):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="books"
+    )
+
+
 class PaymentNetworkAccount(DoubleEntryAccountModel):
+    book_relation_attr = "book__paymentnetworkbook__network__account"
 
-    book_relation_attr = "book__network"
-    token_balance_relation_attr = "books__network"
-
-    payment_network = models.OneToOneField(
+    network = models.OneToOneField(
         PaymentNetwork, on_delete=models.CASCADE, related_name="account"
     )
 
-    books = GenericRelation(
-        Book,
-        content_type_field="owner_type",
-        object_id_field="owner_id",
-        related_query_name="network",
-    )
+    @property
+    def books(self):
+        return self.network.books
 
     @classmethod
     def make(cls, network):
-        account, _ = cls.objects.get_or_create(payment_network=network)
+        account, _ = cls.objects.get_or_create(network=network)
         return account
 
 
 class UserAccount(DoubleEntryAccountModel):
-    book_relation_attr = "book__account"
-    token_balance_relation_attr = "books__account"
+    book_relation_attr = "book__userbook__user__account"
 
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="account"
     )
-    books = GenericRelation(
-        Book,
-        content_type_field="owner_type",
-        object_id_field="owner_id",
-        related_query_name="account",
-    )
+
+    @property
+    def books(self):
+        return self.user.books
 
 
 __all__ = [

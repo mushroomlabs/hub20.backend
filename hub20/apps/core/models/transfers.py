@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import uuid
 
 from django.conf import settings
 from django.db import models
@@ -12,6 +11,7 @@ from hub20.apps.core.choices import TRANSFER_STATUS
 from hub20.apps.core.models.tokens import TokenValueModel
 
 from ..exceptions import TransferError
+from .base import BaseModel
 from .networks import PaymentNetwork
 
 logger = logging.getLogger(__name__)
@@ -25,8 +25,7 @@ class TransferStatusQueryManager(InheritanceManagerMixin, QueryManagerMixin, mod
         return qs
 
 
-class Transfer(TimeStampedModel, TokenValueModel):
-    id = models.UUIDField(default=uuid.uuid4, primary_key=True)
+class Transfer(BaseModel, TimeStampedModel, TokenValueModel):
     sender = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="transfers_sent"
     )
@@ -121,22 +120,22 @@ class InternalTransfer(Transfer):
         TransferConfirmation.objects.create(transfer=self)
 
 
-class TransferReceipt(TimeStampedModel):
+class TransferReceipt(BaseModel, TimeStampedModel):
     transfer = models.OneToOneField(Transfer, on_delete=models.CASCADE, related_name="receipt")
 
 
-class TransferConfirmation(TimeStampedModel):
+class TransferConfirmation(BaseModel, TimeStampedModel):
     transfer = models.OneToOneField(
         Transfer, on_delete=models.CASCADE, related_name="confirmation"
     )
     objects = InheritanceManager()
 
 
-class TransferFailure(TimeStampedModel):
+class TransferFailure(BaseModel, TimeStampedModel):
     transfer = models.OneToOneField(Transfer, on_delete=models.CASCADE, related_name="failure")
 
 
-class TransferCancellation(TimeStampedModel):
+class TransferCancellation(BaseModel, TimeStampedModel):
     transfer = models.OneToOneField(
         Transfer, on_delete=models.CASCADE, related_name="cancellation"
     )

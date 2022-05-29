@@ -28,7 +28,7 @@ def on_payment_network_created_create_account(sender, **kw):
 
     network = kw["instance"]
     if kw["created"]:
-        PaymentNetworkAccount.objects.get_or_create(payment_network=network)
+        PaymentNetworkAccount.objects.get_or_create(network=network)
 
 
 @receiver(post_save, sender=Site)

@@ -11,14 +11,16 @@ from .tokens import Erc20TokenFactory, EtherFactory
 from .wallets import BaseWalletFactory
 
 
-class BlockchainPaymentOrderFactory(PaymentOrderFactory):
+class EtherPaymentOrderFactory(PaymentOrderFactory):
+    currency = factory.SubFactory(EtherFactory)
+
+
+class Erc20TokenPaymentOrderFactory(PaymentOrderFactory):
     currency = factory.SubFactory(Erc20TokenFactory)
 
 
 class EtherBlockchainPaymentRouteFactory(PaymentRouteFactory):
-    deposit = factory.SubFactory(
-        BlockchainPaymentOrderFactory, currency=factory.SubFactory(EtherFactory)
-    )
+    deposit = factory.SubFactory(EtherPaymentOrderFactory)
     network = factory.SubFactory(
         BlockchainPaymentNetworkFactory, chain=factory.SelfAttribute("..deposit.currency.chain")
     )
@@ -36,9 +38,7 @@ class EtherBlockchainPaymentRouteFactory(PaymentRouteFactory):
 
 
 class Erc20TokenBlockchainPaymentRouteFactory(EtherBlockchainPaymentRouteFactory):
-    deposit = factory.SubFactory(
-        BlockchainPaymentOrderFactory, currency=factory.SubFactory(Erc20TokenFactory)
-    )
+    deposit = factory.SubFactory(Erc20TokenPaymentOrderFactory)
 
 
 class EtherBlockchainPaymentFactory(factory.django.DjangoModelFactory):
@@ -67,9 +67,11 @@ class Erc20TokenPaymentConfirmationFactory(EtherPaymentConfirmationFactory):
 
 
 __all__ = [
+    "Erc20TokenPaymentOrderFactory",
     "Erc20TokenBlockchainPaymentRouteFactory",
     "Erc20TokenBlockchainPaymentFactory",
     "Erc20TokenPaymentConfirmationFactory",
+    "EtherPaymentOrderFactory",
     "EtherBlockchainPaymentRouteFactory",
     "EtherBlockchainPaymentFactory",
     "EtherPaymentConfirmationFactory",

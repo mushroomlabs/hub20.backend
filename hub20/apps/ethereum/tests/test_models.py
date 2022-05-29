@@ -14,6 +14,7 @@ from hub20.apps.core.tests import AccountingTestCase, TransferModelTestCase
 from ..client.web3 import Web3Client
 from ..factories import (
     BaseWalletFactory,
+    BlockchainPaymentNetworkFactory,
     BlockchainTransferConfirmationFactory,
     BlockchainTransferFactory,
     Erc20TokenFactory,
@@ -251,7 +252,14 @@ class WalletTestCase(TestCase):
         self.assertTrue(updated_third in self.wallet.balances)
 
 
+class BlockchainPaymentNetworkTestCase(TestCase):
+    def test_payment_network_has_correct_type(self):
+        network = BlockchainPaymentNetworkFactory()
+        self.assertEqual(network.type, "ethereum")
+
+
 __all__ = [
+    "BlockchainPaymentNetworkTestCase",
     "BlockchainPaymentTestCase",
     "BlockchainTransferTestCase",
     "Web3AccountingTestCase",

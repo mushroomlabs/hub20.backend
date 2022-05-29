@@ -2,14 +2,17 @@ from django.contrib.sites.models import Site
 from django.db import models
 from model_utils.managers import InheritanceManager, QueryManager
 
+from .base import BaseModel
 
-class PaymentNetwork(models.Model):
+
+class PaymentNetwork(BaseModel):
     name = models.CharField(max_length=300, unique=True)
     description = models.TextField(null=True)
+    objects = InheritanceManager()
 
     @property
-    def type(self):
-        return self._meta.label_lower
+    def type(self) -> str:
+        return self._meta.app_config.network_name
 
     def supports_token(self, token) -> bool:
         return False
@@ -22,7 +25,7 @@ class InternalPaymentNetwork(PaymentNetwork):
         return token.is_listed
 
 
-class PaymentNetworkProvider(models.Model):
+class PaymentNetworkProvider(BaseModel):
     is_active = models.BooleanField(default=True)
     synced = models.BooleanField(default=False)
     connected = models.BooleanField(default=False)

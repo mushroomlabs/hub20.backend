@@ -1,5 +1,4 @@
 import datetime
-import uuid
 from typing import Optional
 
 import jwt
@@ -11,6 +10,7 @@ from django.utils import timezone
 from model_utils.models import TimeStampedModel
 
 from ..settings import app_settings
+from .base import BaseModel
 from .payments import PaymentOrder
 from .tokenlists import UserTokenList
 from .tokens import BaseToken
@@ -20,8 +20,7 @@ def calculate_checkout_expiration_time():
     return timezone.now() + datetime.timedelta(seconds=app_settings.Checkout.lifetime)
 
 
-class Store(models.Model):
-    id = models.UUIDField(default=uuid.uuid4, primary_key=True)
+class Store(BaseModel):
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     name = models.CharField(max_length=300)
     url = models.URLField(help_text="URL for your store public site or information page")
@@ -78,8 +77,7 @@ class StoreRSAKeyPair(models.Model):
         return pair
 
 
-class Checkout(TimeStampedModel):
-    id = models.UUIDField(default=uuid.uuid4, primary_key=True)
+class Checkout(BaseModel, TimeStampedModel):
     expires_on = models.DateTimeField(default=calculate_checkout_expiration_time)
     order = models.OneToOneField(PaymentOrder, related_name="checkout", on_delete=models.CASCADE)
     store = models.ForeignKey(Store, on_delete=models.CASCADE)

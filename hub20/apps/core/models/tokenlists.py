@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import logging
-import uuid
 
 import requests
 from django.contrib.auth import get_user_model
@@ -14,6 +13,7 @@ from taggit.models import GenericUUIDTaggedItemBase, TaggedItemBase
 
 from ..fields import TokenlistStandardURLField
 from ..schemas import TokenList as TokenListDataModel, validate_token_list
+from .base import BaseModel
 from .tokens import BaseToken
 
 logger = logging.getLogger(__name__)
@@ -26,8 +26,7 @@ class UUIDTaggedItem(GenericUUIDTaggedItemBase, TaggedItemBase):
         verbose_name_plural = _("Tags")
 
 
-class AbstractTokenListModel(models.Model):
-    id = models.UUIDField(default=uuid.uuid4, primary_key=True)
+class AbstractTokenListModel(BaseModel):
     name = models.CharField(max_length=64)
     description = models.TextField(null=True)
     tokens = models.ManyToManyField(BaseToken, related_name="%(app_label)s_%(class)s_tokenlists")

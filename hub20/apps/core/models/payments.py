@@ -1,7 +1,6 @@
 import datetime
 import logging
 import random
-import uuid
 from typing import Optional
 
 from django.conf import settings
@@ -13,6 +12,7 @@ from model_utils.managers import InheritanceManager
 from model_utils.models import TimeStampedModel
 
 from ..choices import DEPOSIT_STATUS
+from .base import BaseModel
 from .networks import InternalPaymentNetwork, PaymentNetwork
 from .tokens import BaseToken, TokenAmountField, TokenValueModel
 
@@ -71,10 +71,9 @@ class InternalPaymentRouteQuerySet(PaymentRouteQuerySet):
         return self.filter(created__lte=date_value)
 
 
-class Deposit(TimeStampedModel):
+class Deposit(BaseModel, TimeStampedModel):
     STATUS = DEPOSIT_STATUS
 
-    id = models.UUIDField(default=uuid.uuid4, primary_key=True)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     session_key = models.SlugField(null=True)
     currency = models.ForeignKey(BaseToken, on_delete=models.PROTECT)
@@ -130,8 +129,7 @@ class PaymentOrder(Deposit, TokenValueModel):
             return self.STATUS.open
 
 
-class PaymentRoute(TimeStampedModel):
-    id = models.UUIDField(default=uuid.uuid4, primary_key=True)
+class PaymentRoute(BaseModel, TimeStampedModel):
     deposit = models.ForeignKey(Deposit, on_delete=models.CASCADE, related_name="routes")
     network = models.ForeignKey(PaymentNetwork, on_delete=models.CASCADE, related_name="routes")
     identifier = models.BigIntegerField(default=generate_payment_route_id, unique=True)
@@ -159,8 +157,7 @@ class InternalPaymentRoute(PaymentRoute):
     objects = InternalPaymentRouteQuerySet.as_manager()
 
 
-class Payment(TimeStampedModel, TokenValueModel):
-    id = models.UUIDField(default=uuid.uuid4, primary_key=True)
+class Payment(BaseModel, TimeStampedModel, TokenValueModel):
     route = models.ForeignKey(PaymentRoute, on_delete=models.PROTECT, related_name="payments")
     objects = InheritanceManager()
 
@@ -177,7 +174,7 @@ class InternalPayment(Payment):
         return str(self.id)
 
 
-class PaymentConfirmation(TimeStampedModel):
+class PaymentConfirmation(BaseModel, TimeStampedModel):
     payment = models.OneToOneField(Payment, on_delete=models.CASCADE, related_name="confirmation")
 
 

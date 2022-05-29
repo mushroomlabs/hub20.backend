@@ -7,7 +7,7 @@ from django.utils import timezone
 from factory import fuzzy
 
 from hub20.apps.core.factories import EthereumProvider, PaymentNetworkFactory, TransferFactory
-from hub20.apps.ethereum.factories import BaseWalletFactory, Erc20TokenFactory, SyncedChainFactory
+from hub20.apps.ethereum.factories import Erc20TokenFactory, SyncedChainFactory
 
 from . import models
 
@@ -100,7 +100,7 @@ class PaymentEventFactory(factory.django.DjangoModelFactory):
 
 class RaidenTransferFactory(TransferFactory):
     address = factory.Faker("ethereum_address")
-    payment_network = factory.SubFactory(RaidenPaymentNetwork)
+    network = factory.SubFactory(RaidenPaymentNetwork)
     identifier = factory.fuzzy.FuzzyInteger(2**48, 2**53)
 
     class Meta:

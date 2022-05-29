@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import uuid
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
@@ -12,6 +11,7 @@ from model_utils.managers import InheritanceManager, InheritanceManagerMixin, Qu
 from ..choices import CURRENCIES
 from ..fields import TokenAmountField, TokenlistStandardURLField
 from ..typing import TokenAmount_T, Wei
+from .base import BaseModel
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -21,8 +21,7 @@ class TradeableTokenManager(InheritanceManagerMixin, QueryManagerMixin, models.M
     pass
 
 
-class BaseToken(models.Model):
-    id = models.UUIDField(default=uuid.uuid4, primary_key=True)
+class BaseToken(BaseModel):
     name = models.CharField(max_length=500)
     symbol = models.CharField(max_length=16)
     decimals = models.PositiveIntegerField(default=18)
@@ -85,7 +84,7 @@ class WrappedToken(models.Model):
         unique_together = ("wrapped", "wrapper")
 
 
-class StableTokenPair(models.Model):
+class StableTokenPair(BaseModel):
     """
     A stabletoken is a token whose value is supposed to be pegged to a
     'real' fiat currency. These value pegs can be 'soft' or 'hard',

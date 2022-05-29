@@ -1,3 +1,4 @@
+import uuid
 from typing import Any
 
 from django.db import connection, models

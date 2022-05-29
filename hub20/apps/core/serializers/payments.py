@@ -22,18 +22,21 @@ from ..models import (
 )
 from .tokens import HyperlinkedRelatedTokenField, TokenSerializer, TokenValueField
 
-PAYMENT_ROUTE_TYPES = PaymentRoute.__subclasses__()
-PAYMENT_ROUTE_CHOICES = (c.NETWORK for c in PAYMENT_ROUTE_TYPES)
-DEPOSIT_ROUTE_CHOICES = (c.NETWORK for c in PAYMENT_ROUTE_TYPES if c.NETWORK != "internal")
 
+class PaymentRouteNetworkSelectorField(serializers.PrimaryKeyRelatedField):
+    ORDER_FIELD = "deposit"
 
-class PaymentRouteNetworkSelectorField(serializers.SlugRelatedField):
+    def __init__(self, *args, **kw):
+        super().__init__(*args, **kw)
+        self._order_field = kw.get("order_field", self.ORDER_FIELD)
+
     def get_queryset(self):
+        # breakpoint()
         return PaymentNetwork.objects.all().select_subclasses()
 
 
 class PaymentRouteSerializer(serializers.ModelSerializer):
-    network = PaymentRouteNetworkSelectorField(slug_field="type")
+    network = PaymentRouteNetworkSelectorField()
 
     class Meta:
         model = PaymentRoute
@@ -71,7 +74,6 @@ class InternalPaymentRouteSerializer(PaymentRouteSerializer):
 
 
 class PaymentSerializer(serializers.ModelSerializer):
-    id = serializers.UUIDField()
     url = serializers.HyperlinkedIdentityField(view_name="payments-detail")
     currency = TokenSerializer()
     confirmed = serializers.BooleanField(source="is_confirmed", read_only=True)
@@ -165,7 +167,7 @@ class DepositRouteSerializer(NestedHyperlinkedModelSerializer, PaymentRouteSeria
         },
     )
     deposit = serializers.HyperlinkedRelatedField(view_name="user-deposit-detail", read_only=True)
-    network = PaymentRouteNetworkSelectorField(slug_field="type")
+    network = PaymentRouteNetworkSelectorField()
 
     def _get_deposit(self):
         view = self.context["view"]
@@ -317,7 +319,7 @@ class CheckoutRouteSerializer(NestedHyperlinkedModelSerializer, PaymentRouteSeri
     checkout = serializers.HyperlinkedRelatedField(
         source="deposit.checkout", view_name="checkout-detail", read_only=True
     )
-    network = serializers.ChoiceField(choices=list(PAYMENT_ROUTE_CHOICES))
+    network = PaymentRouteNetworkSelectorField()
 
     def _get_checkout(self):
         view = self.context["view"]
