@@ -272,10 +272,14 @@ class RaidenPaymentRoute(PaymentRoute):
     @classmethod
     def make(cls, deposit):
         channels = Channel.available.filter(token_network__token=deposit.currency)
-
         if channels.exists():
             channel = channels.order_by("?").first()
-            return cls.objects.create(raiden=channel.raiden, deposit=deposit)
+            payment_network = channel.raiden.chain.raidenpaymentnetwork
+            return cls.objects.create(
+                raiden=channel.raiden,
+                deposit=deposit,
+                network=payment_network,
+            )
         else:
             raise RoutingError(
                 f"No raiden node available to accept {deposit.currency.symbol} payments"
@@ -304,6 +308,8 @@ class RaidenTransfer(Transfer):
 
     def _execute(self):
         try:
+            from .client import RaidenClient
+
             raiden_client = RaidenClient.select_for_transfer(
                 amount=self.amount, address=self.address
             )

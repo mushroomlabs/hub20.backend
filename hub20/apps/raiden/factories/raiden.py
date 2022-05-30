@@ -2,38 +2,15 @@ import random
 from datetime import timedelta
 
 import factory
-from django.contrib.auth import get_user_model
 from django.utils import timezone
 from factory import fuzzy
 
-from hub20.apps.core.factories import EthereumProvider, PaymentNetworkFactory, TransferFactory
+from hub20.apps.core.factories import EthereumProvider
 from hub20.apps.ethereum.factories import Erc20TokenFactory, SyncedChainFactory
 
-from . import models
+from .. import models
 
 factory.Faker.add_provider(EthereumProvider)
-
-
-User = get_user_model()
-
-
-class UserFactory(factory.django.DjangoModelFactory):
-    class Meta:
-        model = User
-
-
-class RaidenPaymentNetwork(PaymentNetworkFactory):
-    name = "Raiden"
-    slug = "raiden"
-
-
-class AdminUserFactory(factory.django.DjangoModelFactory):
-    username = factory.Sequence(lambda n: f"admin-user-{n:03}")
-    is_superuser = True
-    is_staff = True
-
-    class Meta:
-        model = User
 
 
 class TokenNetworkFactory(factory.django.DjangoModelFactory):
@@ -42,6 +19,7 @@ class TokenNetworkFactory(factory.django.DjangoModelFactory):
 
     class Meta:
         model = models.TokenNetwork
+        django_get_or_create = ("token",)
 
 
 class RaidenFactory(factory.django.DjangoModelFactory):
@@ -98,21 +76,4 @@ class PaymentEventFactory(factory.django.DjangoModelFactory):
         model = models.Payment
 
 
-class RaidenTransferFactory(TransferFactory):
-    address = factory.Faker("ethereum_address")
-    network = factory.SubFactory(RaidenPaymentNetwork)
-    identifier = factory.fuzzy.FuzzyInteger(2**48, 2**53)
-
-    class Meta:
-        model = models.RaidenTransfer
-
-
-__all__ = [
-    "UserFactory",
-    "AdminUserFactory",
-    "TokenNetworkFactory",
-    "RaidenFactory",
-    "ChannelFactory",
-    "PaymentEventFactory",
-    "RaidenTransferFactory",
-]
+__all__ = ["TokenNetworkFactory", "RaidenFactory", "ChannelFactory", "PaymentEventFactory"]

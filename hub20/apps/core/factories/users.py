@@ -14,4 +14,10 @@ class UserFactory(factory.django.DjangoModelFactory):
         model = User
 
 
-__all__ = ["UserFactory"]
+class AdminUserFactory(UserFactory):
+    username = factory.Sequence(lambda n: f"admin-{n:03}")
+    is_superuser = True
+    is_staff = True
+
+
+__all__ = ["UserFactory", "AdminUserFactory"]

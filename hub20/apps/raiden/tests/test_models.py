@@ -3,14 +3,16 @@ from unittest.mock import patch
 from django.contrib.contenttypes.models import ContentType
 from django.test import TestCase
 
-from hub20.apps.core.factories import PaymentOrderFactory
-from hub20.apps.core.models import PaymentNetwork, PaymentNetworkAccount
+from hub20.apps.core.factories import InternalPaymentNetworkFactory
 from hub20.apps.core.tests import AccountingTestCase
+from hub20.apps.ethereum.factories import Erc20TokenPaymentOrderFactory
 
 from ..client.node import RaidenClient
 from ..factories import (
     ChannelFactory,
     PaymentEventFactory,
+    RaidenPaymentFactory,
+    RaidenPaymentNetworkFactory,
     RaidenTransferFactory,
     TokenNetworkFactory,
 )
@@ -19,10 +21,11 @@ from ..models import RaidenPaymentRoute
 
 class RaidenPaymentTestCase(TestCase):
     def setUp(self):
+        RaidenPaymentNetworkFactory()
+        InternalPaymentNetworkFactory()
         token_network = TokenNetworkFactory()
-
         self.channel = ChannelFactory(token_network=token_network)
-        self.order = PaymentOrderFactory(deposit__currency=token_network.token)
+        self.order = Erc20TokenPaymentOrderFactory(currency=token_network.token)
         self.raiden_route = RaidenPaymentRoute.make(deposit=self.order)
 
     def test_order_has_raiden_route(self):
@@ -41,8 +44,14 @@ class RaidenPaymentTestCase(TestCase):
 class RaidenAccountingTestCase(AccountingTestCase):
     def setUp(self):
         super().setUp()
-        self.treasury = PaymentNetworkAccount.make(PaymentNetwork._meta.app_label)
-        self.raiden_account = PaymentNetworkAccount.make(RaidenPaymentRoute._meta.app_label)
+        raiden_network = RaidenPaymentNetworkFactory()
+        self.treasury = self.hub.account
+        self.raiden_account = raiden_network.account
+
+        raiden_deposit = RaidenPaymentFactory(
+            route__deposit__user=self.user,
+        )
+        self.credit = raiden_deposit.as_token_amount
 
     @patch.object(RaidenClient, "select_for_transfer")
     @patch.object(RaidenClient, "transfer")
@@ -50,7 +59,7 @@ class RaidenAccountingTestCase(AccountingTestCase):
         self, raiden_transfer, select_for_transfer
     ):
         transfer = RaidenTransferFactory(
-            sender=self.sender,
+            sender=self.user,
             currency=self.credit.currency,
             amount=self.credit.amount,
         )
@@ -59,11 +68,11 @@ class RaidenAccountingTestCase(AccountingTestCase):
         raiden_payment = PaymentEventFactory.build(
             amount=self.credit.amount,
             channel=channel,
-            sender_address=self.raiden.account.address,
+            sender_address=channel.raiden.address,
             receiver_address=transfer.address,
             identifier=transfer.identifier,
         )
-        select_for_transfer.return_value = RaidenClient(raiden_node=self.raiden)
+        select_for_transfer.return_value = RaidenClient(raiden_node=channel.raiden)
         raiden_transfer.return_value = dict(identifier=raiden_payment.identifier)
 
         transfer.execute()

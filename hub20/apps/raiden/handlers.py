@@ -103,7 +103,8 @@ def on_raiden_payment_sent_record_confirmation(sender, **kw):
 @receiver(post_save, sender=RaidenPayment)
 def on_raiden_payment_received_move_funds_from_raiden_to_treasury(sender, **kw):
     if kw["created"]:
-        payment = kw["instance"]
+        raiden_payment = kw["instance"]
+        payment = raiden_payment.payment
         raiden = payment.channel.raiden
 
         is_received = payment.receiver_address == raiden.address
@@ -143,7 +144,7 @@ def on_raiden_transfer_confirmed_move_funds_from_treasury_to_raiden(sender, **kw
         )
 
         treasury = get_treasury_account()
-        raiden_account = transfer.currency.chain.raidenpaymentnetwork.account
+        raiden_account = transfer.currency.subclassed.chain.raidenpaymentnetwork.account
 
         treasury_book = treasury.get_book(token=transfer.currency)
         raiden_book = raiden_account.get_book(token=transfer.currency)
