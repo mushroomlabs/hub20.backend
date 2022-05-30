@@ -6,24 +6,22 @@ from channels.testing import WebsocketCommunicator
 from eth_utils import is_0x_prefixed
 from web3 import Web3
 
-from hub20.apps.core import handlers
 from hub20.apps.core.abi.tokens import EIP20_ABI
-from hub20.apps.core.consumers import Events
-from hub20.apps.core.factories import CheckoutFactory, PaymentOrderFactory
+from hub20.apps.core.factories.networks import InternalPaymentNetworkFactory, SiteFactory
 from hub20.apps.core.settings import app_settings
 from hub20.apps.core.tests.asgi import application
-from hub20.apps.ethereum.factories import (
+
+from .. import handlers
+from ..constants import Events
+from ..factories import (
     BlockFactory,
     Erc20TokenBlockchainPaymentFactory,
-    Erc20TokenFactory,
+    Erc20TokenCheckoutFactory,
+    Erc20TokenPaymentOrderFactory,
 )
-from hub20.apps.ethereum.models import BaseWallet, Block, Chain
-from hub20.apps.ethereum.signals import block_sealed
-from hub20.apps.ethereum.tests.mocks import (
-    BlockMock,
-    Erc20TransferDataMock,
-    Erc20TransferReceiptMock,
-)
+from ..models import BaseWallet, Block, Chain
+from ..signals import block_sealed
+from .mocks import BlockMock, Erc20TransferDataMock, Erc20TransferReceiptMock
 
 
 def deposit_account(payment_request):
@@ -77,17 +75,25 @@ def session_events_communicator(client):
 
 
 @pytest.fixture
+def hub_site():
+    return SiteFactory()
+
+
+@pytest.fixture
+def treasury(hub_site):
+    return InternalPaymentNetworkFactory(site=hub_site)
+
+
+@pytest.fixture
 def checkout():
-    checkout = CheckoutFactory()
+    checkout = Erc20TokenCheckoutFactory()
     checkout.store.accepted_token_list.tokens.add(checkout.order.currency)
     return checkout
 
 
 @pytest.fixture
 def erc20_payment_request(client):
-    return PaymentOrderFactory(
-        session_key=client.session.session_key, deposit__currency=Erc20TokenFactory()
-    )
+    return Erc20TokenPaymentOrderFactory(session_key=client.session.session_key)
 
 
 @pytest.fixture
@@ -125,7 +131,7 @@ async def test_session_receives_token_deposit_received(
     await session_events_communicator.disconnect()
 
     assert len(messages) != 0, "we should have received something here"
-    payment_received_event = Events.BLOCKCHAIN_DEPOSIT_RECEIVED.value
+    payment_received_event = Events.DEPOSIT_RECEIVED.value
 
     payment_received_messages = [msg for msg in messages if msg["event"] == payment_received_event]
     assert len(payment_received_messages) == 1, "we should have a payment received message"
@@ -162,7 +168,7 @@ async def test_checkout_receives_block_created_notification(
     assert len(messages) != 0, "we should have received something here"
 
     block_created_messages = [
-        msg for msg in messages if msg["event"] == Events.BLOCKCHAIN_BLOCK_CREATED.value
+        msg for msg in messages if msg["event"] == Events.BLOCK_CREATED.value
     ]
     assert len(block_created_messages) == 1, "we should have received one block created message"
 
@@ -190,7 +196,7 @@ async def test_checkout_receives_transaction_mined_notification(
     await communicator.disconnect()
 
     assert len(messages) != 0, "we should have received something here"
-    payment_mined_event = Events.BLOCKCHAIN_DEPOSIT_RECEIVED.value
+    payment_mined_event = Events.DEPOSIT_RECEIVED.value
 
     payment_messages = [msg for msg in messages if msg["event"] == payment_mined_event]
     assert len(payment_messages) == 1, "we should have received one payment received message"
@@ -218,9 +224,7 @@ async def test_checkout_receives_transaction_broadcast_notification(
     tx_params = await sync_to_async(deposit_transaction_params)(order)
     tx_data = deposit_tx_data(tx_params)
 
-    await sync_to_async(
-        handlers.on_incoming_transfer_broadcast_send_notification_to_open_checkouts
-    )(
+    await sync_to_async(handlers.on_incoming_transfer_broadcast_notify_open_checkouts)(
         sender=tx_data.__class__,
         account=account,
         amount=order.as_token_amount,
@@ -234,7 +238,7 @@ async def test_checkout_receives_transaction_broadcast_notification(
     await communicator.disconnect()
 
     assert len(messages) != 0, "we should have received something here"
-    payment_sent_event = Events.BLOCKCHAIN_DEPOSIT_BROADCAST.value
+    payment_sent_event = Events.DEPOSIT_BROADCAST.value
 
     payment_messages = [msg for msg in messages if msg["event"] == payment_sent_event]
     assert len(payment_messages) == 1, "we should have received one payment sent message"
@@ -250,7 +254,7 @@ async def test_checkout_receives_transaction_broadcast_notification(
 @pytest.mark.asyncio
 @pytest.mark.django_db(transaction=True)
 async def test_checkout_receives_confirmation_notification(
-    checkout, erc20_blockchain_checkout_payment
+    checkout, erc20_blockchain_checkout_payment, treasury
 ):
     communicator = WebsocketCommunicator(application, f"checkout/{checkout.id}")
 
@@ -274,7 +278,7 @@ async def test_checkout_receives_confirmation_notification(
     await communicator.disconnect()
 
     assert len(messages) != 0, "we should have received something here"
-    payment_confirmed_event = Events.BLOCKCHAIN_DEPOSIT_CONFIRMED.value
+    payment_confirmed_event = Events.DEPOSIT_CONFIRMED.value
 
     payment_messages = [msg for msg in messages if msg["event"] == payment_confirmed_event]
     assert len(payment_messages) == 1, "we should have received one payment confirmed message"

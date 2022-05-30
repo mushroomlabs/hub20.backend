@@ -29,7 +29,7 @@ class InternalPaymentNetworkFactory(factory.django.DjangoModelFactory):
 
     class Meta:
         model = InternalPaymentNetwork
-        django_get_or_create = ("name",)
+        django_get_or_create = ("name", "site")
 
 
 __all__ = ["PaymentNetworkFactory", "InternalPaymentNetworkFactory"]

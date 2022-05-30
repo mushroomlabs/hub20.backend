@@ -154,7 +154,7 @@ def on_incoming_transfer_mined_check_blockchain_payments(sender, **kw):
 
 
 @receiver(signals.incoming_transfer_broadcast, sender=TransactionDataRecord)
-def on_incoming_transfer_broadcast_send_notification_to_active_sessions(sender, **kw):
+def on_incoming_transfer_broadcast_notify_active_sessions(sender, **kw):
     recipient = kw["account"]
     payment_amount = kw["amount"]
     tx_data = kw["transaction_data"]
@@ -176,7 +176,7 @@ def on_incoming_transfer_broadcast_send_notification_to_active_sessions(sender, 
 
 
 @receiver(signals.incoming_transfer_broadcast, sender=TransactionDataRecord)
-def on_incoming_transfer_broadcast_send_notification_to_open_checkouts(sender, **kw):
+def on_incoming_transfer_broadcast_notify_open_checkouts(sender, **kw):
     recipient = kw["account"]
     payment_amount = kw["amount"]
     tx_data = kw["transaction_data"]
@@ -377,8 +377,8 @@ __all__ = [
     "on_chain_updated_check_payment_confirmations",
     "on_blockchain_payment_received_send_notification",
     "on_incoming_transfer_mined_check_blockchain_payments",
-    "on_incoming_transfer_broadcast_send_notification_to_active_sessions",
-    "on_incoming_transfer_broadcast_send_notification_to_open_checkouts",
+    "on_incoming_transfer_broadcast_notify_active_sessions",
+    "on_incoming_transfer_broadcast_notify_open_checkouts",
     "on_block_sealed_publish_block_created_event",
     "on_block_sealed_check_confirmed_payments",
     "on_transaction_created_record_fee",

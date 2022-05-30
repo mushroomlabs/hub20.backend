@@ -41,13 +41,13 @@ def on_payment_confirmed_publish_checkout(sender, **kw):
     if checkout_id is None:
         return
 
-    payment_method = payment.route.network.slug
+    payment_method = payment.route.network.type
 
     tasks.publish_checkout_event.delay(
         checkout_id,
         amount=str(payment.amount),
-        token=payment.currency.address,
-        event="{payment_method}.deposit.confirmed",
+        token=payment.currency.pk,
+        event=f"{payment_method}.deposit.confirmed",
         payment_method=payment_method,
     )
 

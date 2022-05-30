@@ -17,10 +17,10 @@ SIGNATURE_V_MAX_VALUE: int = 28
 
 
 class Events(Enum):
-    BLOCK_CREATED = "blockchain.block.created"
-    DEPOSIT_RECEIVED = "blockchain.deposit.received"
-    DEPOSIT_BROADCAST = "blockchain.deposit.broadcast"
-    DEPOSIT_CONFIRMED = "blockchain.deposit.confirmed"
-    ROUTE_EXPIRED = "blockchain.route.expired"
-    PROVIDER_OFFLINE = "blockchain.provider.offline"
-    PROVIDER_ONLINE = "blockchain.provider.online"
+    BLOCK_CREATED = "ethereum.block.created"
+    DEPOSIT_RECEIVED = "ethereum.deposit.received"
+    DEPOSIT_BROADCAST = "ethereum.deposit.broadcast"
+    DEPOSIT_CONFIRMED = "ethereum.deposit.confirmed"
+    ROUTE_EXPIRED = "ethereum.route.expired"
+    PROVIDER_OFFLINE = "ethereum.provider.offline"
+    PROVIDER_ONLINE = "ethereum.provider.online"

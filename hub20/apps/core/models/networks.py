@@ -12,7 +12,11 @@ class PaymentNetwork(BaseModel):
 
     @property
     def type(self) -> str:
-        return self._meta.app_config.network_name
+        return self.subclassed._meta.app_config.network_name
+
+    @property
+    def subclassed(self):
+        return self.__class__.objects.get_subclass(id=self.id)
 
     def supports_token(self, token) -> bool:
         return False
