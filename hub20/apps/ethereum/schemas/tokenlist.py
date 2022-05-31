@@ -155,7 +155,7 @@ TOKENLIST_JSON_SCHEMA = {
                     "type": "string",
                     "description": "The name of the token",
                     "minLength": 1,
-                    "maxLength": 40,
+                    "maxLength": 500,
                     "pattern": "^[ \\w.'+\\-%/À-ÖØ-öø-ÿ:&\\[\\]\\(\\)]+$",
                     "examples": ["USD Coin"],
                 },
