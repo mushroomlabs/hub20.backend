@@ -14,12 +14,12 @@ from web3.middleware import geth_poa_middleware
 from web3.providers import HTTPProvider, IPCProvider, WebsocketProvider
 from web3.types import TxReceipt
 
-from hub20.apps.core.abi.tokens import EIP20_ABI
-from hub20.apps.core.factories import FAKER
 from hub20.apps.core.models import BaseToken, TokenAmount
 from hub20.apps.ethereum import analytics
+from hub20.apps.ethereum.abi.tokens import EIP20_ABI
 from hub20.apps.ethereum.app_settings import WEB3_REQUEST_TIMEOUT, WEB3_TRANSFER_GAS_LIMIT
 from hub20.apps.ethereum.exceptions import Web3TransactionError
+from hub20.apps.ethereum.factories import FAKER
 from hub20.apps.ethereum.models import BaseWallet, Chain, TransactionDataRecord, Web3Provider
 from hub20.apps.ethereum.typing import Address, EthereumAccount_T, Web3Client_T
 

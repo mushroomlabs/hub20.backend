@@ -4,12 +4,7 @@ import factory
 import factory.fuzzy
 from django.utils import timezone
 
-from hub20.apps.core.factories import EthereumProvider
-
 from ..models import Block, Chain, Transaction, TransactionDataRecord
-
-factory.Faker.add_provider(EthereumProvider)
-
 
 TEST_CHAIN_ID = 2
 

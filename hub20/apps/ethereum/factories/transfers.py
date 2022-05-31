@@ -1,16 +1,10 @@
 import factory
 
-from hub20.apps.core.factories import (
-    EthereumProvider,
-    TransferConfirmationFactory,
-    TransferFactory,
-)
+from hub20.apps.core.factories import TransferConfirmationFactory, TransferFactory
 
 from ..models import BlockchainTransfer, BlockchainTransferConfirmation
 from .blockchain import TransactionFactory
 from .networks import BlockchainPaymentNetworkFactory
-
-factory.Faker.add_provider(EthereumProvider)
 
 
 class BlockchainTransferFactory(TransferFactory):

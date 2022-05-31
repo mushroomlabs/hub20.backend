@@ -1,6 +1,7 @@
 import factory
 
-from hub20.apps.core.factories import EthereumProvider, TransferFactory
+from hub20.apps.core.factories import TransferFactory
+from hub20.apps.ethereum.factories import EthereumProvider
 
 from ..models import RaidenTransfer
 from .networks import RaidenPaymentNetworkFactory

@@ -1,4 +1,5 @@
 import factory
+from ethereum.abi import ContractTranslator
 
 from hub20.apps.core.factories.tokens import (
     BaseTokenFactory,
@@ -6,11 +7,17 @@ from hub20.apps.core.factories.tokens import (
     TokenAmountFactory,
     TokenValueModelFactory,
 )
-from hub20.apps.core.models.tokens import WrappedToken
+from hub20.apps.core.models.tokens import TokenAmount, WrappedToken
 
-from ..client import encode_transfer_data
+from ..abi.tokens import EIP20_ABI
 from ..models import Erc20Token, NativeToken, TransferEvent
 from .blockchain import SyncedChainFactory, TransactionDataFactory, TransactionFactory
+
+
+def encode_transfer_data(recipient_address, amount: TokenAmount):
+    translator = ContractTranslator(EIP20_ABI)
+    encoded_data = translator.encode_function_call("transfer", (recipient_address, amount.as_wei))
+    return f"0x{encoded_data.hex()}"
 
 
 class EtherFactory(BaseTokenFactory):

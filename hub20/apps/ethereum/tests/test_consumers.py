@@ -6,12 +6,12 @@ from channels.testing import WebsocketCommunicator
 from eth_utils import is_0x_prefixed
 from web3 import Web3
 
-from hub20.apps.core.abi.tokens import EIP20_ABI
 from hub20.apps.core.factories.networks import InternalPaymentNetworkFactory, SiteFactory
 from hub20.apps.core.settings import app_settings
 from hub20.apps.core.tests.asgi import application
 
 from .. import handlers
+from ..abi.tokens import EIP20_ABI
 from ..constants import Events
 from ..factories import (
     BlockFactory,

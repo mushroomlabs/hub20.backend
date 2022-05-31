@@ -13,12 +13,12 @@ from web3._utils.filters import construct_event_filter_params
 from web3.exceptions import ExtraDataLengthError, LogTopicError, TransactionNotFound
 from websockets.exceptions import InvalidStatusCode
 
-from hub20.apps.core.abi.tokens import EIP20_ABI
 from hub20.apps.core.models.tokens import BaseToken
 from hub20.apps.core.settings import app_settings
 from hub20.apps.core.tasks import broadcast_event, stream_processor_lock
 
 from . import signals
+from .abi.tokens import EIP20_ABI
 from .analytics import MAX_PRIORITY_FEE_TRACKER, get_historical_block_data
 from .client import BLOCK_CREATION_INTERVAL, inspect_web3, make_web3
 from .constants import Events
