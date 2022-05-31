@@ -31,7 +31,7 @@ class ConnectedChainListFilter(admin.SimpleListFilter):
         if selection is None:
             return queryset
 
-        connected_q = Q(providers__is_active=True)
+        connected_q = Q(chain__blockchainpaymentnetwork__providers__is_active=True)
 
         filter_type = queryset.filter if selection == "yes" else queryset.exclude
         return filter_type(connected_q)
@@ -115,7 +115,7 @@ class ConnectedChainTokenListFilter(admin.SimpleListFilter):
         if selection is None:
             return queryset
 
-        connected_q = Q(chain__providers__is_active=True)
+        connected_q = Q(chain__blockchainpaymentnetwork__providers__is_active=True)
 
         filter_type = queryset.filter if selection == "yes" else queryset.exclude
         return filter_type(connected_q)
@@ -127,7 +127,7 @@ class Web3URLField(forms.URLField):
 
 Web3ProviderForm = forms.modelform_factory(
     model=models.Web3Provider,
-    fields=["chain", "url", "max_block_scan_range", "is_active", "connected", "synced"],
+    fields=["network", "url", "max_block_scan_range", "is_active", "connected", "synced"],
     field_classes={"url": Web3URLField},
 )
 
@@ -160,14 +160,14 @@ class Web3ProviderAdmin(admin.ModelAdmin):
 
     list_display = (
         "hostname",
-        "chain",
+        "network",
         "is_active",
         "connected",
         "synced",
     )
     list_filter = ("is_active", "connected", "synced")
     readonly_fields = ("connected", "synced")
-    search_fields = ("url", "chain__name")
+    search_fields = ("url", "network__name", "network__blockchainpaymentnetwork__chain__name")
 
 
 @admin.register(models.Explorer)
@@ -213,6 +213,11 @@ class Erc20TokenAdmin(admin.ModelAdmin):
 
     def has_add_permission(self, *args, **kw) -> bool:
         return False
+
+
+@admin.register(models.BlockchainPaymentNetwork)
+class BlockchainPaymentNetworkAdmin(admin.ModelAdmin):
+    search_fields = ("name", "chain__name")
 
 
 @admin.register(models.BaseWallet)

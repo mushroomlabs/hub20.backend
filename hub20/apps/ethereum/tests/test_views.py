@@ -2,15 +2,13 @@ from django.test import TestCase
 from rest_framework.reverse import reverse
 
 from ..factories.checkout import Erc20TokenCheckoutFactory
-from ..models import BlockchainPaymentNetwork
+from ..factories.networks import BlockchainPaymentNetworkFactory
 
 
 class CheckoutRoutesViewTestCase(TestCase):
     def setUp(self):
         self.checkout = Erc20TokenCheckoutFactory()
-        self.network = BlockchainPaymentNetwork.objects.get(
-            chain=self.checkout.order.currency.chain
-        )
+        self.network = BlockchainPaymentNetworkFactory()
         network_url = reverse("network-detail", kwargs={"pk": self.network.pk})
         self.post_data = {"network": network_url}
         self.url = reverse("checkout-routes-list", kwargs={"checkout_pk": self.checkout.pk})

@@ -6,7 +6,7 @@ from django.utils import timezone
 
 from hub20.apps.core.factories import EthereumProvider
 
-from ..models import Block, Chain, Transaction, TransactionDataRecord, Web3Provider
+from ..models import Block, Chain, Transaction, TransactionDataRecord
 
 factory.Faker.add_provider(EthereumProvider)
 
@@ -26,9 +26,6 @@ def make_parent_hash(block):
 class ChainFactory(factory.django.DjangoModelFactory):
     id = TEST_CHAIN_ID
     highest_block = 0
-    provider = factory.RelatedFactory(
-        "hub20.apps.ethereum.factories.Web3ProviderFactory", factory_related_name="chain"
-    )
     native_token = factory.RelatedFactory(
         "hub20.apps.ethereum.factories.EtherFactory", factory_related_name="chain"
     )
@@ -51,10 +48,6 @@ class ChainFactory(factory.django.DjangoModelFactory):
 
 class SyncedChainFactory(ChainFactory):
     highest_block = 0
-    provider = factory.RelatedFactory(
-        "hub20.apps.ethereum.factories.blockchain.SyncedWeb3ProviderFactory",
-        factory_related_name="chain",
-    )
 
 
 class BlockFactory(factory.django.DjangoModelFactory):
@@ -133,18 +126,11 @@ class TransactionFactory(factory.django.DjangoModelFactory):
         gas_price = factory.fuzzy.FuzzyInteger(1e9, 100e9)
 
 
-class Web3ProviderFactory(factory.django.DjangoModelFactory):
-    chain = factory.SubFactory(ChainFactory)
-    url = factory.Sequence(lambda n: f"https://web3-{n:02}.example.com")
-    connected = True
-    is_active = True
-    synced = False
-
-    class Meta:
-        model = Web3Provider
-        django_get_or_create = ("chain",)
-
-
-class SyncedWeb3ProviderFactory(Web3ProviderFactory):
-    chain = factory.SubFactory(SyncedChainFactory)
-    synced = True
+__all__ = [
+    "TEST_CHAIN_ID",
+    "ChainFactory",
+    "SyncedChainFactory",
+    "BlockFactory",
+    "TransactionDataFactory",
+    "TransactionFactory",
+]

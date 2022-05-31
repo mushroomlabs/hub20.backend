@@ -4,7 +4,6 @@ import pytest
 from django.test import TestCase
 
 from hub20.apps.core.factories import InternalPaymentNetworkFactory
-from hub20.apps.ethereum.models import BlockchainPaymentRoute
 from hub20.apps.ethereum.tasks import record_token_transfers
 from hub20.apps.ethereum.tests.mocks import (
     BlockMock,
@@ -14,7 +13,7 @@ from hub20.apps.ethereum.tests.mocks import (
     Web3Mock,
 )
 
-from ..factories import Erc20TokenCheckoutFactory
+from ..factories import Erc20TokenBlockchainPaymentRouteFactory, Erc20TokenCheckoutFactory
 
 
 @pytest.mark.django_db(transaction=True)
@@ -32,7 +31,7 @@ class PaymentTransferTestCase(BaseTestCase):
     def test_can_detect_erc20_transfers(self, make_web3_mock, MockWeb3Provider):
 
         checkout = Erc20TokenCheckoutFactory()
-        route = BlockchainPaymentRoute.make(deposit=checkout.order)
+        route = Erc20TokenBlockchainPaymentRouteFactory(deposit=checkout.order)
 
         self.assertIsNotNone(route)
 

@@ -47,7 +47,7 @@ class Command(BaseCommand):
 
                 for provider_url in chain_data.rpc:
                     models.Web3Provider.objects.get_or_create(
-                        chain=chain,
+                        network=chain.blockchainpaymentnetwork,
                         url=provider_url,
                         defaults=dict(is_active=False),
                     )

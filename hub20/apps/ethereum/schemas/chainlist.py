@@ -32,3 +32,6 @@ class Chain(BaseModel):
     networkId: int
     slip44: Optional[int]
     explorers: Optional[List[BlockchainExplorer]]
+
+
+__all__ = ["NativeCurrency", "BlockchainExplorer", "Chain"]

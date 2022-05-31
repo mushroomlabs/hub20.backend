@@ -6,7 +6,7 @@ from django.test import TestCase
 from eth_utils import is_checksum_address
 
 from hub20.apps.core.choices import TRANSFER_STATUS
-from hub20.apps.core.factories import InternalPaymentNetworkFactory, PaymentOrderFactory
+from hub20.apps.core.factories import InternalPaymentNetworkFactory
 from hub20.apps.core.models.accounting import PaymentNetworkAccount
 from hub20.apps.core.settings import app_settings
 from hub20.apps.core.tests import AccountingTestCase, TransferModelTestCase
@@ -17,6 +17,7 @@ from ..factories import (
     BlockchainPaymentNetworkFactory,
     BlockchainTransferConfirmationFactory,
     BlockchainTransferFactory,
+    Erc20TokenBlockchainPaymentRouteFactory,
     Erc20TokenFactory,
     Erc20TokenPaymentConfirmationFactory,
     Erc20TransactionDataFactory,
@@ -26,7 +27,7 @@ from ..factories import (
     EtherPaymentConfirmationFactory,
     WalletBalanceRecordFactory,
 )
-from ..models import Block, BlockchainPayment, BlockchainPaymentRoute
+from ..models import Block, BlockchainPayment
 from ..signals import block_sealed
 from .mocks import BlockMock
 from .utils import add_eth_to_account, add_token_to_account
@@ -35,8 +36,8 @@ from .utils import add_eth_to_account, add_token_to_account
 class BlockchainPaymentTestCase(TestCase):
     def setUp(self):
         InternalPaymentNetworkFactory()
-        self.order = PaymentOrderFactory(currency=Erc20TokenFactory())
-        self.blockchain_route = BlockchainPaymentRoute.make(deposit=self.order)
+        self.blockchain_route = Erc20TokenBlockchainPaymentRouteFactory()
+        self.order = self.blockchain_route.deposit
         self.chain = self.blockchain_route.chain
 
     def test_transaction_sets_payment_as_received(self):

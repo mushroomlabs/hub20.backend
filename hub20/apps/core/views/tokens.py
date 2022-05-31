@@ -5,11 +5,11 @@ from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.mixins import ListModelMixin, RetrieveModelMixin
-from rest_framework.permissions import IsAdminUser, IsAuthenticated
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet, ModelViewSet
 
-from .. import models, serializers, tasks
+from .. import models, serializers
 
 
 class BaseTokenFilter(filters.FilterSet):
@@ -75,35 +75,6 @@ class TokenListViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
     permission_classes = (IsAuthenticated,)
     serializer_class = serializers.TokenListSerializer
     queryset = models.TokenList.objects.all()
-
-    def get_serializer_class(self):
-        if self.action == "_import":
-            return serializers.TokenListImportSerializer
-
-        return serializers.TokenListSerializer
-
-    @action(
-        detail=False,
-        methods=["post"],
-        url_path="import",
-        name="Import from URL",
-        permission_classes=(IsAdminUser,),
-    )
-    def _import(self, request, **kwargs):
-        """
-        Fetches, validates and imports the token list from the
-        provided URL. This process is executed on the background
-        """
-        serializer = self.get_serializer(data=request.data)
-
-        if serializer.is_valid():
-            tasks.import_token_list.delay(
-                url=serializer.validated_data["url"],
-                description=serializer.validated_data["description"],
-            )
-            return Response(serializer.data)
-        else:
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class UserTokenListViewSet(ModelViewSet):

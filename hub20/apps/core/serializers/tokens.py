@@ -105,24 +105,6 @@ class UserTokenListSerializer(BaseTokenListSerializer):
         read_only_fields = ("url", "id")
 
 
-class TokenListImportSerializer(serializers.ModelSerializer):
-    url = serializers.URLField()
-
-    def validate(self, data):
-        url = data["url"]
-        try:
-            token_list_data = models.TokenList.fetch(url)
-        except ValueError as exc:
-            raise serializers.ValidationError(exc)
-
-        data.update({"token_list_data": token_list_data})
-        return data
-
-    class Meta:
-        model = models.TokenList
-        fields = ("url", "description")
-
-
 class UserTokenListCloneSerializer(UserTokenListSerializer):
     token_list = serializers.HyperlinkedRelatedField(
         view_name="tokenlist-detail", queryset=models.TokenList.objects.all(), write_only=True

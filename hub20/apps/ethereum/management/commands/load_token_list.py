@@ -2,7 +2,7 @@ import logging
 
 from django.core.management.base import BaseCommand
 
-from hub20.apps.core.models.tokenlists import TokenList
+from hub20.apps.ethereum.models.tokens import Erc20Token
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,6 @@ class Command(BaseCommand):
 
         for url in options["urls"]:
             try:
-                token_list_data = TokenList.fetch(url)
-                TokenList.make(url, token_list_data=token_list_data)
+                Erc20Token.load_tokenlist(url)
             except Exception as exc:
                 logger.info(f"Failed to make list from {url}: {exc}")

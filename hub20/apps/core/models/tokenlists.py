@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import json
 import logging
 
-import requests
 from django.contrib.auth import get_user_model
 from django.db import models
 from django.utils.translation import gettext_lazy as _
@@ -12,7 +10,6 @@ from taggit.managers import TaggableManager
 from taggit.models import GenericUUIDTaggedItemBase, TaggedItemBase
 
 from ..fields import TokenlistStandardURLField
-from ..schemas import TokenList as TokenListDataModel, validate_token_list
 from .base import BaseModel
 from .tokens import BaseToken
 
@@ -35,32 +32,26 @@ class AbstractTokenListModel(BaseModel):
     def __str__(self):
         return self.name
 
-    @classmethod
-    def fetch(cls, url) -> TokenListDataModel:
-        response = requests.get(url)
-
-        try:
-            response.raise_for_status()
-        except requests.exceptions.HTTPError:
-            raise ValueError(f"Failed to fetch {url}")
-
-        try:
-            token_list_data = response.json()
-        except json.decoder.JSONDecodeError:
-            raise ValueError(f"Could not decode json response from {url}")
-
-        validate_token_list(token_list_data)
-
-        return TokenListDataModel(**token_list_data)
-
     class Meta:
         abstract = True
 
 
-class UserTokenList(AbstractTokenListModel, TimeStampedModel):
+class TokenList(AbstractTokenListModel):
     """
     A model to manage [token lists](https://tokenlists.org). Only
     admins can manage/import/export them.
+    """
+
+    url = TokenlistStandardURLField()
+    version = models.CharField(max_length=32)
+
+    class Meta:
+        unique_together = ("url", "version")
+
+
+class UserTokenList(AbstractTokenListModel, TimeStampedModel):
+    """
+    User-defined token lists
     """
 
     user = models.ForeignKey(User, related_name="token_lists", on_delete=models.CASCADE)
@@ -76,46 +67,4 @@ class UserTokenList(AbstractTokenListModel, TimeStampedModel):
         return user_token_list
 
 
-class TokenList(AbstractTokenListModel):
-    """
-    A model to manage [token lists](https://tokenlists.org). Only
-    admins can manage/import/export them.
-    """
-
-    url = TokenlistStandardURLField()
-    version = models.CharField(max_length=32)
-
-    class Meta:
-        unique_together = ("url", "version")
-
-    @classmethod
-    def make(cls, url, token_list_data: TokenListDataModel, description=None):
-
-        token_list, _ = cls.objects.get_or_create(
-            url=url,
-            version=token_list_data.version.as_string,
-            defaults=dict(name=token_list_data.name),
-        )
-        token_list.description = description
-        token_list.keywords.add(*token_list_data.keywords)
-        token_list.save()
-
-        for token_entry in token_list_data.tokens:
-            token, _ = BaseToken.objects.get_or_create(
-                chain_id=token_entry.chainId,
-                address=token_entry.address,
-                defaults=dict(
-                    name=token_entry.name,
-                    decimals=token_entry.decimals,
-                    symbol=token_entry.symbol,
-                    logoURI=token_entry.logoURI,
-                ),
-            )
-            token_list.tokens.add(token)
-        return token_list
-
-
-__all__ = [
-    "TokenList",
-    "UserTokenList",
-]
+__all__ = ["TokenList", "UserTokenList"]

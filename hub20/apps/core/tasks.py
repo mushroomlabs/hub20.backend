@@ -12,7 +12,7 @@ from django.core.cache import cache
 from django.utils import timezone
 
 from .consumers import CheckoutConsumer, Events, SessionEventsConsumer
-from .models import Checkout, TokenList, Transfer
+from .models import Checkout, Transfer
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -136,12 +136,6 @@ def call_checkout_webhook(checkout_id):
             logger.exception(f"Failed to call webhook at {url} for {checkout_id}: {exc}")
     except Checkout.DoesNotExist:
         logger.info(f"Checkout {checkout_id} does not exist")
-
-
-@shared_task
-def import_token_list(url, description=None):
-    token_list_data = TokenList.fetch(url)
-    TokenList.make(url, token_list_data, description=description)
 
 
 @shared_task

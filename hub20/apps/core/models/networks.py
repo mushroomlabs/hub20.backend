@@ -21,6 +21,9 @@ class PaymentNetwork(BaseModel):
     def supports_token(self, token) -> bool:
         return False
 
+    def __str__(self):
+        return self.name
+
     class Meta:
         ordering = ("name",)
 
@@ -36,6 +39,7 @@ class PaymentNetworkProvider(BaseModel):
     is_active = models.BooleanField(default=True)
     synced = models.BooleanField(default=False)
     connected = models.BooleanField(default=False)
+    network = models.ForeignKey(PaymentNetwork, on_delete=models.CASCADE, related_name="providers")
 
     objects = InheritanceManager()
     active = QueryManager(is_active=True)

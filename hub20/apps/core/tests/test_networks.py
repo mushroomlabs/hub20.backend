@@ -20,6 +20,11 @@ class PaymentNetworkViewTestCase(PaymentNetworkTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data), 1)
 
+    def test_filter_on_list_endpoint(self):
+        response = self.client.get(reverse("network-list"), {"available": True})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 0)
+
     def test_endpoint_to_retrieve_network(self):
         response = self.client.get(reverse("network-detail", kwargs={"pk": self.hub.pk}))
         self.assertEqual(response.status_code, 200)
