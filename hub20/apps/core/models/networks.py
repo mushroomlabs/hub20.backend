@@ -2,7 +2,7 @@ from django.contrib.sites.models import Site
 from django.db import models
 from model_utils.managers import InheritanceManager
 
-from .base import BaseModel
+from .base import BaseModel, PolymorphicModelMixin
 
 
 class ActiveProviderManager(InheritanceManager):
@@ -17,7 +17,7 @@ class AvailableProviderManager(InheritanceManager):
         return qs.filter(is_active=True, synced=True, connected=True)
 
 
-class PaymentNetwork(BaseModel):
+class PaymentNetwork(BaseModel, PolymorphicModelMixin):
     name = models.CharField(max_length=300, unique=True)
     description = models.TextField(null=True)
     objects = InheritanceManager()
@@ -25,10 +25,6 @@ class PaymentNetwork(BaseModel):
     @property
     def type(self) -> str:
         return self.subclassed._meta.app_config.network_name
-
-    @property
-    def subclassed(self):
-        return self.__class__.objects.get_subclass(id=self.id)
 
     def supports_token(self, token) -> bool:
         return False
@@ -47,7 +43,7 @@ class InternalPaymentNetwork(PaymentNetwork):
         return token.is_listed
 
 
-class PaymentNetworkProvider(BaseModel):
+class PaymentNetworkProvider(BaseModel, PolymorphicModelMixin):
     is_active = models.BooleanField(default=True)
     synced = models.BooleanField(default=False)
     connected = models.BooleanField(default=False)
@@ -63,6 +59,9 @@ class PaymentNetworkProvider(BaseModel):
 
     def run(self):
         pass
+
+    def __str__(self):
+        return f"{self.subclassed.__class__.__name__} for {self.network.subclassed.name}"
 
 
 __all__ = ["PaymentNetwork", "InternalPaymentNetwork", "PaymentNetworkProvider"]

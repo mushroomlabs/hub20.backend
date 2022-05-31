@@ -165,9 +165,14 @@ class Web3ProviderAdmin(admin.ModelAdmin):
         "connected",
         "synced",
     )
+    autocomplete_fields = ("network",)
     list_filter = ("is_active", "connected", "synced")
     readonly_fields = ("connected", "synced")
-    search_fields = ("url", "network__name", "network__blockchainpaymentnetwork__chain__name")
+    search_fields = (
+        "url",
+        "network__name",
+        "network__blockchainpaymentnetwork__chain__name",
+    )
 
 
 @admin.register(models.Explorer)

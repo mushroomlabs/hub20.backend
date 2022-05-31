@@ -8,3 +8,9 @@ class BaseModel(models.Model):
 
     class Meta:
         abstract = True
+
+
+class PolymorphicModelMixin:
+    @property
+    def subclassed(self):
+        return self.__class__.objects.get_subclass(id=self.id)

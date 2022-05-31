@@ -90,7 +90,7 @@ class FiatCurrencyListFilter(admin.SimpleListFilter):
 @admin.register(models.TokenList)
 class TokenListAdmin(admin.ModelAdmin):
     form = forms.TokenListForm
-    list_display = ["name", "description"]
+    list_display = ("name", "description")
 
 
 @admin.register(models.WrappedToken)
@@ -105,3 +105,9 @@ class StableTokenPairAdmin(admin.ModelAdmin):
 
     list_display = ("token", "currency")
     list_filter = (FiatCurrencyListFilter,)
+
+
+@admin.register(models.PaymentNetwork)
+class PaymentNetworkAdmin(admin.ModelAdmin):
+    list_display = ("name", "description")
+    search_fields = ("name",)
