@@ -1,5 +1,6 @@
 from django.test import TestCase
 from rest_framework.reverse import reverse
+from rest_framework.test import APIClient
 
 from ..factories.checkout import Erc20TokenCheckoutFactory
 from ..factories.networks import BlockchainPaymentNetworkFactory
@@ -25,4 +26,26 @@ class CheckoutRoutesViewTestCase(TestCase):
         self.assertEqual(second_route_response.status_code, 400, second_route_response.data)
 
 
-__all__ = ["CheckoutRoutesViewTestCase"]
+class BlockchainPaymentNetworkViewTestCase(TestCase):
+    def setUp(self):
+        self.blockchain_network = BlockchainPaymentNetworkFactory()
+        self.client = APIClient()
+
+    def test_endpoint_to_list_networks(self):
+        response = self.client.get(reverse("network-list"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+
+    def test_filter_on_list_endpoint(self):
+        response = self.client.get(reverse("network-list"), {"available": True})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+
+    def test_endpoint_to_retrieve_network(self):
+        response = self.client.get(
+            reverse("network-detail", kwargs={"pk": self.blockchain_network.pk})
+        )
+        self.assertEqual(response.status_code, 200)
+
+
+__all__ = ["CheckoutRoutesViewTestCase", "BlockchainPaymentNetworkViewTestCase"]

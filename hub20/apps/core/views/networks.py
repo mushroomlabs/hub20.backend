@@ -8,20 +8,20 @@ from .. import models, serializers
 
 
 class PaymentNetworkFilter(filters.FilterSet):
-    active = filters.BooleanFilter(label="active", method="filter_active")
     available = filters.BooleanFilter(label="available", method="filter_available")
-
-    def filter_active(self, queryset, name, value):
-        action = queryset.filter if value else queryset.exclude
-        return action(providers__in=models.PaymentNetworkProvider.active.all())
+    connected = filters.BooleanFilter(label="connected", method="filter_connected")
 
     def filter_available(self, queryset, name, value):
         action = queryset.filter if value else queryset.exclude
         return action(providers__in=models.PaymentNetworkProvider.available.all())
 
+    def filter_connected(self, queryset, name, value):
+        action = queryset.filter if value else queryset.exclude
+        return action(providers__in=models.PaymentNetworkProvider.connected.all())
+
     class Meta:
         model = models.PaymentNetwork
-        fields = ("active", "available")
+        fields = ("available", "connected")
 
 
 class PaymentNetworkViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
@@ -39,7 +39,9 @@ class PaymentNetworkViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
     search_fields = ("name",)
 
     def get_queryset(self, *args, **kw):
-        return models.PaymentNetwork.objects.filter().select_subclasses()
+        return models.PaymentNetwork.objects.filter(
+            providers__in=models.PaymentNetworkProvider.active.all()
+        ).select_subclasses()
 
 
 __all__ = ["PaymentNetworkViewSet"]
