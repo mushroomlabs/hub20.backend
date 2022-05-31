@@ -2,7 +2,7 @@ from django import forms
 
 from . import models, validators
 
-TOKEN_FILTER_QS = models.BaseToken.tradeable.all()
+TOKEN_FILTER_QS = models.BaseToken.tradeable.select_subclasses()
 
 
 class TokenlistStandardURLField(forms.URLField):

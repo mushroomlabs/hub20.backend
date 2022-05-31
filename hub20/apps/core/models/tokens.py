@@ -6,7 +6,7 @@ from decimal import Decimal
 from django.contrib.auth import get_user_model
 from django.db import models
 from django.db.models import Sum
-from model_utils.managers import InheritanceManager, InheritanceManagerMixin, QueryManagerMixin
+from model_utils.managers import InheritanceManager
 
 from ..choices import CURRENCIES
 from ..fields import TokenAmountField, TokenlistStandardURLField
@@ -17,8 +17,10 @@ logger = logging.getLogger(__name__)
 User = get_user_model()
 
 
-class TradeableTokenManager(InheritanceManagerMixin, QueryManagerMixin, models.Manager):
-    pass
+class TradeableTokenManager(InheritanceManager):
+    def get_queryset(self):
+        qs = super().get_queryset()
+        return qs.filter(is_listed=True)
 
 
 class BaseToken(BaseModel):
@@ -28,7 +30,7 @@ class BaseToken(BaseModel):
     logoURI = TokenlistStandardURLField(max_length=512, null=True, blank=True)
     is_listed = models.BooleanField(default=False)
     objects = InheritanceManager()
-    tradeable = TradeableTokenManager(is_listed=True)
+    tradeable = TradeableTokenManager()
 
     def from_wei(self, wei_amount: Wei) -> TokenAmount:
         value = Decimal(wei_amount) / (10**self.decimals)

@@ -2,7 +2,8 @@ from decimal import Decimal
 
 from django.test import TestCase
 
-from hub20.apps.core.factories.tokens import TokenAmountFactory
+from hub20.apps.core.factories.tokens import BaseTokenFactory, TokenAmountFactory
+from hub20.apps.core.models.tokens import BaseToken
 
 
 class TokenAmountTestCase(TestCase):
@@ -25,4 +26,19 @@ class TokenAmountTestCase(TestCase):
         self.assertEqual(other_amount.amount + self.token_amount.amount, token_sum.amount)
 
 
-__all__ = ["TokenAmountTestCase"]
+class TokenModelManagerTestCase(TestCase):
+    def setUp(self):
+        self.listed_token = BaseTokenFactory(is_listed=True)
+        self.unlisted_token = BaseTokenFactory(is_listed=False)
+
+    def test_can_filter_listed_tokens(self):
+        self.assertEqual(BaseToken.objects.filter(is_listed=True).count(), 1)
+        self.assertEqual(BaseToken.objects.filter(is_listed=False).count(), 1)
+        self.assertEqual(BaseToken.objects.count(), 2)
+
+    def test_can_filter_with_tradeable_manager(self):
+        self.assertEqual(BaseToken.tradeable.count(), 1)
+        self.assertEqual(BaseToken.tradeable.select_subclasses().count(), 1)
+
+
+__all__ = ["TokenAmountTestCase", "TokenModelManagerTestCase"]
