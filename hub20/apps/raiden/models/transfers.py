@@ -4,8 +4,8 @@ from django.contrib.postgres.fields import HStoreField
 from django.db import models
 
 from hub20.apps.core.exceptions import TransferError
-from hub20.apps.core.fields import EthereumAddressField
 from hub20.apps.core.models.transfers import Transfer, TransferConfirmation, TransferReceipt
+from hub20.apps.ethereum.models import EthereumAddressField
 
 from ..exceptions import RaidenPaymentError
 from .raiden import Payment

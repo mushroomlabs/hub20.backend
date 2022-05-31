@@ -10,11 +10,11 @@ from hdwallet import HDWallet
 from hdwallet.symbols import ETH
 from model_utils.managers import InheritanceManager
 
-from hub20.apps.core.fields import EthereumAddressField, HexField
 from hub20.apps.core.models import TokenValueModel
 from hub20.apps.core.settings import app_settings
 
 from .blockchain import Block, Transaction
+from .fields import EthereumAddressField, HexField
 
 logger = logging.getLogger(__name__)
 

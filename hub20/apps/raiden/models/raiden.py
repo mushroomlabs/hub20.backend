@@ -10,11 +10,10 @@ from model_utils.choices import Choices
 from model_utils.managers import QueryManager
 from model_utils.models import StatusModel
 
-from hub20.apps.core.fields import EthereumAddressField, Uint256Field
 from hub20.apps.core.models.tokens import TokenAmount, TokenAmountField
 from hub20.apps.core.settings import app_settings
 from hub20.apps.core.validators import uri_parsable_scheme_validator
-from hub20.apps.ethereum.models import Chain, Erc20Token
+from hub20.apps.ethereum.models import Chain, Erc20Token, EthereumAddressField, Uint256Field
 
 CHANNEL_STATUSES = Choices(
     "opened", "waiting_for_settle", "settling", "settled", "unusable", "closed", "closing"

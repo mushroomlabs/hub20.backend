@@ -6,12 +6,12 @@ from django.db import models
 from django.db.models import Q
 from model_utils.managers import QueryManager
 
-from hub20.apps.core.fields import EthereumAddressField
 from hub20.apps.core.models import BaseToken, TokenList
 
 from ..constants import NULL_ADDRESS
 from ..schemas import TokenList as TokenListSchema, validate_token_list
 from .blockchain import Chain
+from .fields import EthereumAddressField
 
 logger = logging.getLogger(__name__)
 

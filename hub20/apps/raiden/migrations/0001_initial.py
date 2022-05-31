@@ -7,7 +7,8 @@ import model_utils.fields
 from django.contrib.postgres.operations import HStoreExtension
 from django.db import migrations, models
 
-import hub20.apps.core.fields
+from hub20.apps.core.fields import TokenAmountField
+from hub20.apps.ethereum.models.fields import EthereumAddressField, Uint256Field
 from hub20.apps.raiden.models.raiden import RaidenURLField, calculate_raiden_payment_window
 
 
@@ -58,18 +59,18 @@ class Migration(migrations.Migration):
                     ),
                 ),
                 ("identifier", models.PositiveIntegerField()),
-                ("partner_address", hub20.apps.core.fields.EthereumAddressField(db_index=True)),
+                ("partner_address", EthereumAddressField(db_index=True)),
                 (
                     "balance",
-                    hub20.apps.core.fields.TokenAmountField(decimal_places=18, max_digits=32),
+                    TokenAmountField(decimal_places=18, max_digits=32),
                 ),
                 (
                     "total_deposit",
-                    hub20.apps.core.fields.TokenAmountField(decimal_places=18, max_digits=32),
+                    TokenAmountField(decimal_places=18, max_digits=32),
                 ),
                 (
                     "total_withdraw",
-                    hub20.apps.core.fields.TokenAmountField(decimal_places=18, max_digits=32),
+                    TokenAmountField(decimal_places=18, max_digits=32),
                 ),
             ],
         ),
@@ -84,12 +85,12 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "amount",
-                    hub20.apps.core.fields.TokenAmountField(decimal_places=18, max_digits=32),
+                    TokenAmountField(decimal_places=18, max_digits=32),
                 ),
                 ("timestamp", models.DateTimeField()),
-                ("identifier", hub20.apps.core.fields.Uint256Field()),
-                ("sender_address", hub20.apps.core.fields.EthereumAddressField()),
-                ("receiver_address", hub20.apps.core.fields.EthereumAddressField()),
+                ("identifier", Uint256Field()),
+                ("sender_address", EthereumAddressField()),
+                ("receiver_address", EthereumAddressField()),
                 (
                     "channel",
                     models.ForeignKey(
@@ -115,7 +116,7 @@ class Migration(migrations.Migration):
                     ),
                 ),
                 ("url", RaidenURLField(unique=True)),
-                ("address", hub20.apps.core.fields.EthereumAddressField()),
+                ("address", EthereumAddressField()),
                 (
                     "chain",
                     models.OneToOneField(
@@ -140,7 +141,7 @@ class Migration(migrations.Migration):
                         to="core.transfer",
                     ),
                 ),
-                ("address", hub20.apps.core.fields.EthereumAddressField(db_index=True)),
+                ("address", EthereumAddressField(db_index=True)),
             ],
             options={
                 "abstract": False,
@@ -177,7 +178,7 @@ class Migration(migrations.Migration):
                         auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
                     ),
                 ),
-                ("address", hub20.apps.core.fields.EthereumAddressField()),
+                ("address", EthereumAddressField()),
                 (
                     "token",
                     models.OneToOneField(

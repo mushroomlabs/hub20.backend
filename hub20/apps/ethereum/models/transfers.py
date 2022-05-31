@@ -2,7 +2,6 @@ import logging
 
 from django.db import models
 
-from hub20.apps.core.fields import EthereumAddressField
 from hub20.apps.core.models import (
     TokenAmount,
     Transfer,
@@ -12,6 +11,7 @@ from hub20.apps.core.models import (
 )
 
 from .blockchain import Transaction, TransactionDataRecord
+from .fields import EthereumAddressField
 
 logger = logging.getLogger(__name__)
 

@@ -9,8 +9,8 @@ import django.db.models.deletion
 from django.contrib.postgres.operations import HStoreExtension
 from django.db import migrations, models
 
-import hub20.apps.core.fields
-import hub20.apps.ethereum.fields
+from hub20.apps.core.fields import TokenAmountField
+from hub20.apps.ethereum.models.fields import EthereumAddressField, HexField, Web3ProviderURLField
 
 
 class Migration(migrations.Migration):
@@ -34,7 +34,7 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "address",
-                    hub20.apps.core.fields.EthereumAddressField(db_index=True, unique=True),
+                    EthereumAddressField(db_index=True, unique=True),
                 ),
             ],
         ),
@@ -43,18 +43,16 @@ class Migration(migrations.Migration):
             fields=[
                 (
                     "hash",
-                    hub20.apps.core.fields.HexField(
-                        max_length=64, primary_key=True, serialize=False
-                    ),
+                    HexField(max_length=64, primary_key=True, serialize=False),
                 ),
                 ("number", models.PositiveIntegerField(db_index=True)),
                 ("base_fee_per_gas", models.PositiveBigIntegerField(null=True)),
                 ("timestamp", models.DateTimeField()),
-                ("parent_hash", hub20.apps.core.fields.HexField(max_length=64)),
+                ("parent_hash", HexField(max_length=64)),
                 (
                     "uncle_hashes",
                     django.contrib.postgres.fields.ArrayField(
-                        base_field=hub20.apps.core.fields.HexField(max_length=64), size=None
+                        base_field=HexField(max_length=64), size=None
                     ),
                 ),
             ],
@@ -73,7 +71,7 @@ class Migration(migrations.Migration):
                         to="core.transfer",
                     ),
                 ),
-                ("address", hub20.apps.core.fields.EthereumAddressField(db_index=True)),
+                ("address", EthereumAddressField(db_index=True)),
             ],
             options={
                 "abstract": False,
@@ -95,9 +93,9 @@ class Migration(migrations.Migration):
             name="Transaction",
             fields=[
                 ("id", models.UUIDField(default=uuid.uuid4, primary_key=True, serialize=False)),
-                ("hash", hub20.apps.core.fields.HexField(db_index=True, max_length=64)),
-                ("from_address", hub20.apps.core.fields.EthereumAddressField(db_index=True)),
-                ("to_address", hub20.apps.core.fields.EthereumAddressField(db_index=True)),
+                ("hash", HexField(db_index=True, max_length=64)),
+                ("from_address", EthereumAddressField(db_index=True)),
+                ("to_address", EthereumAddressField(db_index=True)),
                 ("receipt", django.contrib.postgres.fields.hstore.HStoreField()),
                 (
                     "block",
@@ -123,7 +121,7 @@ class Migration(migrations.Migration):
                         to="core.paymentnetworkprovider",
                     ),
                 ),
-                ("url", hub20.apps.ethereum.fields.Web3ProviderURLField()),
+                ("url", Web3ProviderURLField()),
                 ("client_version", models.CharField(max_length=300, null=True)),
                 ("requires_geth_poa_middleware", models.BooleanField(default=False)),
                 ("supports_pending_filters", models.BooleanField(default=False)),
@@ -184,7 +182,7 @@ class Migration(migrations.Migration):
                         to="ethereum.basewallet",
                     ),
                 ),
-                ("private_key", hub20.apps.core.fields.HexField(max_length=64, unique=True)),
+                ("private_key", HexField(max_length=64, unique=True)),
             ],
             bases=("ethereum.basewallet",),
         ),
@@ -193,7 +191,7 @@ class Migration(migrations.Migration):
             fields=[
                 (
                     "amount",
-                    hub20.apps.core.fields.TokenAmountField(decimal_places=18, max_digits=32),
+                    TokenAmountField(decimal_places=18, max_digits=32),
                 ),
                 ("id", models.UUIDField(default=uuid.uuid4, primary_key=True, serialize=False)),
                 (
@@ -219,9 +217,9 @@ class Migration(migrations.Migration):
             name="TransactionDataRecord",
             fields=[
                 ("id", models.UUIDField(default=uuid.uuid4, primary_key=True, serialize=False)),
-                ("hash", hub20.apps.core.fields.HexField(db_index=True, max_length=64)),
-                ("from_address", hub20.apps.core.fields.EthereumAddressField(db_index=True)),
-                ("to_address", hub20.apps.core.fields.EthereumAddressField(db_index=True)),
+                ("hash", HexField(db_index=True, max_length=64)),
+                ("from_address", EthereumAddressField(db_index=True)),
+                ("to_address", EthereumAddressField(db_index=True)),
                 ("data", django.contrib.postgres.fields.hstore.HStoreField()),
                 (
                     "chain",
@@ -321,7 +319,7 @@ class Migration(migrations.Migration):
                         to="core.basetoken",
                     ),
                 ),
-                ("address", hub20.apps.core.fields.EthereumAddressField()),
+                ("address", EthereumAddressField()),
                 (
                     "chain",
                     models.ForeignKey(
@@ -542,7 +540,7 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "amount",
-                    hub20.apps.core.fields.TokenAmountField(decimal_places=18, max_digits=32),
+                    TokenAmountField(decimal_places=18, max_digits=32),
                 ),
                 (
                     "block",
@@ -580,10 +578,10 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "amount",
-                    hub20.apps.core.fields.TokenAmountField(decimal_places=18, max_digits=32),
+                    TokenAmountField(decimal_places=18, max_digits=32),
                 ),
-                ("sender", hub20.apps.core.fields.EthereumAddressField()),
-                ("recipient", hub20.apps.core.fields.EthereumAddressField()),
+                ("sender", EthereumAddressField()),
+                ("recipient", EthereumAddressField()),
                 ("log_index", models.SmallIntegerField(null=True)),
                 (
                     "currency",

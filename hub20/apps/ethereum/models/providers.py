@@ -7,7 +7,7 @@ from django.db.transaction import atomic
 from hub20.apps.core.models.networks import PaymentNetworkProvider
 from hub20.apps.core.settings import app_settings
 
-from ..fields import Web3ProviderURLField
+from .fields import Web3ProviderURLField
 
 logger = logging.getLogger(__name__)
 

@@ -12,8 +12,9 @@ from web3 import Web3
 from web3.datastructures import AttributeDict
 from web3.types import BlockData, TxData, TxReceipt
 
-from hub20.apps.core.fields import EthereumAddressField, HexField
 from hub20.apps.core.models import TokenValueModel
+
+from .fields import EthereumAddressField, HexField
 
 logger = logging.getLogger(__name__)
 

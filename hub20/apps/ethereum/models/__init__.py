@@ -1,6 +1,7 @@
 from .accounting import *  # noqa
 from .accounts import *  # noqa
 from .blockchain import *  # noqa
+from .fields import *  # noqa
 from .networks import *  # noqa
 from .payments import *  # noqa
 from .providers import *  # noqa
