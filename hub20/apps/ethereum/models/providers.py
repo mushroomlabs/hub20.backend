@@ -36,5 +36,8 @@ class Web3Provider(PaymentNetworkProvider):
     def __str__(self):
         return self.hostname
 
+    def run(self):
+        logging.info(f"Running {self}")
+
 
 __all__ = ["Web3Provider"]

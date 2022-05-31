@@ -49,5 +49,8 @@ class PaymentNetworkProvider(BaseModel):
     def is_online(self):
         return self.connected and self.synced
 
+    def run(self):
+        pass
+
 
 __all__ = ["PaymentNetwork", "InternalPaymentNetwork", "PaymentNetworkProvider"]

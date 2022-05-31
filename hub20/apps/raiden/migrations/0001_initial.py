@@ -8,7 +8,7 @@ from django.contrib.postgres.operations import HStoreExtension
 from django.db import migrations, models
 
 import hub20.apps.core.fields
-import hub20.apps.raiden.models
+from hub20.apps.raiden.models.raiden import RaidenURLField, calculate_raiden_payment_window
 
 
 class Migration(migrations.Migration):
@@ -114,7 +114,7 @@ class Migration(migrations.Migration):
                         auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
                     ),
                 ),
-                ("url", hub20.apps.raiden.models.RaidenURLField(unique=True)),
+                ("url", RaidenURLField(unique=True)),
                 ("address", hub20.apps.core.fields.EthereumAddressField()),
                 (
                     "chain",
@@ -228,9 +228,7 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "payment_window",
-                    models.DurationField(
-                        default=hub20.apps.raiden.models.calculate_raiden_payment_window
-                    ),
+                    models.DurationField(default=calculate_raiden_payment_window),
                 ),
                 (
                     "raiden",
