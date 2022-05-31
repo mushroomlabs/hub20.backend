@@ -1,124 +1,26 @@
 import logging
 from typing import Optional, Tuple
-from urllib.parse import urlparse
 
 from eth_utils import to_checksum_address
 from ethereum.abi import ContractTranslator
-from pydantic import BaseModel
 from raiden_contracts.constants import CONTRACT_CUSTOM_TOKEN
 from raiden_contracts.contract_manager import ContractManager, contracts_precompiled_path
 from web3 import Web3
 from web3.datastructures import AttributeDict
-from web3.exceptions import ExtraDataLengthError, TransactionNotFound
-from web3.middleware import geth_poa_middleware
-from web3.providers import HTTPProvider, IPCProvider, WebsocketProvider
+from web3.exceptions import TransactionNotFound
 from web3.types import TxReceipt
 
 from hub20.apps.core.models import BaseToken, TokenAmount
-from hub20.apps.ethereum import analytics
 from hub20.apps.ethereum.abi.tokens import EIP20_ABI
-from hub20.apps.ethereum.app_settings import WEB3_REQUEST_TIMEOUT, WEB3_TRANSFER_GAS_LIMIT
+from hub20.apps.ethereum.app_settings import WEB3_TRANSFER_GAS_LIMIT
 from hub20.apps.ethereum.exceptions import Web3TransactionError
 from hub20.apps.ethereum.factories import FAKER
-from hub20.apps.ethereum.models import BaseWallet, Chain, TransactionDataRecord, Web3Provider
+from hub20.apps.ethereum.models import BaseWallet, Chain, TransactionDataRecord
 from hub20.apps.ethereum.typing import Address, EthereumAccount_T, Web3Client_T
 
 logger = logging.getLogger(__name__)
 
 GAS_REQUIRED_FOR_MINT: int = 100_000
-
-
-class Web3ProviderConfiguration(BaseModel):
-    client_version: Optional[str]
-    supports_eip1559: bool
-    supports_pending_filters: bool
-    requires_geth_poa_middleware: bool
-
-
-def eip1559_price_strategy(w3: Web3, *args, **kw):
-    try:
-        current_block = w3.eth.get_block("latest")
-        return analytics.recommended_eip1559_gas_price(
-            current_block, max_priority_fee=w3.eth.max_priority_fee
-        )
-    except Exception as exc:
-        chain_id = w3.eth.chain_id
-        logger.exception(f"Error when getting price estimate for {chain_id}", exc_info=exc)
-        return analytics.estimate_gas_price(chain_id)
-
-
-def historical_trend_price_strategy(w3: Web3, *args, **kw):
-    return analytics.estimate_gas_price(w3.eth.chain_id)
-
-
-def get_web3(provider_url: str) -> Web3:
-    endpoint = urlparse(provider_url)
-
-    provider_class = {
-        "http": HTTPProvider,
-        "https": HTTPProvider,
-        "ws": WebsocketProvider,
-        "wss": WebsocketProvider,
-    }.get(endpoint.scheme, IPCProvider)
-
-    http_request_params = dict(request_kwargs={"timeout": WEB3_REQUEST_TIMEOUT})
-    ws_connection_params = dict(websocket_timeout=WEB3_REQUEST_TIMEOUT)
-
-    params = {
-        "http": http_request_params,
-        "https": http_request_params,
-        "ws": ws_connection_params,
-        "wss": ws_connection_params,
-    }.get(endpoint.scheme, {})
-
-    w3 = Web3(provider_class(provider_url, **params))
-    return w3
-
-
-def make_web3(provider: Web3Provider) -> Web3:
-    w3 = get_web3(provider_url=provider.url)
-
-    if provider.requires_geth_poa_middleware:
-        w3.middleware_onion.inject(geth_poa_middleware, layer=0)
-
-    price_strategy = (
-        eip1559_price_strategy if provider.supports_eip1559 else historical_trend_price_strategy
-    )
-    w3.eth.setGasPriceStrategy(price_strategy)
-
-    return w3
-
-
-def inspect_web3(w3: Web3) -> Web3ProviderConfiguration:
-    try:
-        version: Optional[str] = w3.clientVersion
-    except ValueError:
-        version = None
-
-    try:
-        max_fee = w3.eth.max_priority_fee
-        eip1559 = bool(type(max_fee) is int)
-    except ValueError:
-        eip1559 = False
-
-    try:
-        w3.eth.filter("pending")
-        pending_filters = True
-    except ValueError:
-        pending_filters = False
-
-    try:
-        w3.eth.get_block("latest")
-        requires_geth_poa_middleware = False
-    except ExtraDataLengthError:
-        requires_geth_poa_middleware = True
-
-    return Web3ProviderConfiguration(
-        client_version=version,
-        supports_eip1559=eip1559,
-        supports_pending_filters=pending_filters,
-        requires_geth_poa_middleware=requires_geth_poa_middleware,
-    )
 
 
 def send_transaction(
@@ -212,12 +114,6 @@ def get_token_information(w3: Web3, address):
         "symbol": contract.functions.symbol().call(),
         "decimals": contract.functions.decimals().call(),
     }
-
-
-def make_token(w3: Web3, address) -> BaseToken:
-    token_data = get_token_information(w3=w3, address=address)
-    chain = Chain.active.get(id=w3.eth.chain_id)
-    return BaseToken.make(chain=chain, address=address, **token_data)
 
 
 def mint_tokens(w3: Web3, account: EthereumAccount_T, amount: TokenAmount):
@@ -330,7 +226,4 @@ __all__ = [
     "get_max_fee",
     "get_account_balance",
     "get_token_information",
-    "inspect_web3",
-    "make_token",
-    "make_web3",
 ]

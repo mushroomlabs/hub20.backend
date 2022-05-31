@@ -13,7 +13,11 @@ from hub20.apps.ethereum.tests.mocks import (
     Web3Mock,
 )
 
-from ..factories import Erc20TokenBlockchainPaymentRouteFactory, Erc20TokenCheckoutFactory
+from ..factories import (
+    Erc20TokenBlockchainPaymentRouteFactory,
+    Erc20TokenCheckoutFactory,
+    Web3ProviderFactory,
+)
 
 
 @pytest.mark.django_db(transaction=True)
@@ -24,12 +28,11 @@ class BaseTestCase(TestCase):
 class PaymentTransferTestCase(BaseTestCase):
     def setUp(self):
         self.hub = InternalPaymentNetworkFactory()
+        self.provider = Web3ProviderFactory()
         self.w3 = Web3Mock
 
     @patch("hub20.apps.ethereum.tasks.Web3Provider")
-    @patch("hub20.apps.ethereum.tasks.make_web3")
-    def test_can_detect_erc20_transfers(self, make_web3_mock, MockWeb3Provider):
-
+    def test_can_detect_erc20_transfers(self, MockWeb3ProviderModel):
         checkout = Erc20TokenCheckoutFactory()
         route = Erc20TokenBlockchainPaymentRouteFactory(deposit=checkout.order)
 
@@ -59,16 +62,18 @@ class PaymentTransferTestCase(BaseTestCase):
             recipient=route.account.address,
         )
 
-        make_web3_mock.return_value = self.w3
         self.w3.eth.get_transaction.return_value = tx_data
         self.w3.eth.get_transaction_receipt.return_value = tx_receipt
         self.w3.eth.get_block.return_value = block_data
 
+        self.provider._make_web3 = lambda: self.w3
+
+        MockWeb3ProviderModel.objects.get.return_value = self.provider
         record_token_transfers(
             chain_id=self.w3.eth.chain_id,
             wallet_address=route.account.address,
             event_data=event_data,
-            provider_url=self.w3.provider.endpoint_uri,
+            provider_url=self.provider.url,
         )
 
         self.assertEqual(checkout.order.status, checkout.order.STATUS.paid)

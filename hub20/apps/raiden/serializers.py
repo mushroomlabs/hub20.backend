@@ -2,7 +2,6 @@ from raiden_contracts.contract_manager import gas_measurements
 from rest_framework import serializers
 
 from hub20.apps.core.serializers import PaymentSerializer
-from hub20.apps.ethereum.client import make_web3
 from hub20.apps.ethereum.models import Web3Provider
 
 from . import models
@@ -41,9 +40,8 @@ class RaidenStatusSerializer(serializers.ModelSerializer):
 
     def get_cost_estimates(self, obj):
         try:
-            provider = Web3Provider.active.get(chain_id=obj.chain.id)
-            w3 = make_web3(provider=provider)
-            gas_price = w3.eth.generate_gas_price()
+            provider = Web3Provider.available.get(chain_id=obj.chain.id)
+            gas_price = provider.w3.eth.generate_gas_price()
             gas_costs = gas_measurements()
             actions = {
                 "udc-deposit": gas_costs["UserDeposit.deposit"],

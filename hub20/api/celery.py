@@ -4,23 +4,6 @@ from celery import Celery
 from celery.schedules import crontab
 from django.conf import settings
 
-# from kombu.serialization import register
-
-# from hub20.apps.ethereum.celery import web3_deserializer, web3_serializer
-
-# BLOCK_CREATION_INTERVAL = 12
-# NODE_HEALTH_CHECK_INTERVAL = 15
-# RAIDEN_PAYMENT_CHECK_INTERVAL = 3
-
-
-# register(
-#     "web3",
-#     web3_serializer,
-#     web3_deserializer,
-#     content_type="application/json",
-#     content_encoding="utf-8",
-# )
-
 
 class Hub20CeleryConfig:
     name = "Hub20"

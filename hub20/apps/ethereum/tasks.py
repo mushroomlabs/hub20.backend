@@ -20,7 +20,6 @@ from hub20.apps.core.tasks import broadcast_event, stream_processor_lock
 from . import signals
 from .abi.tokens import EIP20_ABI
 from .analytics import MAX_PRIORITY_FEE_TRACKER, get_historical_block_data
-from .client import BLOCK_CREATION_INTERVAL, inspect_web3, make_web3
 from .constants import Events
 from .models import (
     BaseWallet,
@@ -50,7 +49,7 @@ def process_mined_blocks(self):
                 if lock.is_acquired:
                     logger.debug(f"Lock acquired for task {self.name} by {provider.hostname}")
                     chain = provider.chain
-                    w3: Web3 = make_web3(provider=provider)
+                    w3: Web3 = provider.w3
                     logger.info(f"Getting blocks from {provider.hostname}")
                     current_block = w3.eth.block_number
                     start = chain.highest_block
@@ -94,7 +93,7 @@ def index_token_transfer_events(self):
 
     for provider in Web3Provider.available.select_related("chain"):
         event_indexer = EventIndexer.make(provider.chain_id, indexer_name)
-        w3: Web3 = make_web3(provider=provider)
+        w3: Web3 = provider.w3
 
         current_block = w3.eth.block_number
 
@@ -165,7 +164,7 @@ def reset_inactive_providers():
 def refresh_max_priority_fee():
     for provider in Web3Provider.available.filter(supports_eip1559=True):
         try:
-            w3 = make_web3(provider=provider)
+            w3 = provider.w3
             MAX_PRIORITY_FEE_TRACKER.set(w3.eth.chain_id, w3.eth.max_priority_fee)
         except Exception as exc:
             logger.info(f"Failed to get max priority fee from {provider.hostname}: {exc}")
@@ -174,9 +173,7 @@ def refresh_max_priority_fee():
 @shared_task
 def check_providers_configuration():
     for provider in Web3Provider.active.all():
-        w3 = make_web3(provider=provider)
-        configuration = inspect_web3(w3=w3)
-        Web3Provider.objects.filter(id=provider.id).update(**configuration.dict())
+        provider.update_configuration()
 
 
 @shared_task
@@ -184,7 +181,7 @@ def check_providers_are_connected():
     for provider in Web3Provider.active.all():
         logger.info(f"Checking status from {provider.hostname}")
         try:
-            w3 = make_web3(provider=provider)
+            w3 = provider.w3
             is_connected = w3.isConnected()
             is_online = is_connected and (
                 provider.chain.is_scaling_network or w3.net.peer_count > 0
@@ -215,7 +212,7 @@ def check_providers_are_connected():
 def check_providers_are_synced():
     for provider in Web3Provider.active.all():
         try:
-            w3 = make_web3(provider=provider)
+            w3 = provider.w3
             is_synced = bool(not w3.eth.syncing)
         except (ValueError, AttributeError):
             # The node does not support the eth_syncing method. Assume healthy.
@@ -242,7 +239,7 @@ def check_chains_were_reorganized():
         with atomic():
             try:
                 chain = provider.chain
-                w3 = make_web3(provider=provider)
+                w3 = provider.w3
                 block_number = w3.eth.block_number
                 if chain.highest_block > block_number:
                     chain.blocks.filter(number__gt=block_number).delete()
@@ -282,7 +279,7 @@ def check_payments_in_open_routes():
             )
             continue
 
-        w3 = make_web3(provider=provider)
+        w3 = provider.w3
         contract = w3.eth.contract(abi=EIP20_ABI, address=token.address)
         wallet_address = route.account.address
 
@@ -311,7 +308,7 @@ def check_payments_in_open_routes():
                     event_data=transfer_event,
                     provider_url=provider.url,
                 )
-                cache.set(key, True, timeout=BLOCK_CREATION_INTERVAL * 2)
+                cache.set(key, True, timeout=provider.BLOCK_CREATION_INTERVAL * 2)
         except ValueError as exc:
             logger.warning(f"Can not get transfer logs from {provider.hostname}: {exc}")
 
@@ -341,7 +338,7 @@ def record_account_transactions(chain_id, block_data, provider_url):
 
     if len(txs) > 0:
         provider = Web3Provider.objects.get(url=provider_url)
-        w3 = make_web3(provider=provider)
+        w3 = provider.w3
         assert chain_id == w3.eth.chain_id, f"{provider.hostname} not on chain #{chain_id}"
 
         for tx_data in txs:
@@ -368,7 +365,7 @@ def record_token_transfers(chain_id, wallet_address, event_data, provider_url):
 
     try:
         provider = Web3Provider.objects.get(url=provider_url)
-        w3 = make_web3(provider=provider)
+        w3 = provider.w3
 
         tx_data = w3.eth.get_transaction(event_data.transactionHash)
         tx_receipt = w3.eth.get_transaction_receipt(event_data.transactionHash)
@@ -442,7 +439,7 @@ def check_eth_transfers(chain_id, block_data, provider_url):
 
     chain = Chain.active.get(id=chain_id)
     provider = Web3Provider.objects.get(url=provider_url)
-    w3 = make_web3(provider=provider)
+    w3 = provider.w3
 
     assert chain == provider.chain, f"{provider.hostname} not connected to {chain.name}"
 
@@ -542,7 +539,7 @@ def check_pending_erc20_transfer_event(chain_id, event_data, provider_url):
 
     try:
         provider = Web3Provider.objects.get(url=provider_url)
-        w3 = make_web3(provider=provider)
+        w3 = provider.w3
         transaction_data = w3.eth.get_transaction(event_data.transactionHash)
     except TransactionNotFound:
         logger.warning(f"Failed to get transaction data {event_data.transactionHash.hex()}")
@@ -613,7 +610,7 @@ def _get_native_token_balance(wallet: BaseWallet, token: BaseToken, block_data):
         logger.warning(f"Can not get balance for {wallet}: no provider available")
         return
 
-    w3 = make_web3(provider=provider)
+    w3 = provider.w3
 
     balance = token.from_wei(
         w3.eth.get_balance(wallet.address, block_identifier=block_data.hash.hex())
@@ -639,7 +636,7 @@ def _get_erc20_token_balance(wallet: BaseWallet, token: BaseToken, block_data):
     current_record = wallet.current_balance(token)
     current_block = current_record and current_record.block
 
-    w3 = make_web3(provider=provider)
+    w3 = provider.w3
 
     # Unlike native tokens, we can only get the current balance for
     # ERC20 tokens - i.e, we can not select at block-time. So we need to
@@ -659,7 +656,7 @@ def _get_erc20_token_balance(wallet: BaseWallet, token: BaseToken, block_data):
 @shared_task
 def update_all_wallet_balances():
     for provider in Web3Provider.available.all():
-        w3 = make_web3(provider=provider)
+        w3 = provider.w3
         chain_id = w3.eth.chain_id
         block_data = w3.eth.get_block(w3.eth.block_number, full_transactions=True)
         for wallet in BaseWallet.objects.all():
@@ -682,7 +679,7 @@ def update_wallet_token_balances(chain_id, wallet_address, event_data, provider_
         return
 
     provider = Web3Provider.objects.get(url=provider_url)
-    w3 = make_web3(provider=provider)
+    w3 = provider.w3
 
     block_data = w3.eth.get_block(event_data.blockNumber, full_transactions=True)
 

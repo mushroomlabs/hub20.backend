@@ -12,7 +12,7 @@ from rest_framework.views import APIView
 from hub20.apps.core.serializers.accounting import HyperlinkedTokenBalanceSerializer
 from hub20.apps.core.serializers.tokens import TokenSerializer
 from hub20.apps.core.views.tokens import BaseTokenFilter, BaseTokenViewSet
-from hub20.apps.ethereum.client import get_estimate_fee, make_web3
+from hub20.apps.ethereum.client import get_estimate_fee
 from hub20.apps.ethereum.models import Chain
 
 from . import VERSION, serializers
@@ -113,8 +113,7 @@ class TokenBrowserViewSet(BaseTokenViewSet):
         """
         token = self.get_object()
         try:
-            w3 = make_web3(provider=token.chain.provider)
-            transfer_cost = get_estimate_fee(w3=w3, token=token)
+            transfer_cost = get_estimate_fee(w3=token.chain.provider.w3, token=token)
             return Response(transfer_cost.as_wei)
         except AttributeError:
             raise Http404

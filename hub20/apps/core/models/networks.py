@@ -1,8 +1,20 @@
 from django.contrib.sites.models import Site
 from django.db import models
-from model_utils.managers import InheritanceManager, QueryManager
+from model_utils.managers import InheritanceManager
 
 from .base import BaseModel
+
+
+class ActiveProviderManager(InheritanceManager):
+    def get_queryset(self):
+        qs = super().get_queryset()
+        return qs.filter(is_active=True)
+
+
+class AvailableProviderManager(InheritanceManager):
+    def get_queryset(self):
+        qs = super().get_queryset()
+        return qs.filter(is_active=True, synced=True, connected=True)
 
 
 class PaymentNetwork(BaseModel):
@@ -42,8 +54,8 @@ class PaymentNetworkProvider(BaseModel):
     network = models.ForeignKey(PaymentNetwork, on_delete=models.CASCADE, related_name="providers")
 
     objects = InheritanceManager()
-    active = QueryManager(is_active=True)
-    available = QueryManager(synced=True, connected=True, is_active=True)
+    active = ActiveProviderManager()
+    available = AvailableProviderManager()
 
     @property
     def is_online(self):
