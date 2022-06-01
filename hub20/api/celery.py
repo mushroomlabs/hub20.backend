@@ -21,26 +21,6 @@ class Hub20CeleryConfig:
         #     "schedule": crontab(),
         #     "expires": 60,
         # },
-        # "check-providers-connected": {
-        #     "task": "hub20.apps.ethereum.tasks.check_providers_are_connected",
-        #     "schedule": timedelta(seconds=NODE_HEALTH_CHECK_INTERVAL),
-        #     "expires": NODE_HEALTH_CHECK_INTERVAL,
-        # },
-        # "check-providers-synced": {
-        #     "task": "hub20.apps.ethereum.tasks.check_providers_are_synced",
-        #     "schedule": timedelta(seconds=NODE_HEALTH_CHECK_INTERVAL),
-        #     "expires": NODE_HEALTH_CHECK_INTERVAL,
-        # },
-        # "check-chain-reorgs": {
-        #     "task": "hub20.apps.ethereum.tasks.check_chains_were_reorganized",
-        #     "schedule": timedelta(seconds=10),
-        #     "expires": NODE_HEALTH_CHECK_INTERVAL,
-        # },
-        # "reset-inactive-providers": {
-        #     "task": "hub20.apps.ethereum.tasks.reset_inactive_providers",
-        #     "schedule": crontab(minute="*/5"),
-        #     "expires": NODE_HEALTH_CHECK_INTERVAL,
-        # },
         # "refresh-priority-fee-cache": {
         #     "task": "hub20.apps.ethereum.tasks.refresh_max_priority_fee",
         #     "schedule": timedelta(seconds=30),

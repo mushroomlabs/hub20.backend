@@ -97,13 +97,17 @@ class HierarchicalDeterministicWallet(BaseWallet):
         return bytearray.fromhex(self.private_key)
 
     @classmethod
+    def get_seedphrase(cls):
+        phrase = app_settings.HDWallet.mnemonic
+        return phrase and phrase.strip()
+
+    @classmethod
     def get_wallet(cls, index: int) -> HDWallet:
         wallet = HDWallet(symbol=ETH)
 
-        if app_settings.Wallet.mnemonic:
-            wallet.from_mnemonic(mnemonic=app_settings.Wallet.mnemonic)
-        elif app_settings.Wallet.root_key:
-            wallet.from_xprivate_key(xprivate_key=app_settings.Wallet.root_key)
+        seedphrase = cls.get_seedphrase()
+        if seedphrase:
+            wallet.from_mnemonic(mnemonic=seedphrase)
         else:
             raise ValueError("Can not generate new addresses for HD Wallets. No seed available")
 

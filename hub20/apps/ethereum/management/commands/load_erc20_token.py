@@ -4,7 +4,7 @@ import sys
 from django.core.management.base import BaseCommand
 from eth_utils import to_checksum_address
 
-from hub20.apps.ethereum.client import get_token_information, make_web3
+from hub20.apps.ethereum.client import get_token_information
 from hub20.apps.ethereum.models import Chain, Erc20Token, Web3Provider
 
 logger = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ class Command(BaseCommand):
         try:
             chain_id = options["chain_id"]
             chain = Chain.objects.get(id=chain_id)
-            provider = Web3Provider.objects.get(chain=chain)
+            provider = Web3Provider.active.get(network__blockchainpaymentnetwork__chain=chain)
         except Chain.DoesNotExist:
             logger.error(f"Chain {chain_id} not found.")
             sys.exit(-1)
@@ -31,13 +31,11 @@ class Command(BaseCommand):
             logger.error("No web3 provider for {chain.name}")
             sys.exit(-1)
 
-        w3 = make_web3(provider=provider)
-
         token_address = to_checksum_address(options["address"])
 
         logger.info(f"Checking token {token_address}...")
         try:
-            token_data = get_token_information(w3=w3, address=token_address)
+            token_data = get_token_information(w3=provider.w3, address=token_address)
             Erc20Token.make(
                 address=token_address,
                 chain=provider.chain,

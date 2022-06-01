@@ -9,6 +9,17 @@ from . import forms, models
 logger = logging.getLogger(__name__)
 
 
+@admin.action(description="Activate selected providers")
+def activate_provider(modeladmin, request, queryset):
+    for provider in queryset.select_subclasses():
+        provider.activate()
+
+
+@admin.action(description="De-activate selected providers")
+def deactivate_provider(modeladmin, request, queryset):
+    queryset.update(is_active=False)
+
+
 @admin.action(description="List selected tokens")
 def accept(modeladmin, request, queryset):
     queryset.update(is_listed=True)
@@ -87,6 +98,13 @@ class FiatCurrencyListFilter(admin.SimpleListFilter):
         return queryset
 
 
+@admin.register(models.BaseToken)
+class BaseTokenAdmin(admin.ModelAdmin):
+    list_display = ("name", "symbol", "is_listed")
+    search_fields = ("name", "symbol")
+    list_filter = ("is_listed",)
+
+
 @admin.register(models.TokenList)
 class TokenListAdmin(admin.ModelAdmin):
     form = forms.TokenListForm
@@ -105,6 +123,7 @@ class StableTokenPairAdmin(admin.ModelAdmin):
 
     list_display = ("token", "currency")
     list_filter = (FiatCurrencyListFilter,)
+    autocomplete_fields = ("token",)
 
 
 @admin.register(models.PaymentNetwork)

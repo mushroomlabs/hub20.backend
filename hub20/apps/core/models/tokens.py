@@ -11,7 +11,7 @@ from model_utils.managers import InheritanceManager
 from ..choices import CURRENCIES
 from ..fields import TokenAmountField, TokenlistStandardURLField
 from ..typing import TokenAmount_T, Wei
-from .base import BaseModel
+from .base import BaseModel, PolymorphicModelMixin
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -23,7 +23,7 @@ class TradeableTokenManager(InheritanceManager):
         return qs.filter(is_listed=True)
 
 
-class BaseToken(BaseModel):
+class BaseToken(BaseModel, PolymorphicModelMixin):
     name = models.CharField(max_length=500)
     symbol = models.CharField(max_length=16)
     decimals = models.PositiveIntegerField(default=18)
@@ -35,10 +35,6 @@ class BaseToken(BaseModel):
     def from_wei(self, wei_amount: Wei) -> TokenAmount:
         value = Decimal(wei_amount) / (10**self.decimals)
         return TokenAmount(amount=value, currency=self)
-
-    @property
-    def subclassed(self):
-        return BaseToken.objects.get_subclass(id=self.id)
 
     @property
     def natural_data(self):
@@ -61,6 +57,9 @@ class BaseToken(BaseModel):
     def tracks_currency(self):
         pairing = getattr(self, "stable_pair", None)
         return pairing and pairing.currency
+
+    def __str__(self):
+        return self.name
 
 
 class WrappedToken(models.Model):

@@ -1,5 +1,4 @@
 import logging
-from decimal import Decimal
 
 from django.conf import settings
 from django.test.signals import setting_changed
@@ -18,8 +17,6 @@ class AppSettings:
 
     class Raiden:
         payment_route_lifetime = 15 * 60  # In seconds
-        minimum_ether_required = Decimal("0.025")
-        minimum_service_token_required = Decimal("5.5")
 
     class HDWallet:
         root_key = None
@@ -35,8 +32,6 @@ class AppSettings:
             "BLOCKCHAIN_SCAN_BLOCK_RANGE": (self.Blockchain, "scan_range"),
             "ETHEREUM_HD_WALLET_MNEMONIC": (self.HDWallet, "mnemonic"),
             "ETHEREUM_HD_WALLET_ROOT_KEY": (self.HDWallet, "root_key"),
-            "RAIDEN_MINIMUM_ETHER_REQUIRED": (self.Raiden, "minimum_ether_required"),
-            "RAIDEN_MINIMUM_RDN_REQUIRED": (self.Raiden, "minimum_service_token_required"),
         }
         user_settings = getattr(settings, "HUB20", {})
 

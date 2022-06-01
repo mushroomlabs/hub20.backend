@@ -3,8 +3,8 @@ from django.test import TestCase
 from hub20.apps.core.factories.networks import InternalPaymentNetworkFactory
 from hub20.apps.core.models.payments import PaymentConfirmation
 
-from ..factories import Erc20TokenBlockchainPaymentRouteFactory
-from ..models import BlockchainPaymentRoute
+from ..factories import Erc20TokenBlockchainPaymentRouteFactory, Erc20TokenFactory
+from ..models import BlockchainPaymentRoute, Erc20Token
 from .utils import add_token_to_account
 
 
@@ -40,4 +40,14 @@ class PaymentOrderManagerTestCase(TestCase):
         self.assertFalse(BlockchainPaymentRoute.objects.open().exists())
 
 
-__all__ = ["PaymentOrderManagerTestCase"]
+class TokenManagerTestCase(TestCase):
+    def setUp(self):
+        self.listed_token = Erc20TokenFactory()
+        self.unlisted_token = Erc20TokenFactory(is_listed=False)
+
+    def test_tradeable_manager_works_on_derived_classes(self):
+        self.assertEqual(Erc20Token.tradeable.count(), 1)
+        self.assertEqual(Erc20Token.tradeable.select_subclasses().count(), 1)
+
+
+__all__ = ["PaymentOrderManagerTestCase", "TokenManagerTestCase"]

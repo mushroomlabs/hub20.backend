@@ -1,5 +1,25 @@
 import os
 
+
+def read_secret_or_envvar(environment_variable):
+    """
+    Given an environment variable named FOO, checks first if the
+    $FOO_FILE is a file and returns its contents, otherwise it returns
+    the environment variable.
+
+    Useful for the cases when a setting is a secret managed by docker,
+    and we do not want to pass it as an env var.
+    """
+    file_variable = f"{environment_variable}_FILE"
+    file_path = os.getenv(file_variable)
+
+    if file_path and os.path.exists(file_path):
+        with open(file_path) as f:
+            return f.read()
+    else:
+        return os.getenv(environment_variable)
+
+
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
@@ -8,8 +28,8 @@ SECRET_KEY = os.getenv("HUB20_SECRET_KEY")
 
 DEBUG = "HUB20_DEBUG" in os.environ
 
-
 ALLOWED_HOSTS = os.getenv("HUB20_ALLOWED_HOSTS", ["*"])
+
 
 # Application definition
 
@@ -537,10 +557,9 @@ ACCOUNT_USERNAME_BLACKLIST = [
 ]
 
 # Wallet model configuration
-WALLET_MODEL = os.getenv("HUB20_WALLET_MODEL", "ethereum.KeystoreAccount")
+WALLET_MODEL = os.getenv("HUB20_WALLET_MODEL", "ethereum.ColdWallet")
 
-ETHEREUM_HD_WALLET_MNEMONIC = os.getenv("HUB20_ETHEREUM_HD_WALLET_MNEMONIC")
-ETHEREUM_HD_WALLET_ROOT_KEY = os.getenv("HUB20_ETHEREUM_HD_WALLET_ROOT_KEY")
+HUB20 = {"ETHEREUM_HD_WALLET_MNEMONIC": read_secret_or_envvar("HUB20_ETHEREUM_HD_WALLET_MNEMONIC")}
 
 
 # Logging Configuration

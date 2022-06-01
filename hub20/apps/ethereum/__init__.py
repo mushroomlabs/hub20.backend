@@ -10,7 +10,7 @@ def get_wallet_model():
     Return the Wallet model that is active in this project.
     """
 
-    account_setting = getattr(settings, "WALLET_MODEL", "web3.ColdWallet")
+    account_setting = getattr(settings, "WALLET_MODEL", "ethereum.ColdWallet")
 
     try:
         return django_apps.get_model(account_setting, require_ready=False)

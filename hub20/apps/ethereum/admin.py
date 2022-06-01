@@ -6,7 +6,14 @@ from django.db.models import Q
 from django.http import HttpRequest
 from django.utils.translation import gettext_lazy as _
 
-from hub20.apps.core.admin import StableTokenListFilter, TradeableTokenListFilter, accept, reject
+from hub20.apps.core.admin import (
+    StableTokenListFilter,
+    TradeableTokenListFilter,
+    accept,
+    activate_provider,
+    deactivate_provider,
+    reject,
+)
 
 from . import models
 from .forms import Erc20TokenForm, NativeTokenForm
@@ -173,6 +180,8 @@ class Web3ProviderAdmin(admin.ModelAdmin):
         "network__name",
         "network__blockchainpaymentnetwork__chain__name",
     )
+
+    actions = [activate_provider, deactivate_provider]
 
 
 @admin.register(models.Explorer)

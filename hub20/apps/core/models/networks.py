@@ -44,6 +44,8 @@ class InternalPaymentNetwork(PaymentNetwork):
 
 
 class PaymentNetworkProvider(BaseModel, PolymorphicModelMixin):
+    SYNC_INTERVAL = 30  # in seconds
+
     is_active = models.BooleanField(default=True)
     synced = models.BooleanField(default=False)
     connected = models.BooleanField(default=False)
@@ -57,7 +59,21 @@ class PaymentNetworkProvider(BaseModel, PolymorphicModelMixin):
     def is_online(self):
         return self.connected and self.synced
 
-    def run(self):
+    @property
+    def sync_interval(self):
+        return self.SYNC_INTERVAL
+
+    def activate(self):
+        self.is_active = True
+        self.save()
+
+    def sync(self):
+        pass
+
+    def check_open_payments(self):
+        pass
+
+    def execute_transfers(self):
         pass
 
     def __str__(self):

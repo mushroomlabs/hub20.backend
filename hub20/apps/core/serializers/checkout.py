@@ -169,7 +169,7 @@ class CheckoutRouteSerializer(NestedHyperlinkedModelSerializer, PaymentRouteSeri
         network = data["network"]
         if not network.supports_token(checkout.order.currency.subclassed):
             raise serializers.ValidationError(
-                f"Can not make {network.type} payments with {checkout.order.currency.name}"
+                f"Can not make {checkout.order.currency.name} payments on {network.name}"
             )
 
         checkout_q = Q(deposit__paymentorder__checkout=checkout)

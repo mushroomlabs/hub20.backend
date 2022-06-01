@@ -1,5 +1,4 @@
 import logging
-from asyncio.exceptions import TimeoutError
 
 import celery_pubsub
 from celery import shared_task
@@ -8,26 +7,22 @@ from django.db.models import Q
 from django.db.transaction import atomic
 from requests.exceptions import ConnectionError, HTTPError
 from web3 import Web3
-from web3._utils.events import get_event_data
-from web3._utils.filters import construct_event_filter_params
-from web3.exceptions import ExtraDataLengthError, LogTopicError, TransactionNotFound
+from web3.exceptions import ExtraDataLengthError, TransactionNotFound
 from websockets.exceptions import InvalidStatusCode
 
 from hub20.apps.core.models.tokens import BaseToken
 from hub20.apps.core.settings import app_settings
-from hub20.apps.core.tasks import broadcast_event, stream_processor_lock
+from hub20.apps.core.tasks import stream_processor_lock
 
 from . import signals
 from .abi.tokens import EIP20_ABI
 from .analytics import MAX_PRIORITY_FEE_TRACKER, get_historical_block_data
-from .constants import Events
 from .models import (
     BaseWallet,
     Block,
     BlockchainPaymentRoute,
     Chain,
     Erc20Token,
-    EventIndexer,
     Transaction,
     TransactionDataRecord,
     TransferEvent,
@@ -85,79 +80,7 @@ def process_mined_blocks(self):
             logger.error(f"Could not connect with {provider.hostname} via websocket")
 
 
-@shared_task(bind=True)
-def index_token_transfer_events(self):
-    indexer_name = "erc20:token_transfers"
-
-    account_addresses = BaseWallet.objects.values_list("address", flat=True)
-
-    for provider in Web3Provider.available.select_related("chain"):
-        event_indexer = EventIndexer.make(provider.chain_id, indexer_name)
-        w3: Web3 = provider.w3
-
-        current_block = w3.eth.block_number
-
-        contract = w3.eth.contract(abi=EIP20_ABI)
-        abi = contract.events.Transfer._get_event_abi()
-
-        with stream_processor_lock(task=self, provider=provider) as lock:
-            while event_indexer.last_block < current_block and lock.is_acquired:
-                last_processed = event_indexer.last_block
-
-                from_block = last_processed
-                to_block = min(current_block, from_block + provider.max_block_scan_range)
-
-                logger.debug(f"Getting {indexer_name} events between {from_block} and {to_block}")
-
-                _, event_filter_params = construct_event_filter_params(
-                    abi, w3.codec, fromBlock=from_block, toBlock=to_block
-                )
-                try:
-                    for log in w3.eth.get_logs(event_filter_params):
-                        try:
-                            event_data = get_event_data(w3.codec, abi, log)
-                            sender = event_data.args._from
-                            recipient = event_data.args._to
-
-                            if sender in account_addresses:
-                                celery_pubsub.publish(
-                                    "blockchain.event.token_transfer.mined",
-                                    chain_id=w3.eth.chain_id,
-                                    wallet_address=sender,
-                                    event_data=event_data,
-                                    provider_url=provider.url,
-                                )
-
-                            if recipient in account_addresses:
-                                celery_pubsub.publish(
-                                    "blockchain.event.token_transfer.mined",
-                                    chain_id=w3.eth.chain_id,
-                                    wallet_address=recipient,
-                                    event_data=event_data,
-                                    provider_url=provider.url,
-                                )
-
-                        except LogTopicError:
-                            pass
-                        except Exception as exc:
-                            logger.exception(f"Unknown error when processing transfer log: {exc}")
-                except TimeoutError:
-                    logger.error(f"Timeout when getting logs from {provider.hostname}")
-                    continue
-                except Exception as exc:
-                    logger.error(f"Error getting logs from {provider.hostname}: {exc}")
-                    continue
-
-                event_indexer.last_block = to_block
-                event_indexer.save()
-
-                lock.refresh()
-
-
 # Tasks that are meant to be run periodically
-@shared_task
-def reset_inactive_providers():
-    Web3Provider.objects.filter(is_active=False).update(synced=False, connected=False)
 
 
 @shared_task
@@ -174,38 +97,6 @@ def refresh_max_priority_fee():
 def check_providers_configuration():
     for provider in Web3Provider.active.all():
         provider.update_configuration()
-
-
-@shared_task
-def check_providers_are_connected():
-    for provider in Web3Provider.active.all():
-        logger.info(f"Checking status from {provider.hostname}")
-        try:
-            w3 = provider.w3
-            is_connected = w3.isConnected()
-            is_online = is_connected and (
-                provider.chain.is_scaling_network or w3.net.peer_count > 0
-            )
-        except ConnectionError:
-            is_online = False
-        except ValueError:
-            # The node does not support the peer count method. Assume healthy.
-            is_online = is_connected
-        except Exception as exc:
-            logger.error(f"Could not check {provider.hostname}: {exc}")
-            continue
-
-        if provider.connected and not is_online:
-            logger.info(f"Node {provider.hostname} went offline")
-            celery_pubsub.publish(
-                "node.connection.nok", chain_id=provider.chain_id, provider_url=provider.url
-            )
-
-        elif is_online and not provider.connected:
-            logger.info(f"Node {provider.hostname} is back online")
-            celery_pubsub.publish(
-                "node.connection.ok", chain_id=provider.chain_id, provider_url=provider.url
-            )
 
 
 @shared_task
@@ -565,18 +456,6 @@ def check_pending_erc20_transfer_event(chain_id, event_data, provider_url):
 
 
 @shared_task
-def set_node_connection_ok(chain_id, provider_url):
-    logger.info(f"Setting node {provider_url} to online")
-    Web3Provider.objects.filter(chain_id=chain_id, url=provider_url).update(connected=True)
-
-
-@shared_task
-def set_node_connection_nok(chain_id, provider_url):
-    logger.info(f"Setting node {provider_url} to offline")
-    Web3Provider.objects.filter(chain_id=chain_id, url=provider_url).update(connected=False)
-
-
-@shared_task
 def set_node_sync_ok(chain_id, provider_url):
     logger.info(f"Setting node {provider_url} to sync")
     Web3Provider.objects.filter(chain_id=chain_id, url=provider_url).update(synced=True)
@@ -586,16 +465,6 @@ def set_node_sync_ok(chain_id, provider_url):
 def set_node_sync_nok(chain_id, provider_url):
     logger.info(f"Setting node {provider_url} to out-of-sync")
     Web3Provider.objects.filter(chain_id=chain_id, url=provider_url).update(synced=False)
-
-
-@shared_task
-def notify_node_unavailable(chain_id, provider_url):
-    broadcast_event(event=Events.PROVIDER_OFFLINE.value, chain_id=chain_id)
-
-
-@shared_task
-def notify_node_recovered(chain_id, provider_url):
-    broadcast_event(event=Events.PROVIDER_ONLINE.value, chain_id=chain_id)
 
 
 def _get_native_token_balance(wallet: BaseWallet, token: BaseToken, block_data):
@@ -733,11 +602,5 @@ celery_pubsub.subscribe(
 celery_pubsub.subscribe(
     "blockchain.broadcast.transaction", check_pending_transaction_for_eth_transfer
 )
-celery_pubsub.subscribe("node.connection.ok", set_node_connection_ok)
-celery_pubsub.subscribe("node.connection.nok", set_node_connection_nok)
 celery_pubsub.subscribe("node.sync.ok", set_node_sync_ok)
 celery_pubsub.subscribe("node.sync.nok", set_node_sync_nok)
-celery_pubsub.subscribe("node.sync.nok", notify_node_unavailable)
-celery_pubsub.subscribe("node.sync.ok", notify_node_recovered)
-celery_pubsub.subscribe("node.connection.nok", notify_node_unavailable)
-celery_pubsub.subscribe("node.connection.ok", notify_node_recovered)

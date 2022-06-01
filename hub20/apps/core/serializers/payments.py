@@ -19,10 +19,13 @@ from ..models import (
 from .tokens import HyperlinkedRelatedTokenField, TokenSerializer, TokenValueField
 
 
+class PaymentRouteNetworkSelectorField(serializers.HyperlinkedRelatedField):
+    def get_queryset(self):
+        return PaymentNetwork.objects.filter(providers__is_active=True).select_subclasses()
+
+
 class PaymentRouteSerializer(serializers.ModelSerializer):
-    network = serializers.HyperlinkedRelatedField(
-        view_name="network-detail", queryset=PaymentNetwork.objects.all().select_subclasses()
-    )
+    network = PaymentRouteNetworkSelectorField(view_name="network-detail")
 
     class Meta:
         model = PaymentRoute
@@ -157,7 +160,7 @@ class DepositRouteSerializer(NestedHyperlinkedModelSerializer, PaymentRouteSeria
 
         if not network.supports_token(deposit.currency.subclassed):
             raise serializers.ValidationError(
-                f"Can not make {network} deposits with {deposit.currency.name}"
+                f"Can not make {deposit.currency.name} deposits on {network.name}"
             )
 
         for route in network.routes.filter(deposit=deposit).select_subclasses():

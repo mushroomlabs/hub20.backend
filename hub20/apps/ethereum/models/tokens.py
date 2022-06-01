@@ -3,8 +3,6 @@ import logging
 
 import requests
 from django.db import models
-from django.db.models import Q
-from model_utils.managers import QueryManager
 
 from hub20.apps.core.models import BaseToken, TokenList
 
@@ -36,10 +34,6 @@ class Erc20Token(BaseToken):
 
     chain = models.ForeignKey(Chain, on_delete=models.CASCADE, related_name="tokens")
     address = EthereumAddressField()
-
-    objects = models.Manager()
-    tradeable = QueryManager(Q(chain__providers__is_active=True) & Q(is_listed=True))
-    listed = QueryManager(is_listed=True)
 
     def __str__(self) -> str:
         return f"{self.name} ({self.symbol}): {self.address} @ {self.chain_id}"

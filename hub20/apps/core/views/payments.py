@@ -45,9 +45,17 @@ class DepositRoutesViewSet(GenericViewSet, ListModelMixin, CreateModelMixin, Ret
     serializer_class = serializers.DepositRouteSerializer
     lookup_value_regex = "[0-9a-f-]{36}"
 
+    def get_serializer_class(self):
+        if self.action == "retrieve":
+            return serializers.PaymentRouteSerializer.get_serializer_class(route=self.get_object())
+        return self.serializer_class
+
     def get_queryset(self, *args, **kw):
         deposit_id = self.kwargs["deposit_pk"]
         return models.PaymentRoute.objects.filter(deposit_id=deposit_id).select_subclasses()
+
+    def get_deposit(self):
+        return models.Deposit.objects.get(id=self.kwargs["deposit_pk"])
 
 
 class PaymentViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):

@@ -203,22 +203,6 @@ class Transaction(AbstractTransactionRecord):
         return tx
 
 
-class EventIndexer(models.Model):
-    chain = models.ForeignKey(Chain, related_name="indexers", on_delete=models.CASCADE)
-    name = models.CharField(max_length=200)
-    last_block = models.PositiveBigIntegerField(default=1)
-
-    @classmethod
-    def make(cls, chain_id: int, name: str):
-        indexer, _ = cls.objects.get_or_create(chain_id=chain_id, name=name)
-        return indexer
-
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(fields=["chain", "name"], name="unique_name_per_chain"),
-        ]
-
-
 class TransferEvent(TokenValueModel):
     transaction = models.ForeignKey(
         Transaction, on_delete=models.CASCADE, related_name="transfers"
@@ -237,7 +221,6 @@ __all__ = [
     "Block",
     "Transaction",
     "TransactionDataRecord",
-    "EventIndexer",
     "TransferEvent",
     "serialize_web3_data",
 ]
