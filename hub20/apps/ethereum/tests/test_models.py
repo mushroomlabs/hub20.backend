@@ -17,12 +17,13 @@ from ..factories import (
     BlockchainPaymentNetworkFactory,
     BlockchainTransferConfirmationFactory,
     BlockchainTransferFactory,
+    Erc20TokenBlockchainPaymentFactory,
     Erc20TokenBlockchainPaymentRouteFactory,
     Erc20TokenFactory,
     Erc20TokenPaymentConfirmationFactory,
-    Erc20TransactionDataFactory,
-    Erc20TransactionFactory,
-    Erc20TransferEventFactory,
+    Erc20TokenTransactionDataFactory,
+    Erc20TokenTransactionFactory,
+    Erc20TokenTransferEventFactory,
     EtherAmountFactory,
     EtherPaymentConfirmationFactory,
     WalletBalanceRecordFactory,
@@ -41,18 +42,25 @@ class BlockchainPaymentTestCase(TestCase):
         self.chain = self.blockchain_route.chain
 
     def test_transaction_sets_payment_as_received(self):
-        add_token_to_account(self.blockchain_route.account, self.order.as_token_amount)
+        Erc20TokenTransferEventFactory(
+            recipient=self.blockchain_route.account.address,
+            transfer_amount=self.order.as_token_amount,
+        )
         self.assertTrue(self.order.is_paid)
         self.assertFalse(self.order.is_confirmed)
 
     def test_transaction_creates_blockchain_payment(self):
-        add_token_to_account(self.blockchain_route.account, self.order.as_token_amount)
+        Erc20TokenTransferEventFactory(
+            recipient=self.blockchain_route.account.address,
+            transfer_amount=self.order.as_token_amount,
+        )
         self.assertEqual(self.order.payments.count(), 1)
 
     def test_can_not_add_same_transaction_twice(self):
-        add_token_to_account(self.blockchain_route.account, self.order.as_token_amount)
+        payment = Erc20TokenBlockchainPaymentFactory(
+            route=self.blockchain_route, payment_amount=self.order.as_token_amount
+        )
         self.assertEqual(self.order.payments.count(), 1)
-        payment = self.order.payments.select_subclasses().first()
         with self.assertRaises(IntegrityError):
             BlockchainPayment.objects.create(
                 transaction=payment.transaction,
@@ -62,11 +70,17 @@ class BlockchainPaymentTestCase(TestCase):
             )
 
     def test_user_balance_is_updated_on_completed_payment(self):
-        tx = add_token_to_account(self.blockchain_route.account, self.order.as_token_amount)
+        payment = Erc20TokenBlockchainPaymentFactory(
+            route=self.blockchain_route, payment_amount=self.order.as_token_amount
+        )
 
-        block_number = tx.block.number + app_settings.Blockchain.minimum_confirmations
+        block_number = (
+            payment.transaction.block.number + app_settings.Blockchain.minimum_confirmations
+        )
         block_data = BlockMock(number=block_number)
-        block_sealed.send(sender=Block, chain_id=tx.block.chain_id, block_data=block_data)
+        block_sealed.send(
+            sender=Block, chain_id=payment.transaction.block.chain_id, block_data=block_data
+        )
 
         balance_amount = self.order.user.account.get_balance_token_amount(self.order.currency)
         self.assertEqual(balance_amount, self.order.as_token_amount)
@@ -103,7 +117,7 @@ class BlockchainTransferTestCase(TransferModelTestCase):
         self, web3_execute_transfer, select_for_transfer
     ):
         select_for_transfer.return_value = Web3Client(self.wallet)
-        web3_execute_transfer.return_value = Erc20TransactionDataFactory(
+        web3_execute_transfer.return_value = Erc20TokenTransactionDataFactory(
             amount=self.credit,
             from_address=self.wallet.address,
             recipient=self.transfer.address,
@@ -133,7 +147,7 @@ class Web3AccountingTestCase(AccountingTestCase):
             sender=self.user, currency=self.credit.currency, amount=self.credit.amount
         )
 
-        payout_tx_data = Erc20TransactionDataFactory(
+        payout_tx_data = Erc20TokenTransactionDataFactory(
             amount=transfer.as_token_amount,
             recipient=transfer.address,
             from_address=self.wallet.address,
@@ -145,7 +159,7 @@ class Web3AccountingTestCase(AccountingTestCase):
         transfer.execute()
 
         # Transfer is executed, now we generate the transaction to create confirmation
-        payout_tx = Erc20TransactionFactory(
+        payout_tx = Erc20TokenTransactionFactory(
             hash=payout_tx_data.hash,
             amount=transfer.as_token_amount,
             recipient=transfer.address,
@@ -174,7 +188,7 @@ class Web3AccountingTestCase(AccountingTestCase):
 
         with patch.object(Web3Client, "select_for_transfer") as select:
             with patch.object(Web3Client, "transfer") as web3_transfer_execute:
-                payout_tx_data = Erc20TransactionDataFactory(
+                payout_tx_data = Erc20TokenTransactionDataFactory(
                     amount=transfer.as_token_amount,
                     recipient=transfer.address,
                     from_address=self.wallet.address,
@@ -183,7 +197,7 @@ class Web3AccountingTestCase(AccountingTestCase):
                 web3_transfer_execute.return_value = payout_tx_data
                 transfer.execute()
 
-        payout_tx = Erc20TransactionFactory(
+        payout_tx = Erc20TokenTransactionFactory(
             hash=payout_tx_data.hash,
             amount=transfer.as_token_amount,
             recipient=transfer.address,
@@ -209,7 +223,7 @@ class Web3AccountingTestCase(AccountingTestCase):
 
 class TransferEventTestCase(TestCase):
     def setUp(self):
-        self.transfer_event = Erc20TransferEventFactory()
+        self.transfer_event = Erc20TokenTransferEventFactory()
 
     def test_can_get_token_amount(self):
         self.assertIsNotNone(self.transfer_event.as_token_amount)

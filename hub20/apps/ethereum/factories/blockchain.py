@@ -4,7 +4,7 @@ import factory
 import factory.fuzzy
 from django.utils import timezone
 
-from ..models import Block, Chain, Transaction, TransactionDataRecord
+from ..models import Block, Chain, Transaction, TransactionDataRecord, TransferEvent
 
 TEST_CHAIN_ID = 2
 
@@ -121,6 +121,15 @@ class TransactionFactory(factory.django.DjangoModelFactory):
         gas_price = factory.fuzzy.FuzzyInteger(1e9, 100e9)
 
 
+class TransferEventFactory(factory.django.DjangoModelFactory):
+    transaction = factory.SubFactory(TransactionFactory)
+    sender = factory.Faker("ethereum_address")
+    recipient = factory.Faker("ethereum_address")
+
+    class Meta:
+        model = TransferEvent
+
+
 __all__ = [
     "TEST_CHAIN_ID",
     "ChainFactory",
@@ -128,4 +137,5 @@ __all__ = [
     "BlockFactory",
     "TransactionDataFactory",
     "TransactionFactory",
+    "TransferEventFactory",
 ]

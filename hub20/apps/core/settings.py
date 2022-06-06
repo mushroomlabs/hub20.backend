@@ -19,7 +19,6 @@ class AppSettings:
         payment_route_lifetime = 15 * 60  # In seconds
 
     class HDWallet:
-        root_key = None
         mnemonic = None
 
     def __init__(self):
@@ -31,7 +30,6 @@ class AppSettings:
             "BLOCKCHAIN_ROUTE_LIFETIME": (self.Blockchain, "payment_route_lifetime"),
             "BLOCKCHAIN_SCAN_BLOCK_RANGE": (self.Blockchain, "scan_range"),
             "ETHEREUM_HD_WALLET_MNEMONIC": (self.HDWallet, "mnemonic"),
-            "ETHEREUM_HD_WALLET_ROOT_KEY": (self.HDWallet, "root_key"),
         }
         user_settings = getattr(settings, "HUB20", {})
 

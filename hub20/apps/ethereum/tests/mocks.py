@@ -147,7 +147,7 @@ class EtherTransferDataMock(TransactionDataMock):
         amount = factory.SubFactory(EtherAmountFactory)
 
 
-class Erc20TransferDataMock(TransactionDataMock):
+class Erc20TokenTransferDataMock(TransactionDataMock):
     from_address = factory.Faker("ethereum_address")
     to = factory.LazyAttribute(lambda obj: obj.amount.currency.address)
     input = factory.LazyAttribute(lambda obj: encode_transfer_data(obj.recipient, obj.amount))
@@ -166,7 +166,7 @@ class EtherTransferReceiptMock(TransactionReceiptDataMock):
         amount = factory.SubFactory(Erc20TokenAmountFactory)
 
 
-class Erc20TransferReceiptMock(TransactionReceiptDataMock):
+class Erc20TokenTransferReceiptMock(TransactionReceiptDataMock):
     to = factory.LazyAttribute(lambda obj: obj.amount.currency.address)
     logs = factory.LazyAttribute(make_transfer_logs)
 

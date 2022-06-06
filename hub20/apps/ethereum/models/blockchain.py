@@ -32,7 +32,11 @@ class Chain(models.Model):
 
     @property
     def provider(self):
-        return self.blockchainpaymentnetwork.providers.filter(is_active=True).first()
+        return (
+            self.blockchainpaymentnetwork.providers.select_subclasses()
+            .filter(is_active=True)
+            .first()
+        )
 
     @property
     def synced(self):

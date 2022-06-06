@@ -65,6 +65,14 @@ services:
     <<: *backend_web_service
     command: uvicorn hub20.api.asgi:application --port 80 --host 0.0.0.0
 
+  run_payment_providers:
+    <<: *backend_service
+    command: django-admin run_providers
+
+  run_payment_processors:
+    <<: *backend_service
+    command: django-admin run_payment_processors
+
   # Celery app
   celery:
     <<: *backend_service
@@ -76,14 +84,3 @@ services:
     <<: *backend_service
     <<: *backend_celery_service
     command: celery -A hub20.api beat -l info -S django
-
-  # # Services to run background to listen and process different event streams
-  # process_stream_pending_transactions:
-  #   <<: *backend_service
-  #   <<: *backend_celery_service
-  #   command: django-admin run_stream_processor hub20.apps.blockchain.client.event_streams.process_pending_transactions --interval 2
-
-  # process_stream_pending_open_route_transfers:
-  #   <<: *backend_service
-  #   <<: *backend_celery_service
-  #   command: django-admin run_stream_processor hub20.apps.core.integrations.web3.process_pending_transfers_in_open_routes

@@ -10,16 +10,14 @@ from hub20.apps.core.models.checkout import Checkout
 from hub20.apps.core.models.payments import Deposit, PaymentConfirmation
 from hub20.apps.core.settings import app_settings
 from hub20.apps.core.signals import payment_received
-from hub20.apps.core.tasks import (
-    call_checkout_webhook,
-    notify_block_created,
-    publish_checkout_event,
-    send_session_event,
-)
+from hub20.apps.core.tasks import call_checkout_webhook, publish_checkout_event, send_session_event
 
-from . import signals
+from . import signals, tasks
 from .constants import Events
 from .models import (
+    AccountErc20TokenTransferIndexer,
+    AccountTransactionIndexer,
+    BaseWallet,
     Block,
     BlockchainPayment,
     BlockchainPaymentNetwork,
@@ -31,6 +29,8 @@ from .models import (
     Transaction,
     TransactionDataRecord,
     TransactionFee,
+    TransferEvent,
+    Web3Provider,
     serialize_web3_data,
 )
 
@@ -52,7 +52,7 @@ def _publish_block_created_event(chain_id, block_data):
     block_number = block_data.get("number")
     routes = BlockchainPaymentRoute.objects.in_chain(chain_id).open(block_number=block_number)
 
-    notify_block_created.delay(chain_id, serialize_web3_data(block_data))
+    tasks.notify_block_created.delay(chain_id, serialize_web3_data(block_data))
 
     for checkout in Checkout.objects.filter(order__routes__in=routes):
         logger.debug(
@@ -85,6 +85,27 @@ def on_chain_created_create_metadata_entry(sender, **kw):
 def on_chain_updated_check_payment_confirmations(sender, **kw):
     chain = kw["instance"]
     _check_for_blockchain_payment_confirmations(chain.highest_block)
+
+
+@receiver(post_save, sender=TransferEvent)
+def on_transfer_event_created_check_for_payments_received(sender, **kw):
+    if kw["created"]:
+        transfer_event = kw["instance"]
+
+        open_routes = BlockchainPaymentRoute.objects.open().filter(
+            account__address=transfer_event.recipient,
+            payment_window__contains=transfer_event.transaction.block.number,
+        )
+
+        open_route = open_routes.first()
+        if open_route:
+            payment = BlockchainPayment.objects.create(
+                route=open_route,
+                transaction=transfer_event.transaction,
+                currency=transfer_event.currency,
+                amount=transfer_event.amount,
+            )
+            payment_received.send(sender=BlockchainPayment, payment=payment)
 
 
 @receiver(payment_received, sender=BlockchainPayment)
@@ -123,34 +144,6 @@ def on_blockchain_payment_received_call_checkout_webhooks(sender, **kw):
     checkouts = Checkout.objects.filter(order__routes__payments=payment)
     for checkout_id in checkouts.values_list("id", flat=True):
         call_checkout_webhook.delay(checkout_id)
-
-
-@receiver(signals.incoming_transfer_mined, sender=Transaction)
-def on_incoming_transfer_mined_check_blockchain_payments(sender, **kw):
-    account = kw["account"]
-    amount = kw["amount"]
-    transaction = kw["transaction"]
-
-    if BlockchainPayment.objects.filter(transaction=transaction).exists():
-        logger.info(f"Transaction {transaction} is already recorded for payment")
-        return
-
-    route = BlockchainPaymentRoute.objects.filter(
-        deposit__currency=amount.currency,
-        account=account,
-        payment_window__contains=transaction.block.number,
-    ).first()
-
-    if not route:
-        return
-
-    payment = BlockchainPayment.objects.create(
-        route=route,
-        amount=amount.amount,
-        currency=amount.currency,
-        transaction=transaction,
-    )
-    payment_received.send(sender=BlockchainPayment, payment=payment)
 
 
 @receiver(signals.incoming_transfer_broadcast, sender=TransactionDataRecord)
@@ -265,27 +258,34 @@ def on_blockchain_transfer_mined_record_confirmation(sender, **kw):
 
 # Accounting
 @atomic()
-@receiver(signals.incoming_transfer_mined, sender=Transaction)
-def on_incoming_transfer_mined_move_funds_from_blockchain_to_treasury(sender, **kw):
-    amount = kw["amount"]
-    transaction = kw["transaction"]
+@receiver(post_save, sender=TransferEvent)
+def on_transfer_event_created_record_book_entries(sender, **kw):
+    if kw["created"]:
+        transfer_event = kw["instance"]
+        transaction = transfer_event.transaction
 
-    transaction_type = ContentType.objects.get_for_model(transaction)
+        transaction_type = ContentType.objects.get_for_model(transaction)
 
-    params = dict(
-        reference_type=transaction_type,
-        reference_id=transaction.id,
-        currency=amount.currency,
-        amount=amount.amount,
-    )
-    blockchain_account = transaction.block.chain.blockchainpaymentnetwork.account
-    treasury = get_treasury_account()
+        params = dict(
+            reference_type=transaction_type,
+            reference_id=transaction.id,
+            currency=transfer_event.currency,
+            amount=transfer_event.amount,
+        )
 
-    blockchain_book = blockchain_account.get_book(token=amount.currency)
-    treasury_book = treasury.get_book(token=amount.currency)
+        blockchain_account = transaction.block.chain.blockchainpaymentnetwork.account
+        treasury = get_treasury_account()
 
-    blockchain_book.debits.get_or_create(**params)
-    treasury_book.credits.get_or_create(**params)
+        blockchain_book = blockchain_account.get_book(token=transfer_event.currency)
+        treasury_book = treasury.get_book(token=transfer_event.currency)
+
+        if BaseWallet.objects.filter(address=transfer_event.recipient).exists():
+            blockchain_book.debits.get_or_create(**params)
+            treasury_book.credits.get_or_create(**params)
+
+        if BaseWallet.objects.filter(address=transfer_event.sender).exists():
+            blockchain_book.debits.get_or_create(**params)
+            treasury_book.credits.get_or_create(**params)
 
 
 @atomic()
@@ -376,7 +376,6 @@ __all__ = [
     "on_chain_created_create_metadata_entry",
     "on_chain_updated_check_payment_confirmations",
     "on_blockchain_payment_received_send_notification",
-    "on_incoming_transfer_mined_check_blockchain_payments",
     "on_incoming_transfer_broadcast_notify_active_sessions",
     "on_incoming_transfer_broadcast_notify_open_checkouts",
     "on_block_sealed_publish_block_created_event",
@@ -385,7 +384,6 @@ __all__ = [
     "on_block_created_check_confirmed_payments",
     "on_block_added_publish_expired_blockchain_routes",
     "on_blockchain_transfer_mined_record_confirmation",
-    "on_incoming_transfer_mined_move_funds_from_blockchain_to_treasury",
     "on_outgoing_transfer_mined_move_funds_from_treasury_to_blockchain",
     "on_blockchain_transfer_confirmed_move_funds_from_treasury_to_blockchain",
     "on_blockchain_transfer_confirmed_move_fee_from_sender_to_blockchain",

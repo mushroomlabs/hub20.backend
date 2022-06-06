@@ -1,7 +1,7 @@
 import datetime
 import logging
 import random
-from typing import Optional
+from typing import Optional, TypeVar, Union
 
 from django.conf import settings
 from django.db import models
@@ -13,8 +13,9 @@ from model_utils.models import TimeStampedModel
 
 from ..choices import DEPOSIT_STATUS
 from ..exceptions import RoutingError
-from .base import BaseModel
+from .base import BaseModel, PolymorphicModelMixin
 from .networks import InternalPaymentNetwork, PaymentNetwork
+from .providers import PaymentNetworkProvider_T
 from .tokens import BaseToken, TokenAmountField, TokenValueModel
 
 logger = logging.getLogger(__name__)
@@ -71,6 +72,9 @@ class InternalPaymentRouteQuerySet(PaymentRouteQuerySet):
         date_value = at or timezone.now()
         return self.filter(created__lte=date_value)
 
+    def open(self) -> models.QuerySet:
+        return self.filter(payments__internalpayment__isnull=True)
+
 
 class Deposit(BaseModel, TimeStampedModel):
     STATUS = DEPOSIT_STATUS
@@ -97,7 +101,8 @@ class Deposit(BaseModel, TimeStampedModel):
 
     @property
     def is_expired(self):
-        return all([route.is_expired for route in self.routes.select_subclasses()])
+        routes = self.routes.select_subclasses()
+        return routes.count() > 0 and all([route.is_expired for route in routes])
 
     @property
     def status(self):
@@ -130,7 +135,7 @@ class PaymentOrder(Deposit, TokenValueModel):
             return self.STATUS.open
 
 
-class PaymentRoute(BaseModel, TimeStampedModel):
+class PaymentRoute(BaseModel, TimeStampedModel, PolymorphicModelMixin):
     deposit = models.ForeignKey(Deposit, on_delete=models.CASCADE, related_name="routes")
     network = models.ForeignKey(PaymentNetwork, on_delete=models.CASCADE, related_name="routes")
     identifier = models.BigIntegerField(default=generate_payment_route_id, unique=True)
@@ -147,6 +152,13 @@ class PaymentRoute(BaseModel, TimeStampedModel):
     @property
     def is_open(self):
         return not self.is_expired
+
+    @property
+    def provider(self) -> Union[PaymentNetworkProvider_T, None]:
+        return self.network.providers(manager="available").select_subclasses().first()
+
+    def process(self):
+        raise NotImplementedError("This method should be implemented by derived classes")
 
     @staticmethod
     def find_route_model(network):
@@ -165,8 +177,14 @@ class InternalPaymentRoute(PaymentRoute):
     NETWORK = InternalPaymentNetwork
     objects = InternalPaymentRouteQuerySet.as_manager()
 
+    def process(self):
+        """
+        There is not anything to be done here, yet.
+        """
+        pass
 
-class Payment(BaseModel, TimeStampedModel, TokenValueModel):
+
+class Payment(BaseModel, TimeStampedModel, TokenValueModel, PolymorphicModelMixin):
     route = models.ForeignKey(PaymentRoute, on_delete=models.PROTECT, related_name="payments")
     objects = InheritanceManager()
 
@@ -187,6 +205,10 @@ class PaymentConfirmation(BaseModel, TimeStampedModel):
     payment = models.OneToOneField(Payment, on_delete=models.CASCADE, related_name="confirmation")
 
 
+PaymentRoute_T = TypeVar("PaymentRoute_T", bound=PaymentRoute)
+Payment_T = TypeVar("Payment_T", bound=Payment)
+
+
 __all__ = [
     "Deposit",
     "PaymentOrder",
@@ -196,4 +218,6 @@ __all__ = [
     "Payment",
     "InternalPayment",
     "PaymentConfirmation",
+    "Payment_T",
+    "PaymentRoute_T",
 ]

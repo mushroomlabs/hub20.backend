@@ -1,4 +1,5 @@
 import logging
+import time
 from typing import Optional
 
 from django.contrib.postgres.fields.ranges import IntegerRangeField
@@ -7,12 +8,12 @@ from django.db.models import F, Q
 from django.db.models.functions import Lower, Upper
 
 from hub20.apps.core.exceptions import RoutingError
-from hub20.apps.core.models import BaseToken, Payment, PaymentRoute, PaymentRouteQuerySet
+from hub20.apps.core.models import Payment, PaymentRoute, PaymentRouteQuerySet
 from hub20.apps.core.settings import app_settings
 
 from .. import get_wallet_model
 from .accounts import BaseWallet
-from .blockchain import Chain, Transaction
+from .blockchain import Block, Chain, Transaction
 from .networks import BlockchainPaymentNetwork
 
 logger = logging.getLogger(__name__)
@@ -83,25 +84,65 @@ class BlockchainPaymentRoute(PaymentRoute):
     def is_expired(self):
         return self.chain.highest_block > self.expiration_block_number
 
-    @staticmethod
-    def calculate_payment_window(chain):
-        if not chain.synced:
-            raise ValueError("Chain is not synced")
+    @property
+    def description(self):
+        return f"Blockchain Route {self.id} ('{self.identifier}' on blocks {self.payment_window})"
 
+    def _process_native_token(self):
+        while self.is_open:
+            current_block = self.provider.w3.eth.block_number
+            if not (self.start_block_number < current_block <= self.expiration_block_number):
+                logger.warning(
+                    f"{self.chain.name} is at block {current_block}, outside of payment window"
+                )
+                return
+
+            self.chain.refresh_from_db()
+            processed_blocks = Block.objects.filter(
+                chain=self.chain, number__range=(self.start_block_number, current_block)
+            ).values_list("number", flat=True)
+
+            for block_number in range(self.start_block_number, current_block):
+                if block_number not in processed_blocks:
+                    logger.info(f"{self.description} checking #{block_number} on {self.chain}")
+                    block_data = self.provider.w3.eth.get_block(
+                        block_number, full_transactions=True
+                    )
+                    self.provider.extract_native_token_transfers(block_data)
+                    Block.make(block_data, chain_id=self.chain.id)
+
+            time.sleep(1)
+
+    def _process_erc20_token(self):
+        erc20_filter = self.provider.get_erc20_token_transfer_filter(
+            token=self.deposit.currency.subclassed,
+            start_block=self.start_block_number,
+            end_block=self.expiration_block_number,
+        )
+        while self.is_open:
+            for event_data in erc20_filter.get_new_entries():
+                self.provider._extract_transfer_event_from_erc20_token_transfer(
+                    self.account, event_data
+                )
+            time.sleep(1)
+
+    def process(self):
+        if self.deposit.currency.subclassed.is_ERC20:
+            self._process_erc20_token()
+        else:
+            self._process_native_token()
+
+    @staticmethod
+    def calculate_payment_window(chain: Chain):
         current = chain.highest_block
         return (current, current + app_settings.Blockchain.payment_route_lifetime)
 
     @classmethod
-    def is_usable_for_token(cls, token: BaseToken):
-        return token.is_listed and token.chain in Chain.active.all()
-
-    @classmethod
     def make(cls, deposit):
         chain = deposit.currency.subclassed.chain
-
         chain.refresh_from_db()
-        if chain.synced:
-            payment_window = cls.calculate_payment_window(chain)
+        if chain.provider and chain.provider.synced:
+            payment_window = cls.calculate_payment_window(chain=chain)
 
             busy_routes = cls.objects.open().filter(deposit__currency=deposit.currency)
             available_accounts = BaseWallet.objects.exclude(blockchain_routes__in=busy_routes)

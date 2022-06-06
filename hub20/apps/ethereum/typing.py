@@ -2,8 +2,6 @@ from typing import NewType, TypeVar, Union
 
 from hexbytes import HexBytes
 
-from hub20.apps.core.models.tokens import BaseToken
-
 from .models.fields import EthereumAddressField
 
 Address = Union[str, EthereumAddressField]
@@ -17,5 +15,3 @@ TransactionHash_T = HexBytes
 TransactionHash = NewType("TransactionHash", TransactionHash_T)
 
 Web3Client_T = TypeVar("Web3Client_T")
-
-Token_T = TypeVar("Token_T", bound=BaseToken)

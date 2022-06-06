@@ -13,6 +13,7 @@ from model_utils.managers import InheritanceManager
 from hub20.apps.core.models import TokenValueModel
 from hub20.apps.core.settings import app_settings
 
+from ..signals import wallet_generated
 from .blockchain import Block, Transaction
 from .fields import EthereumAddressField, HexField
 
@@ -50,6 +51,12 @@ class BaseWallet(models.Model):
     def __str__(self):
         return self.address
 
+    @classmethod
+    def generate(cls):
+        wallet = cls._generate()
+        wallet_generated.send_robust(wallet=wallet, sender=BaseWallet)
+        return wallet
+
 
 class WalletBalanceRecord(TokenValueModel):
     """
@@ -67,7 +74,7 @@ class WalletBalanceRecord(TokenValueModel):
 
 class ColdWallet(BaseWallet):
     @classmethod
-    def generate(cls):
+    def _generate(cls):
         raise TypeError("Cold wallets do not store private keys and can not be generated")
 
 
@@ -75,7 +82,7 @@ class KeystoreAccount(BaseWallet):
     private_key = HexField(max_length=64, unique=True)
 
     @classmethod
-    def generate(cls):
+    def _generate(cls):
         private_key = os.urandom(32)
         address = ethereum.utils.privtoaddr(private_key)
         checksum_address = ethereum.utils.checksum_encode(address.hex())
@@ -115,7 +122,7 @@ class HierarchicalDeterministicWallet(BaseWallet):
         return wallet
 
     @classmethod
-    def generate(cls):
+    def _generate(cls):
         latest_generation = cls.get_latest_generation()
         index = 0 if latest_generation is None else latest_generation + 1
         wallet = HierarchicalDeterministicWallet.get_wallet(index)

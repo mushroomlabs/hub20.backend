@@ -1,31 +1,23 @@
 import logging
+from typing import Dict
 
 import celery_pubsub
 from celery import shared_task
-from django.core.cache import cache
 from django.db.models import Q
-from django.db.transaction import atomic
-from requests.exceptions import ConnectionError, HTTPError
-from web3 import Web3
-from web3.exceptions import ExtraDataLengthError, TransactionNotFound
-from websockets.exceptions import InvalidStatusCode
+from web3.datastructures import AttributeDict
+from web3.exceptions import TransactionNotFound
 
 from hub20.apps.core.models.tokens import BaseToken
-from hub20.apps.core.settings import app_settings
-from hub20.apps.core.tasks import stream_processor_lock
+from hub20.apps.core.tasks import broadcast_event
 
 from . import signals
 from .abi.tokens import EIP20_ABI
-from .analytics import MAX_PRIORITY_FEE_TRACKER, get_historical_block_data
+from .constants import Events
 from .models import (
     BaseWallet,
     Block,
-    BlockchainPaymentRoute,
     Chain,
-    Erc20Token,
-    Transaction,
     TransactionDataRecord,
-    TransferEvent,
     WalletBalanceRecord,
     Web3Provider,
 )
@@ -33,348 +25,25 @@ from .models import (
 logger = logging.getLogger(__name__)
 
 
-# Tasks that are processing event logs from the blockchain (should
-# have only one at a time)
-@shared_task(bind=True)
-def process_mined_blocks(self):
-    for provider in Web3Provider.available.select_related("chain"):
-        logger.debug(f"Running task {self.name} by {provider.hostname}")
-        try:
-            with stream_processor_lock(task=self, provider=provider) as lock:
-                if lock.is_acquired:
-                    logger.debug(f"Lock acquired for task {self.name} by {provider.hostname}")
-                    chain = provider.chain
-                    w3: Web3 = provider.w3
-                    logger.info(f"Getting blocks from {provider.hostname}")
-                    current_block = w3.eth.block_number
-                    start = chain.highest_block
-                    stop = min(
-                        current_block, chain.highest_block + app_settings.Blockchain.scan_range
-                    )
-                    for block_number in range(start, stop):
-                        logger.debug(f"Getting block #{block_number} from {provider.hostname}")
-                        block_data = w3.eth.get_block(block_number, full_transactions=True)
-                        block_number = block_data.number
-                        logger.info(f"Processing block #{block_number} on {provider}")
-                        celery_pubsub.publish(
-                            "blockchain.mined.block",
-                            chain_id=w3.eth.chain_id,
-                            block_data=block_data,
-                            provider_url=provider.url,
-                        )
-                        logger.debug(f"Updating chain height to {block_number}")
-                        chain.highest_block = block_number
-                        lock.refresh()
-
-                    chain.save()
-                else:
-                    logger.debug(f"Failed to get lock for {provider.hostname}")
-        except ExtraDataLengthError as exc:
-            if provider.requires_geth_poa_middleware:
-                logger.error(f"Failed to get block info from {provider.hostname}: {exc}")
-            else:
-                logger.warning(f"{provider.hostname} seems to use POA middleware. Updating it.")
-                provider.requires_geth_poa_middleware = True
-                provider.save()
-        except InvalidStatusCode:
-            logger.error(f"Could not connect with {provider.hostname} via websocket")
-
-
-# Tasks that are meant to be run periodically
-
-
 @shared_task
-def refresh_max_priority_fee():
-    for provider in Web3Provider.available.filter(supports_eip1559=True):
-        try:
-            w3 = provider.w3
-            MAX_PRIORITY_FEE_TRACKER.set(w3.eth.chain_id, w3.eth.max_priority_fee)
-        except Exception as exc:
-            logger.info(f"Failed to get max priority fee from {provider.hostname}: {exc}")
-
-
-@shared_task
-def check_providers_configuration():
-    for provider in Web3Provider.active.all():
-        provider.update_configuration()
-
-
-@shared_task
-def check_providers_are_synced():
-    for provider in Web3Provider.active.all():
-        try:
-            w3 = provider.w3
-            is_synced = bool(not w3.eth.syncing)
-        except (ValueError, AttributeError):
-            # The node does not support the eth_syncing method. Assume healthy.
-            is_synced = True
-        except (ConnectionError, HTTPError) as exc:
-            logger.error(f"Failed to connect to {provider.hostname}: {exc}")
-            continue
-
-        if provider.synced and not is_synced:
-            logger.warn(f"Node {provider.hostname} is out of sync")
-            celery_pubsub.publish(
-                "node.sync.nok", chain_id=provider.chain_id, provider_url=provider.url
-            )
-        elif is_synced and not provider.synced:
-            logger.info(f"Node {provider.hostname} is back in sync")
-            celery_pubsub.publish(
-                "node.sync.ok", chain_id=provider.chain_id, provider_url=provider.url
-            )
-
-
-@shared_task
-def check_chains_were_reorganized():
-    for provider in Web3Provider.active.all():
-        with atomic():
-            try:
-                chain = provider.chain
-                w3 = provider.w3
-                block_number = w3.eth.block_number
-                if chain.highest_block > block_number:
-                    chain.blocks.filter(number__gt=block_number).delete()
-
-                chain.highest_block = block_number
-                chain.save()
-            except InvalidStatusCode:
-                logger.error(f"Could not connect with {provider.hostname} via websocket")
-
-
-@shared_task
-def check_payments_in_open_routes():
-    CACHE_KEY = "TRANSACTIONS_FOR_OPEN_ROUTES"
-
-    logger.debug("Checking for token transfers in open routes")
-    open_routes = BlockchainPaymentRoute.objects.open().select_related(
-        "deposit",
-        "deposit__currency",
-        "deposit__currency__chain",
-        "account",
+def notify_block_created(chain_id, block_data):
+    logger.debug(f"Sending notification of of block created on #{chain_id}")
+    block_data = AttributeDict(block_data)
+    broadcast_event(
+        event=Events.BLOCK_CREATED.value,
+        chain_id=chain_id,
+        hash=block_data.hash,
+        number=block_data.number,
+        timestamp=block_data.timestamp,
     )
-
-    for route in open_routes:
-        logger.info(f"Checking for token transfers for payment {route.deposit_id}")
-        token: BaseToken = route.deposit.currency
-
-        # We are only concerned here about ERC20 tokens. Native token
-        # transfers are detected directly by the blockchain listeners
-        if not token.is_ERC20:
-            continue
-
-        provider = Web3Provider.active.filter(chain=token.chain).first()
-
-        if not provider:
-            logger.warning(
-                f"Route {route} is open but not provider available to check for payments"
-            )
-            continue
-
-        w3 = provider.w3
-        contract = w3.eth.contract(abi=EIP20_ABI, address=token.address)
-        wallet_address = route.account.address
-
-        event_filter = contract.events.Transfer().createFilter(
-            fromBlock=route.start_block_number,
-            toBlock=route.expiration_block_number,
-            argument_filters={"_to": wallet_address},
-        )
-
-        try:
-            for transfer_event in event_filter.get_all_entries():
-                tx_hash = transfer_event.transactionHash.hex()
-
-                key = f"{CACHE_KEY}:{tx_hash}"
-
-                if cache.get(key):
-                    logger.debug(f"Transfer event in tx {tx_hash} has already been published")
-
-                    continue
-
-                logger.debug(f"Publishing transfer event from tx {tx_hash}")
-                celery_pubsub.publish(
-                    "blockchain.event.token_transfer.mined",
-                    chain_id=w3.eth.chain_id,
-                    wallet_address=wallet_address,
-                    event_data=transfer_event,
-                    provider_url=provider.url,
-                )
-                cache.set(key, True, timeout=provider.BLOCK_CREATION_INTERVAL * 2)
-        except ValueError as exc:
-            logger.warning(f"Can not get transfer logs from {provider.hostname}: {exc}")
 
 
 # Tasks that are setup to subscribe and handle events generated by the event streams
 @shared_task
-def save_historical_data(chain_id, block_data, provider_url):
-    logger.debug(f"Adding block #{block_data.number} to historical data from chain #{chain_id}")
-    block_history = get_historical_block_data(chain_id)
-    block_history.push(block_data)
-
-
-@shared_task
-def notify_new_block(chain_id, block_data, provider_url):
+def notify_new_block(chain_id, block_data: Dict, provider_url):
+    block_data = AttributeDict(block_data)
     logger.debug(f"Sending notification of new block on chain #{chain_id}")
     signals.block_sealed.send(sender=Block, chain_id=chain_id, block_data=block_data)
-
-
-@shared_task
-def record_account_transactions(chain_id, block_data, provider_url):
-
-    addresses = BaseWallet.objects.values_list("address", flat=True)
-
-    txs = [
-        t for t in block_data["transactions"] if (t["from"] in addresses or t["to"] in addresses)
-    ]
-
-    if len(txs) > 0:
-        provider = Web3Provider.objects.get(url=provider_url)
-        w3 = provider.w3
-        assert chain_id == w3.eth.chain_id, f"{provider.hostname} not on chain #{chain_id}"
-
-        for tx_data in txs:
-            transaction_receipt = w3.eth.get_transaction_receipt(tx_data.hash)
-            tx = Transaction.make(
-                chain_id=chain_id,
-                tx_receipt=transaction_receipt,
-                block_data=block_data,
-            )
-            for account in BaseWallet.objects.filter(address__in=[tx.from_address, tx.to_address]):
-                account.transactions.add(tx)
-
-
-@shared_task
-def record_token_transfers(chain_id, wallet_address, event_data, provider_url):
-    token_address = event_data.address
-    token = Erc20Token.objects.filter(chain_id=chain_id, address=token_address).first()
-
-    if not token:
-        return
-
-    sender = event_data.args._from
-    recipient = event_data.args._to
-
-    try:
-        provider = Web3Provider.objects.get(url=provider_url)
-        w3 = provider.w3
-
-        tx_data = w3.eth.get_transaction(event_data.transactionHash)
-        tx_receipt = w3.eth.get_transaction_receipt(event_data.transactionHash)
-        block_data = w3.eth.get_block(tx_receipt.blockHash)
-        amount = token.from_wei(event_data.args._value)
-
-        TransactionDataRecord.make(chain_id=chain_id, tx_data=tx_data)
-        tx = Transaction.make(chain_id=chain_id, block_data=block_data, tx_receipt=tx_receipt)
-
-        TransferEvent.objects.create(
-            transaction=tx,
-            sender=sender,
-            recipient=recipient,
-            amount=amount.amount,
-            currency=amount.currency,
-            log_index=event_data.logIndex,
-        )
-
-    except TransactionNotFound:
-        logger.warning(f"Failed to get transaction {event_data.transactionHash.hex()}")
-        return
-
-    tx_hash = event_data.transactionHash.hex()
-
-    account = BaseWallet.objects.filter(address=wallet_address).first()
-
-    if not account:
-        logger.warn(f"{wallet_address} is not associated with any known account")
-        return
-
-    if account.address == sender:
-        logger.debug(
-            f"Sending signal of outgoing transfer mined from {account.address} on tx {tx_hash}"
-        )
-        account.transactions.add(tx)
-        signals.outgoing_transfer_mined.send(
-            sender=Transaction,
-            account=account,
-            transaction=tx,
-            amount=amount,
-            address=recipient,
-        )
-    elif account.address == recipient:
-        logger.debug(
-            f"Sending signal of incoming transfer mined from {account.address} on tx {tx_hash}"
-        )
-        account.transactions.add(tx)
-        signals.incoming_transfer_mined.send(
-            sender=Transaction,
-            account=account,
-            transaction=tx,
-            amount=amount,
-            address=sender,
-        )
-    else:
-        logger.warn(f"Transfer on {tx_hash} generated but is not related to {wallet_address}")
-
-
-@shared_task
-def check_eth_transfers(chain_id, block_data, provider_url):
-    addresses = BaseWallet.objects.values_list("address", flat=True)
-
-    txs = [
-        t
-        for t in block_data["transactions"]
-        if t.value > 0 and (t["to"] in addresses or t["from"] in addresses)
-    ]
-
-    if not txs:
-        return
-
-    chain = Chain.active.get(id=chain_id)
-    provider = Web3Provider.objects.get(url=provider_url)
-    w3 = provider.w3
-
-    assert chain == provider.chain, f"{provider.hostname} not connected to {chain.name}"
-
-    native_token = BaseToken.make_native(chain=chain)
-
-    for transaction_data in txs:
-        sender = transaction_data["from"]
-        recipient = transaction_data["to"]
-
-        amount = native_token.from_wei(transaction_data.value)
-
-        transaction_receipt = w3.eth.get_transaction_receipt(transaction_data.hash)
-        tx = Transaction.make(
-            chain_id=chain_id,
-            block_data=block_data,
-            tx_receipt=transaction_receipt,
-        )
-
-        TransferEvent.objects.create(
-            transaction=tx,
-            sender=sender,
-            recipient=recipient,
-            amount=amount.amount,
-            currency=amount.currency,
-        )
-        for account in BaseWallet.objects.filter(address=sender):
-            account.transactions.add(tx)
-            signals.outgoing_transfer_mined.send(
-                sender=Transaction,
-                account=account,
-                amount=amount,
-                transaction=tx,
-                address=recipient,
-            )
-
-        for account in BaseWallet.objects.filter(address=recipient):
-            account.transactions.add(tx)
-            signals.incoming_transfer_mined.send(
-                sender=Transaction,
-                account=account,
-                amount=amount,
-                transaction=tx,
-                address=sender,
-            )
 
 
 @shared_task
@@ -456,151 +125,77 @@ def check_pending_erc20_transfer_event(chain_id, event_data, provider_url):
 
 
 @shared_task
-def set_node_sync_ok(chain_id, provider_url):
-    logger.info(f"Setting node {provider_url} to sync")
-    Web3Provider.objects.filter(chain_id=chain_id, url=provider_url).update(synced=True)
-
-
-@shared_task
-def set_node_sync_nok(chain_id, provider_url):
-    logger.info(f"Setting node {provider_url} to out-of-sync")
-    Web3Provider.objects.filter(chain_id=chain_id, url=provider_url).update(synced=False)
-
-
-def _get_native_token_balance(wallet: BaseWallet, token: BaseToken, block_data):
-
-    try:
-        assert not token.is_ERC20, f"{token} is an ERC20-token"
-        provider = Web3Provider.available.get(chain_id=token.chain_id)
-    except AssertionError as exc:
-        logger.warning(str(exc))
-        return
-    except Web3Provider.DoesNotExist:
-        logger.warning(f"Can not get balance for {wallet}: no provider available")
-        return
-
-    w3 = provider.w3
-
-    balance = token.from_wei(
-        w3.eth.get_balance(wallet.address, block_identifier=block_data.hash.hex())
-    )
-
-    block = Block.make(block_data=block_data, chain_id=token.chain_id)
-
-    WalletBalanceRecord.objects.create(
-        wallet=wallet,
-        currency=balance.currency,
-        amount=balance.amount,
-        block=block,
-    )
-
-
-def _get_erc20_token_balance(wallet: BaseWallet, token: BaseToken, block_data):
-    try:
-        provider = Web3Provider.available.get(chain_id=token.chain_id)
-    except Web3Provider.DoesNotExist:
-        logger.warning(f"Can not get balance for {wallet}: no provider available")
-        return
-
-    current_record = wallet.current_balance(token)
-    current_block = current_record and current_record.block
-
-    w3 = provider.w3
-
-    # Unlike native tokens, we can only get the current balance for
-    # ERC20 tokens - i.e, we can not select at block-time. So we need to
-    if current_block is None or current_block.number < block_data.number:
-        contract = w3.eth.contract(abi=EIP20_ABI, address=token.address)
-        balance = token.from_wei(contract.functions.balanceOf(wallet.address).call())
-        block = Block.make(block_data=block_data, chain_id=token.chain_id)
-
-        WalletBalanceRecord.objects.create(
-            wallet=wallet,
-            currency=balance.currency,
-            amount=balance.amount,
-            block=block,
-        )
-
-
-@shared_task
-def update_all_wallet_balances():
+def update_wallet_erc20_token_balances():
     for provider in Web3Provider.available.all():
-        w3 = provider.w3
-        chain_id = w3.eth.chain_id
-        block_data = w3.eth.get_block(w3.eth.block_number, full_transactions=True)
+        try:
+            current_block = provider.w3.eth.block_number
+        except Exception:
+            logger.exception(f"Failed to get block info on {provider}")
+            continue
+
         for wallet in BaseWallet.objects.all():
-            for token in BaseToken.objects.filter(chain_id=chain_id):
-                action = _get_erc20_token_balance if token.is_ERC20 else _get_native_token_balance
-                action(wallet=wallet, token=token, block_data=block_data)
+            for token in provider.chain.tokens.all():
+                last_recorded_balance = wallet.current_balance(token)
+                last_recorded_block = last_recorded_balance and last_recorded_balance.block
+
+                if last_recorded_block is None or last_recorded_block.number < current_block:
+                    try:
+                        contract = provider.w3.eth.contract(abi=EIP20_ABI, address=token.address)
+                        current_balance = contract.functions.balanceOf(wallet.address).call()
+                        balance_amount = token.from_wei(current_balance)
+                        block_data = provider.w3.eth.get_block(current_block)
+                        block = Block.make(block_data=block_data, chain_id=token.chain_id)
+
+                        WalletBalanceRecord.objects.create(
+                            wallet=wallet,
+                            currency=balance_amount.currency,
+                            amount=balance_amount.amount,
+                            block=block,
+                        )
+                    except Exception:
+                        logger.exception(f"Failed to get {token} balance for {wallet.address}")
 
 
 @shared_task
-def update_wallet_token_balances(chain_id, wallet_address, event_data, provider_url):
-    token_address = event_data.address
-    token = BaseToken.objects.filter(chain_id=chain_id, address=token_address).first()
+def update_wallet_native_token_balances():
+    for provider in Web3Provider.available.all():
+        try:
+            current_block = provider.w3.eth.block_number
+        except Exception:
+            logger.exception(f"Failed to get block info on {provider}")
+            continue
 
-    if not token:
-        return
+        for wallet in BaseWallet.objects.all():
+            token = provider.chain.native_token
+            last_recorded_balance = wallet.current_balance(token)
+            last_recorded_block = last_recorded_balance and last_recorded_balance.block
 
-    wallet = BaseWallet.objects.filter(address=wallet_address).first()
+            if last_recorded_block is None or last_recorded_block.number < current_block:
+                try:
+                    block_data = provider.w3.eth.get_block(current_block)
+                    balance = token.from_wei(
+                        provider.w3.eth.get_balance(
+                            wallet.address, block_identifier=block_data.hash.hex()
+                        )
+                    )
 
-    if not wallet:
-        return
+                    block = Block.make(block_data=block_data, chain_id=token.chain_id)
 
-    provider = Web3Provider.objects.get(url=provider_url)
-    w3 = provider.w3
+                    WalletBalanceRecord.objects.create(
+                        wallet=wallet,
+                        currency=balance.currency,
+                        amount=balance.amount,
+                        block=block,
+                    )
 
-    block_data = w3.eth.get_block(event_data.blockNumber, full_transactions=True)
-
-    _get_erc20_token_balance(wallet=wallet, token=token, block_data=block_data)
-
-
-@shared_task
-def update_wallet_native_token_balances(chain_id, block_data, provider_url):
-    addresses = BaseWallet.objects.values_list("address", flat=True)
-
-    txs = [
-        t
-        for t in block_data["transactions"]
-        if t.value > 0 and (t["to"] in addresses or t["from"] in addresses)
-    ]
-
-    if not txs:
-        return
-
-    try:
-        chain = Chain.active.get(id=chain_id)
-    except Chain.DoesNotExist:
-        logger.warning(f"Chain {chain_id} not found")
-        return
-
-    native_token = BaseToken.make_native(chain=chain)
-
-    for transaction_data in txs:
-        sender = transaction_data["from"]
-        recipient = transaction_data["to"]
-
-        affected_wallets = BaseWallet.objects.filter(address__in=[sender, recipient])
-
-        if not affected_wallets.exists():
-            return
-
-        for wallet in affected_wallets:
-            _get_native_token_balance(wallet=wallet, token=native_token, block_data=block_data)
+                except Exception:
+                    logger.exception(f"Failed to get {token} balance for {wallet.address}")
 
 
-celery_pubsub.subscribe("blockchain.mined.block", save_historical_data)
 celery_pubsub.subscribe("blockchain.mined.block", notify_new_block)
-celery_pubsub.subscribe("blockchain.mined.block", record_account_transactions)
-celery_pubsub.subscribe("blockchain.mined.block", update_wallet_native_token_balances)
-celery_pubsub.subscribe("blockchain.mined.block", check_eth_transfers)
-celery_pubsub.subscribe("blockchain.event.token_transfer.mined", update_wallet_token_balances)
-celery_pubsub.subscribe("blockchain.event.token_transfer.mined", record_token_transfers)
 celery_pubsub.subscribe(
     "blockchain.event.token_transfer.broadcast", check_pending_erc20_transfer_event
 )
 celery_pubsub.subscribe(
     "blockchain.broadcast.transaction", check_pending_transaction_for_eth_transfer
 )
-celery_pubsub.subscribe("node.sync.ok", set_node_sync_ok)
-celery_pubsub.subscribe("node.sync.nok", set_node_sync_nok)

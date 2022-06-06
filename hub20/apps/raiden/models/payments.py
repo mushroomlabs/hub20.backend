@@ -45,7 +45,13 @@ class RaidenRouteQuerySet(PaymentRouteQuerySet):
         )
 
     def used(self) -> models.QuerySet:
-        return self.filter(payments__raidenpayment__isnull=False)
+        return self.filter(
+            payments__raidenpayment__isnull=False,
+            payments__raidenpayment__identifier=F("deposit__identifier"),
+        )
+
+    def open(self) -> models.QuerySet:
+        return self.available()
 
 
 class RaidenPaymentRoute(PaymentRoute):

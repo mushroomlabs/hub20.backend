@@ -22,6 +22,10 @@ class NativeToken(BaseToken):
         return f"{self.name} ({self.symbol}): Native Token @ {self.chain_id}"
 
     @property
+    def is_ERC20(self):
+        return False
+
+    @property
     def natural_data(self):
         return dict(name=self.name, symbol=self.symbol, chain_id=self.chain_id)
 
@@ -37,6 +41,10 @@ class Erc20Token(BaseToken):
 
     def __str__(self) -> str:
         return f"{self.name} ({self.symbol}): {self.address} @ {self.chain_id}"
+
+    @property
+    def is_ERC20(self):
+        return True
 
     @property
     def natural_data(self):

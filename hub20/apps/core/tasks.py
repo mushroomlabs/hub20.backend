@@ -23,54 +23,6 @@ def _get_open_session_keys():
     return Session.objects.filter(expire_date__gt=now).values_list("session_key", flat=True)
 
 
-STREAM_PROCESSOR_LOCK_INTERVAL = 20  # in seconds
-
-
-class ProviderTaskLock:
-    def __init__(self, task, provider, timeout=STREAM_PROCESSOR_LOCK_INTERVAL):
-        self.task = task
-        self.provider = provider
-        self.timeout = timeout
-        self.is_acquired = False
-
-        hsh = md5(f"{self.provider.hostname}-{self.task.name}".encode())
-        self.key = hsh.hexdigest()
-
-    def acquire(self):
-        # cache.add fails if the key already exists
-        self.is_acquired = cache.add(self.key, self.task.request.id, self.timeout)
-
-    def refresh(self):
-        logger.debug(f"Refreshing lock for {self.provider.hostname} on {self.task.name}")
-        self.is_acquired = self.is_acquired and cache.touch(self.key, self.timeout)
-
-    def release(self):
-        if self.is_acquired:
-            logger.debug(f"Releasing lock for {self.provider.hostname} on {self.task.name}")
-            cache.delete(self.key)
-
-
-@contextmanager
-def stream_processor_lock(task, provider, timeout=STREAM_PROCESSOR_LOCK_INTERVAL):
-    """
-    The context manager should be called from any non-idempotent
-    task that process incoming data from a provider. It creates a lock for
-    the exclusive task/provider pair which expires with `timeout` seconds.
-    If the task may run for a indetermined period, it can make calls
-    to lock.refresh in order to reset the lock timer.
-    """
-
-    logger.debug(f"Attempting lock for {provider.hostname} on task {task.name}")
-    lock = ProviderTaskLock(task=task, provider=provider, timeout=timeout)
-
-    lock.acquire()
-
-    try:
-        yield lock
-    finally:
-        lock.release()
-
-
 @shared_task
 def broadcast_event(**kw):
     for session_key in _get_open_session_keys():
@@ -136,22 +88,6 @@ def call_checkout_webhook(checkout_id):
             logger.exception(f"Failed to call webhook at {url} for {checkout_id}: {exc}")
     except Checkout.DoesNotExist:
         logger.info(f"Checkout {checkout_id} does not exist")
-
-
-@shared_task
-def notify_block_created(chain_id, block_data):
-    logger.debug(f"Sending notification of of block created on #{chain_id}")
-    block_number = block_data["number"]
-    session_keys = _get_open_session_keys()
-    logger.info(f"Notifying {len(session_keys)} clients about block #{block_number}")
-    for session_key in session_keys:
-        event_data = dict(
-            chain_id=chain_id,
-            hash=block_data.hash.hex(),
-            number=block_number,
-            timestamp=block_data.timestamp,
-        )
-        send_session_event(session_key, event=Events.BLOCKCHAIN_BLOCK_CREATED.value, **event_data)
 
 
 @shared_task

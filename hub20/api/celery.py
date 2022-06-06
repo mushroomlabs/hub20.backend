@@ -16,25 +16,15 @@ class Hub20CeleryConfig:
             "schedule": crontab(minute="*/30"),
             "expires": 60,
         },
-        # "execute-transfers": {
-        #     "task": "hub20.apps.core.tasks.execute_pending_transfers",
-        #     "schedule": crontab(),
-        #     "expires": 60,
-        # },
-        # "refresh-priority-fee-cache": {
-        #     "task": "hub20.apps.ethereum.tasks.refresh_max_priority_fee",
-        #     "schedule": timedelta(seconds=30),
-        #     "expires": BLOCK_CREATION_INTERVAL,
-        # },
         # "refresh-wallet-balances": {
         #     "task": "hub20.apps.wallet.tasks.update_all_wallet_balances",
         #     "schedule": crontab(minute=0),
         #     "expires": BLOCK_CREATION_INTERVAL,
         # },
-        # "index-token-transfer-events": {
-        #     "task": "hub20.apps.ethereum.tasks.index_token_transfer_events",
-        #     "schedule": timedelta(seconds=5 * BLOCK_CREATION_INTERVAL),
-        #     "expires": 5 * NODE_HEALTH_CHECK_INTERVAL,
+        # "execute-transfers": {
+        #     "task": "hub20.apps.core.tasks.execute_pending_transfers",
+        #     "schedule": crontab(),
+        #     "expires": 60,
         # },
         # "sync-raiden-channels": {
         #     "task": "hub20.apps.raiden.tasks.sync_channels",
@@ -45,11 +35,6 @@ class Hub20CeleryConfig:
         #     "task": "hub20.apps.raiden.tasks.sync_payments",
         #     "schedule": timedelta(seconds=RAIDEN_PAYMENT_CHECK_INTERVAL),
         #     "expires": RAIDEN_PAYMENT_CHECK_INTERVAL,
-        # },
-        # "process-mined-blocks": {
-        #     "task": "hub20.apps.ethereum.tasks.process_mined_blocks",
-        #     "schedule": timedelta(seconds=BLOCK_CREATION_INTERVAL),
-        #     "expires": BLOCK_CREATION_INTERVAL,
         # },
         # "check-payments-in-open-routes": {
         #     "task": "hub20.apps.core.tasks.check_payments_in_open_routes",

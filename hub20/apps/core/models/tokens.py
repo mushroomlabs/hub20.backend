@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from decimal import Decimal
+from typing import TypeVar
 
 from django.contrib.auth import get_user_model
 from django.db import models
@@ -189,10 +190,14 @@ class TokenAmount:
         return cls(amount=amount, currency=currency)
 
 
+Token_T = TypeVar("Token_T", bound=BaseToken)
+
+
 __all__ = [
     "BaseToken",
     "TokenAmount",
     "TokenValueModel",
     "StableTokenPair",
     "WrappedToken",
+    "Token_T",
 ]

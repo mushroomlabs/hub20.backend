@@ -77,7 +77,7 @@ class EtherAmountFactory(TokenAmountFactory):
     currency = factory.SubFactory(EtherFactory)
 
 
-class Erc20TransactionDataFactory(TransactionDataFactory):
+class Erc20TokenTransactionDataFactory(TransactionDataFactory):
     data = factory.LazyAttribute(
         lambda obj: {
             "from": obj.from_address,
@@ -97,16 +97,16 @@ class Erc20TransactionDataFactory(TransactionDataFactory):
         to_address = factory.LazyAttribute(lambda obj: obj.amount.currency.subclassed.address)
 
 
-class Erc20TransactionFactory(TransactionFactory):
+class Erc20TokenTransactionFactory(TransactionFactory):
     class Params:
         recipient = factory.Faker("ethereum_address")
         amount = factory.SubFactory(Erc20TokenAmountFactory)
         to_address = factory.LazyAttribute(lambda obj: obj.amount.currency.subclassed.address)
 
 
-class Erc20TransferEventFactory(factory.django.DjangoModelFactory):
+class Erc20TokenTransferEventFactory(factory.django.DjangoModelFactory):
     transaction = factory.SubFactory(
-        Erc20TransactionFactory,
+        Erc20TokenTransactionFactory,
         amount=factory.SelfAttribute("..transfer_amount"),
         recipient=factory.SelfAttribute("..recipient"),
         to_address=factory.SelfAttribute("..sender"),
@@ -134,7 +134,7 @@ __all__ = [
     "Erc20TokenAmountFactory",
     "EtherAmountFactory",
     "Erc20StableTokenFactory",
-    "Erc20TransactionDataFactory",
-    "Erc20TransactionFactory",
-    "Erc20TransferEventFactory",
+    "Erc20TokenTransactionDataFactory",
+    "Erc20TokenTransactionFactory",
+    "Erc20TokenTransferEventFactory",
 ]

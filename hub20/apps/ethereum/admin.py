@@ -128,6 +128,25 @@ class ConnectedChainTokenListFilter(admin.SimpleListFilter):
         return filter_type(connected_q)
 
 
+class ChainFilter(admin.SimpleListFilter):
+    title = _("chain")
+
+    parameter_name = "chain"
+
+    def lookups(self, request, model_admin):
+        return (
+            models.Chain.objects.filter(tokens__isnull=False).distinct().values_list("id", "name")
+        )
+
+    def queryset(self, request, queryset):
+        selection = self.value()
+
+        if selection is None:
+            return queryset
+
+        return queryset.filter(chain_id=selection)
+
+
 class Web3URLField(forms.URLField):
     default_validators = [web3_url_validator]
 
@@ -218,6 +237,7 @@ class Erc20TokenAdmin(admin.ModelAdmin):
     list_display = ["symbol", "name", "address", "chain", "is_listed"]
     list_filter = (
         "is_listed",
+        ChainFilter,
         TradeableTokenListFilter,
         ConnectedChainTokenListFilter,
         StableTokenListFilter,

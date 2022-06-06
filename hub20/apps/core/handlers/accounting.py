@@ -1,14 +1,13 @@
 import logging
 
 from django.contrib.auth import get_user_model
-from django.contrib.sites.models import Site
 from django.db.models.signals import post_save
 from django.db.transaction import atomic
 from django.dispatch import receiver
 
 from ..models import get_treasury_account
 from ..models.accounting import PaymentNetworkAccount, UserAccount
-from ..models.networks import InternalPaymentNetwork, PaymentNetwork
+from ..models.networks import PaymentNetwork
 from ..models.payments import PaymentConfirmation
 from ..models.transfers import (
     Transfer,
@@ -29,14 +28,6 @@ def on_payment_network_created_create_account(sender, **kw):
     network = kw["instance"]
     if kw["created"]:
         PaymentNetworkAccount.objects.get_or_create(network=network)
-
-
-@receiver(post_save, sender=Site)
-def on_site_saved_make_payment_network(sender, **kw):
-    site = kw["instance"]
-    InternalPaymentNetwork.objects.update_or_create(
-        site=site, defaults={"name": f"{site.name} Treasury"}
-    )
 
 
 @receiver(post_save, sender=User)
@@ -129,7 +120,6 @@ def on_reverted_transaction_move_funds_from_treasury_to_sender(sender, **kw):
 
 __all__ = [
     "on_payment_network_created_create_account",
-    "on_site_saved_make_payment_network",
     "on_user_created_create_account",
     "on_transfer_created_move_funds_from_sender_to_treasury",
     "on_internal_transfer_confirmed_move_funds_from_treasury_to_receiver",

@@ -3,8 +3,8 @@ import logging
 from django.db import models
 
 from hub20.apps.core.models.networks import PaymentNetwork
+from hub20.apps.core.models.tokens import Token_T
 
-from ..typing import Token_T
 from .blockchain import Chain
 
 logger = logging.getLogger(__name__)

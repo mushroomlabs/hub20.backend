@@ -21,7 +21,7 @@ from ..factories import (
 )
 from ..models import BaseWallet, Block, Chain
 from ..signals import block_sealed
-from .mocks import BlockMock, Erc20TransferDataMock, Erc20TransferReceiptMock
+from .mocks import BlockMock, Erc20TokenTransferDataMock, Erc20TokenTransferReceiptMock
 
 
 def deposit_account(payment_request):
@@ -38,11 +38,11 @@ def deposit_transaction_params(payment_request):
 
 
 def deposit_tx_data(deposit_tx_params):
-    return Erc20TransferDataMock(**deposit_tx_params)
+    return Erc20TokenTransferDataMock(**deposit_tx_params)
 
 
 def deposit_tx_receipt(tx_data, tx_params):
-    return Erc20TransferReceiptMock(
+    return Erc20TokenTransferReceiptMock(
         hash=tx_data.hash,
         blockHash=tx_data.blockHash,
         from_address=tx_data["from"],
