@@ -2,7 +2,6 @@ import logging
 from typing import Optional, Tuple
 
 from eth_utils import to_checksum_address
-from ethereum.abi import ContractTranslator
 from raiden_contracts.constants import CONTRACT_CUSTOM_TOKEN
 from raiden_contracts.contract_manager import ContractManager, contracts_precompiled_path
 from web3 import Web3
@@ -65,12 +64,6 @@ def send_transaction(
             pass
 
         raise Web3TransactionError from exc
-
-
-def encode_transfer_data(recipient_address, amount: TokenAmount):
-    translator = ContractTranslator(EIP20_ABI)
-    encoded_data = translator.encode_function_call("transfer", (recipient_address, amount.as_wei))
-    return f"0x{encoded_data.hex()}"
 
 
 def get_transfer_gas_estimate(w3: Web3, token: BaseToken):
@@ -220,7 +213,6 @@ class Web3Client:
 
 
 __all__ = [
-    "encode_transfer_data",
     "get_transfer_gas_estimate",
     "get_estimate_fee",
     "get_max_fee",

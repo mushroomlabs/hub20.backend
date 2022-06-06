@@ -10,6 +10,7 @@ from django.db import models
 from django.db.transaction import atomic
 from django.db.utils import IntegrityError
 from eth_utils import to_checksum_address
+from ethereum.abi import ContractTranslator
 from requests.exceptions import ConnectionError, HTTPError
 from web3 import Web3
 from web3._utils.events import get_event_data
@@ -19,6 +20,7 @@ from web3.middleware import geth_poa_middleware
 from web3.providers import HTTPProvider, IPCProvider, WebsocketProvider
 
 from hub20.apps.core.models.providers import PaymentNetworkProvider
+from hub20.apps.core.models.tokens import TokenAmount
 from hub20.apps.core.tasks import broadcast_event
 
 from .. import analytics
@@ -70,6 +72,12 @@ def eip1559_price_strategy(w3: Web3, *args, **kw):
 
 def historical_trend_price_strategy(w3: Web3, *args, **kw):
     return analytics.estimate_gas_price(w3.eth.chain_id)
+
+
+def encode_transfer_data(recipient_address, amount: TokenAmount):
+    translator = ContractTranslator(EIP20_ABI)
+    encoded_data = translator.encode_function_call("transfer", (recipient_address, amount.as_wei))
+    return f"0x{encoded_data.hex()}"
 
 
 class Web3Provider(PaymentNetworkProvider):

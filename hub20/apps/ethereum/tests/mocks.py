@@ -8,14 +8,14 @@ from hexbytes import HexBytes
 from web3 import Web3
 from web3.datastructures import AttributeDict
 
-from hub20.apps.ethereum.client import encode_transfer_data
-from hub20.apps.ethereum.constants import ERC20_TRANSFER_TOPIC
-from hub20.apps.ethereum.factories import (
+from ..constants import ERC20_TRANSFER_TOPIC
+from ..factories import (
     TEST_CHAIN_ID,
     Erc20TokenAmountFactory,
     EtherAmountFactory,
     EthereumProvider,
 )
+from ..models.providers import encode_transfer_data
 
 factory.Faker.add_provider(EthereumProvider)
 
