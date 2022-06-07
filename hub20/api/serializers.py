@@ -1,5 +1,6 @@
 from dj_rest_auth.serializers import UserDetailsSerializer
 from rest_framework import serializers
+from rest_framework.reverse import reverse
 
 from hub20.apps.core.models import PaymentNetwork
 from hub20.apps.core.serializers import TokenSerializer
@@ -17,19 +18,17 @@ class UserProfileSerializer(UserDetailsSerializer):
 class TokenRouteDescriptorSerializer(TokenSerializer):
     url = serializers.HyperlinkedIdentityField(view_name="token-routes")
     token = serializers.HyperlinkedIdentityField(view_name="token-detail")
-    blockchain = serializers.HyperlinkedRelatedField(
-        view_name="blockchain:chain-detail", source="chain_id", read_only=True
-    )
     networks = serializers.SerializerMethodField()
 
     def get_networks(self, obj):
+        request = self.context.get("request")
         return [
-            network.id
+            reverse("network-detail", kwargs={"pk": network.pk}, request=request)
             for network in PaymentNetwork.objects.all().select_subclasses()
             if network.supports_token(obj)
         ]
 
     class Meta:
         model = TokenSerializer.Meta.model
-        fields = ("url", "token", "blockchain", "networks")
-        read_only_fields = ("url", "token", "blockchain", "networks")
+        fields = ("url", "token", "networks")
+        read_only_fields = ("url", "token", "networks")

@@ -1,41 +1,20 @@
-from django.db.models import BooleanField, Case, Q, Value, When
+from django.db.models import BooleanField, Case, Value, When
 from django.db.models.query import QuerySet
 from django.http import Http404
-from django_filters import rest_framework as filters
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.reverse import reverse_lazy
+from rest_framework.reverse import reverse, reverse_lazy
 from rest_framework.views import APIView
 
+from hub20.apps.core.models import PaymentNetwork
 from hub20.apps.core.serializers.accounting import HyperlinkedTokenBalanceSerializer
 from hub20.apps.core.serializers.tokens import TokenSerializer
-from hub20.apps.core.views.tokens import BaseTokenFilter, BaseTokenViewSet
-from hub20.apps.ethereum.client import get_estimate_fee
-from hub20.apps.ethereum.models import Chain
+from hub20.apps.core.views.tokens import BaseTokenViewSet
+from hub20.apps.ethereum.views import EthereumTokenFilter
 
 from . import VERSION, serializers
-
-RAIDEN_DESCRIPTION = "Enables instant and ultra-cheap transfers of ERC20 tokens"
-
-
-class TokenFilter(BaseTokenFilter):
-    chain_id = filters.ModelChoiceFilter(queryset=Chain.active.all())
-    native = filters.BooleanFilter(label="native", method="filter_native")
-
-    def token_search(self, queryset, name, value):
-        q_name = Q(name__istartswith=value)
-        q_symbol = Q(symbol__iexact=value)
-        return queryset.filter(q_name | q_symbol)
-
-    def filter_native(self, queryset, name, value):
-        return queryset.exclude(nativetoken__isnull=value)
-
-    class Meta:
-        model = BaseTokenFilter.Meta.model
-        ordering_fields = ("symbol",)
-        fields = ("symbol", "native", "stable_tokens", "fiat")
 
 
 class IndexView(APIView):
@@ -58,26 +37,8 @@ class IndexView(APIView):
         )
 
 
-class NetworkIndexView(APIView):
-    """
-    Description of all payment networks supported by this hub
-    """
-
-    permission_classes = (AllowAny,)
-
-    def get(self, request, **kw):
-        active_chains = Chain.active.all()
-        return Response(
-            {
-                "blockchains": [
-                    dict(name=c.name, code=c.short_name, id=c.id) for c in active_chains
-                ],
-                "offchain": [dict(name="Raiden", code="raiden", description=RAIDEN_DESCRIPTION)],
-            }
-        )
-
-
 class TokenBrowserViewSet(BaseTokenViewSet):
+    filterset_class = EthereumTokenFilter
     search_fields = ("name", "=symbol", "nativetoken__chain__name", "erc20token__chain__name")
     ordering_fields = ("symbol", "name")
     ordering = ("-is_native", "symbol")
@@ -107,16 +68,24 @@ class TokenBrowserViewSet(BaseTokenViewSet):
     @action(detail=True)
     def transfer_cost(self, request, **kwargs):
         """
-        Returns estimated cost in Wei (estimated gas * gas price) to execute a transfer
+        Returns estimated cost in Wei to execute a transfer on all networks that support the token
 
-        Returns 404 if not connected to the blockchain or if token not in database
         """
         token = self.get_object()
+
+        transfer_costs = {}
+
+        for network in PaymentNetwork.objects.select_subclasses():
+            if not network.supports_token(token):
+                continue
+
+            network_url = reverse("network-detail", kwargs={"pk": network.pk}, request=request)
+            for provider in network.providers(manager="available").select_subclasses():
+                if (transfer_cost := provider.get_transfer_fee_estimate(token)) is not None:
+                    transfer_costs[network_url] = transfer_cost.as_wei
+                    continue
         try:
-            transfer_cost = get_estimate_fee(w3=token.chain.provider.w3, token=token)
-            return Response(transfer_cost.as_wei)
-        except AttributeError:
-            raise Http404
+            return Response(transfer_costs)
         except TypeError:
             return Response(status=status.HTTP_503_SERVICE_UNAVAILABLE)
 

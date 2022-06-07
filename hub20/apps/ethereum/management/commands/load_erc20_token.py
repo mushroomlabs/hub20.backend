@@ -2,9 +2,7 @@ import logging
 import sys
 
 from django.core.management.base import BaseCommand
-from eth_utils import to_checksum_address
 
-from hub20.apps.ethereum.client import get_token_information
 from hub20.apps.ethereum.models import Chain, Erc20Token, Web3Provider
 
 logger = logging.getLogger(__name__)
@@ -31,18 +29,14 @@ class Command(BaseCommand):
             logger.error("No web3 provider for {chain.name}")
             sys.exit(-1)
 
-        token_address = to_checksum_address(options["address"])
-
+        token_address = options["address"]
         logger.info(f"Checking token {token_address}...")
         try:
-            token_data = get_token_information(w3=provider.w3, address=token_address)
-            Erc20Token.make(
-                address=token_address,
-                chain=provider.chain,
-                is_listed=options["listed"],
-                **token_data,
-            )
+            token: Erc20Token = provider.save_token(token_address=token_address)
+            if options["listed"]:
+                token.is_listed = True
+                token.save()
         except OverflowError:
             logger.error(f"{token_address} is not a valid address or not ERC20-compliant")
-        except Exception as exc:
-            logger.exception(f"Failed to load token data for {token_address}", exc_info=exc)
+        except Exception:
+            logger.exception(f"Failed to load token data for {token_address}")

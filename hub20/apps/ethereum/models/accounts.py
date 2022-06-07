@@ -1,7 +1,7 @@
 import functools
 import logging
 import os
-from typing import Optional
+from typing import Optional, TypeVar
 
 import ethereum
 from django.db import models
@@ -133,10 +133,14 @@ class HierarchicalDeterministicWallet(BaseWallet):
         return cls.objects.aggregate(generation=Max("index")).get("generation")
 
 
+EthereumAccount_T = TypeVar("EthereumAccount_T", bound=BaseWallet)
+
+
 __all__ = [
     "BaseWallet",
     "ColdWallet",
     "KeystoreAccount",
     "HierarchicalDeterministicWallet",
     "WalletBalanceRecord",
+    "EthereumAccount_T",
 ]

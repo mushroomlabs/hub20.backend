@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Optional
+from typing import Optional, Tuple
 from urllib.parse import urlparse
 
 import celery_pubsub
@@ -18,18 +18,22 @@ from web3._utils.filters import construct_event_filter_params
 from web3.exceptions import BlockNotFound, ExtraDataLengthError, LogTopicError, TransactionNotFound
 from web3.middleware import geth_poa_middleware
 from web3.providers import HTTPProvider, IPCProvider, WebsocketProvider
+from web3.types import TxReceipt
 
 from hub20.apps.core.models.providers import PaymentNetworkProvider
-from hub20.apps.core.models.tokens import TokenAmount
+from hub20.apps.core.models.tokens import Token_T, TokenAmount
 from hub20.apps.core.tasks import broadcast_event
+from hub20.apps.ethereum.exceptions import Web3TransactionError
 
 from .. import analytics
-from ..abi.tokens import EIP20_ABI
-from ..constants import Events
-from .accounts import BaseWallet
+from ..abi.tokens import EIP20_ABI, ERC223_ABI
+from ..constants import SENTINEL_ADDRESS, Events
+from .accounts import BaseWallet, EthereumAccount_T
 from .blockchain import Transaction, TransactionDataRecord, TransferEvent, serialize_web3_data
 from .fields import Web3ProviderURLField
 from .tokens import Erc20Token
+
+GAS_REQUIRED_FOR_MINT: int = 100_000
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +131,43 @@ class Web3Provider(PaymentNetworkProvider):
         w3.eth.setGasPriceStrategy(price_strategy)
 
         return w3
+
+    def _is_node_connected(self):
+        logger.debug(f"Checking connection for {self}")
+        try:
+            is_connected = self.w3.isConnected()
+
+            if self.chain.is_scaling_network:
+                return is_connected
+
+            if is_connected and self.supports_peer_count:
+                return is_connected and self.w3.net.peer_count > 0
+
+        except ConnectionError:
+            is_connected = False
+        except ValueError:
+            # The node does not support the peer count method. Assume healthy.
+            self.supports_peer_count = False
+            self.save()
+        except Exception as exc:
+            logger.error(f"Could not check {self.hostname}: {exc}")
+            is_connected = False
+
+        return is_connected
+
+    def _is_node_synced(self):
+        if self.chain.is_scaling_network:
+            return True
+        try:
+            is_synced = bool(not self.w3.eth.syncing)
+        except (ValueError, AttributeError):
+            # The node does not support the eth_syncing method. Assume healthy.
+            is_synced = True
+        except (ConnectionError, HTTPError) as exc:
+            logger.error(f"Failed to connect to {self.hostname}: {exc}")
+            is_synced = False
+
+        return is_synced
 
     def _check_node_is_connected(self):
         is_connected = self._is_node_connected()
@@ -306,8 +347,23 @@ class Web3Provider(PaymentNetworkProvider):
         except Exception as exc:
             logger.exception(f"Failed to update configuration for {self}: {exc}")
 
-    def save_token(self, token_address):
-        contract = self.w3.eth.contract(abi=EIP20_ABI, address=to_checksum_address(token_address))
+    def mint_tokens(self, account: EthereumAccount_T, amount: TokenAmount):
+        logger.debug(f"Minting {amount.formatted}")
+        token_proxy = self.w3.eth.contract(
+            address=to_checksum_address(amount.currency.address),
+            abi=ERC223_ABI,
+        )
+
+        self.send_transaction(
+            contract_function=token_proxy.functions.mint,
+            account=account,
+            contract_args=(amount.as_wei,),
+            gas=GAS_REQUIRED_FOR_MINT,
+        )
+
+    def save_token(self, token_address) -> Erc20Token:
+        address = to_checksum_address(token_address)
+        contract = self.w3.eth.contract(abi=EIP20_ABI, address=address)
         token_data = {
             "name": contract.functions.name().call(),
             "symbol": contract.functions.symbol().call(),
@@ -315,7 +371,7 @@ class Web3Provider(PaymentNetworkProvider):
         }
 
         token, _ = Erc20Token.objects.update_or_create(
-            chain=self.chain, address=token_address, defaults=token_data
+            chain=self.chain, address=address, defaults=token_data
         )
         return token
 
@@ -369,42 +425,62 @@ class Web3Provider(PaymentNetworkProvider):
             for wallet in wallets:
                 self._extract_transfer_event_from_erc20_token_transfer(wallet, event_data)
 
-    def _is_node_connected(self):
-        logger.debug(f"Checking connection for {self}")
+    def get_erc20_token_transfer_gas_estimate(self, token: Erc20Token):
+        contract = self.w3.eth.contract(abi=EIP20_ABI, address=token.address)
+        return contract.functions.transfer(SENTINEL_ADDRESS, 0).estimateGas(
+            {"from": SENTINEL_ADDRESS}
+        )
+
+    def get_transfer_fee_estimate(self, token: Token_T) -> TokenAmount:
+        native_token = token.chain.native_token
+
+        gas_price = self.w3.eth.generateGasPrice()
+        gas_estimate = (
+            self.get_erc20_token_transfer_gas_estimate(token=token) if token.is_ERC20 else 21000
+        )
+        return native_token.from_wei(gas_estimate * gas_price)
+
+    def send_transaction(
+        self,
+        contract_function,
+        account: EthereumAccount_T,
+        gas,
+        contract_args: Optional[Tuple] = None,
+        **kw,
+    ) -> TxReceipt:
+        nonce = kw.pop("nonce", self.w3.eth.getTransactionCount(account.address))
+
+        transaction_params = {
+            "chainId": int(self.w3.net.version),
+            "nonce": nonce,
+            "gasPrice": kw.pop("gas_price", self.w3.eth.generateGasPrice()),
+            "gas": gas,
+        }
+
+        transaction_params.update(**kw)
+
         try:
-            is_connected = self.w3.isConnected()
+            result = contract_function(*contract_args) if contract_args else contract_function()
+            transaction_data = result.buildTransaction(transaction_params)
+            signed = self.w3.eth.account.signTransaction(transaction_data, account.private_key)
+            tx_hash = self.w3.eth.sendRawTransaction(signed.rawTransaction)
+            return self.w3.eth.waitForTransactionReceipt(tx_hash)
+        except ValueError as exc:
+            try:
+                if exc.args[0].get("message") == "nonce too low":
+                    logger.warning("Node reported that nonce is too low. Trying tx again...")
+                    kw["nonce"] = nonce + 1
+                    return self.send_transaction(
+                        contract_function,
+                        account,
+                        gas,
+                        contract_args=contract_args,
+                        **kw,
+                    )
+            except (AttributeError, IndexError):
+                pass
 
-            if self.chain.is_scaling_network:
-                return is_connected
-
-            if is_connected and self.supports_peer_count:
-                return is_connected and self.w3.net.peer_count > 0
-
-        except ConnectionError:
-            is_connected = False
-        except ValueError:
-            # The node does not support the peer count method. Assume healthy.
-            self.supports_peer_count = False
-            self.save()
-        except Exception as exc:
-            logger.error(f"Could not check {self.hostname}: {exc}")
-            is_connected = False
-
-        return is_connected
-
-    def _is_node_synced(self):
-        if self.chain.is_scaling_network:
-            return True
-        try:
-            is_synced = bool(not self.w3.eth.syncing)
-        except (ValueError, AttributeError):
-            # The node does not support the eth_syncing method. Assume healthy.
-            is_synced = True
-        except (ConnectionError, HTTPError) as exc:
-            logger.error(f"Failed to connect to {self.hostname}: {exc}")
-            is_synced = False
-
-        return is_synced
+            raise Web3TransactionError from exc
 
     def run(self):
         MIN_TIMEOUT = 2

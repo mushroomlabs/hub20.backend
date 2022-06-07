@@ -1,5 +1,6 @@
 import json
 import logging
+from typing import Union
 
 import requests
 from django.db import models
@@ -102,4 +103,7 @@ class Erc20Token(BaseToken):
         unique_together = (("chain", "address"),)
 
 
-__all__ = ["NativeToken", "Erc20Token"]
+EthereumToken_T = Union[NativeToken, Erc20Token]
+
+
+__all__ = ["NativeToken", "Erc20Token", "EthereumToken_T"]

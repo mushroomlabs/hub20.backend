@@ -3,7 +3,7 @@ import logging
 from hub20.apps.core.models.tokens import TokenAmount
 
 from ..factories import Erc20TokenTransactionFactory, TransactionFactory, TransferEventFactory
-from ..typing import EthereumAccount_T
+from ..models.accounts import EthereumAccount_T
 
 logger = logging.getLogger(__name__)
 

@@ -1,95 +1,19 @@
 import logging
-from typing import Optional, Tuple
+from typing import Optional
 
-from eth_utils import to_checksum_address
-from raiden_contracts.constants import CONTRACT_CUSTOM_TOKEN
-from raiden_contracts.contract_manager import ContractManager, contracts_precompiled_path
 from web3 import Web3
 from web3.datastructures import AttributeDict
 from web3.exceptions import TransactionNotFound
-from web3.types import TxReceipt
 
 from hub20.apps.core.models import BaseToken, TokenAmount
 from hub20.apps.ethereum.abi.tokens import EIP20_ABI
 from hub20.apps.ethereum.app_settings import WEB3_TRANSFER_GAS_LIMIT
-from hub20.apps.ethereum.exceptions import Web3TransactionError
-from hub20.apps.ethereum.factories import FAKER
-from hub20.apps.ethereum.models import BaseWallet, Chain, TransactionDataRecord
-from hub20.apps.ethereum.typing import Address, EthereumAccount_T, Web3Client_T
+from hub20.apps.ethereum.models import BaseWallet, EthereumAccount_T, TransactionDataRecord
+from hub20.apps.ethereum.typing import Address
 
 logger = logging.getLogger(__name__)
 
 GAS_REQUIRED_FOR_MINT: int = 100_000
-
-
-def send_transaction(
-    w3: Web3,
-    contract_function,
-    account,
-    gas,
-    contract_args: Optional[Tuple] = None,
-    **kw,
-) -> TxReceipt:
-    nonce = kw.pop("nonce", w3.eth.getTransactionCount(account.address))
-
-    transaction_params = {
-        "chainId": int(w3.net.version),
-        "nonce": nonce,
-        "gasPrice": kw.pop("gas_price", w3.eth.generateGasPrice()),
-        "gas": gas,
-    }
-
-    transaction_params.update(**kw)
-
-    try:
-        result = contract_function(*contract_args) if contract_args else contract_function()
-        transaction_data = result.buildTransaction(transaction_params)
-        signed = w3.eth.account.signTransaction(transaction_data, account.private_key)
-        tx_hash = w3.eth.sendRawTransaction(signed.rawTransaction)
-        return w3.eth.waitForTransactionReceipt(tx_hash)
-    except ValueError as exc:
-        try:
-            if exc.args[0].get("message") == "nonce too low":
-                logger.warning("Node reported that nonce is too low. Trying tx again...")
-                kw["nonce"] = nonce + 1
-                return send_transaction(
-                    w3,
-                    contract_function,
-                    account,
-                    gas,
-                    contract_args=contract_args,
-                    **kw,
-                )
-        except (AttributeError, IndexError):
-            pass
-
-        raise Web3TransactionError from exc
-
-
-def get_transfer_gas_estimate(w3: Web3, token: BaseToken):
-    if token.is_ERC20:
-        contract = w3.eth.contract(abi=EIP20_ABI, address=token.address)
-        return contract.functions.transfer(FAKER.ethereum_address(), 0).estimateGas(
-            {"from": FAKER.ethereum_address()}
-        )
-    else:
-        return 21000
-
-
-def get_estimate_fee(w3: Web3, token: BaseToken) -> TokenAmount:
-    native_token = BaseToken.make_native(chain=token.chain)
-
-    gas_price = w3.eth.generateGasPrice()
-    gas_estimate = get_transfer_gas_estimate(w3=w3, token=token)
-    return native_token.from_wei(gas_estimate * gas_price)
-
-
-def get_max_fee(w3: Web3) -> TokenAmount:
-    chain = Chain.active.get(id=w3.eth.chain_id)
-    native_token = BaseToken.make_native(chain=chain)
-
-    gas_price = chain.gas_price_estimate or w3.eth.generateGasPrice()
-    return native_token.from_wei(WEB3_TRANSFER_GAS_LIMIT * gas_price)
 
 
 def get_account_balance(w3: Web3, token: BaseToken, address: Address) -> TokenAmount:
@@ -98,32 +22,6 @@ def get_account_balance(w3: Web3, token: BaseToken, address: Address) -> TokenAm
         return token.from_wei(contract.functions.balanceOf(address).call())
     else:
         return token.from_wei(w3.eth.getBalance(address))
-
-
-def get_token_information(w3: Web3, address):
-    contract = w3.eth.contract(abi=EIP20_ABI, address=to_checksum_address(address))
-    return {
-        "name": contract.functions.name().call(),
-        "symbol": contract.functions.symbol().call(),
-        "decimals": contract.functions.decimals().call(),
-    }
-
-
-def mint_tokens(w3: Web3, account: EthereumAccount_T, amount: TokenAmount):
-    logger.debug(f"Minting {amount.formatted}")
-    contract_manager = ContractManager(contracts_precompiled_path())
-    token_proxy = w3.eth.contract(
-        address=to_checksum_address(amount.currency.address),
-        abi=contract_manager.get_contract_abi(CONTRACT_CUSTOM_TOKEN),
-    )
-
-    send_transaction(
-        w3=w3,
-        contract_function=token_proxy.functions.mint,
-        account=account,
-        contract_args=(amount.as_wei,),
-        gas=GAS_REQUIRED_FOR_MINT,
-    )
 
 
 class Web3Client:
@@ -180,7 +78,7 @@ class Web3Client:
         return get_account_balance(w3=w3, token=token, address=self.account.address)
 
     @classmethod
-    def select_for_transfer(cls, amount: TokenAmount, address: Address) -> Web3Client_T:
+    def select_for_transfer(cls, amount: TokenAmount, address: Address):
 
         chain = amount.currency.chain
         w3 = make_web3(provider=chain.provider)
@@ -206,16 +104,5 @@ class Web3Client:
         else:
             raise ValueError("No account with enough funds for this transfer")
 
-    @classmethod
-    def estimate_transfer_fees(cls, *args, **kw) -> TokenAmount:
-        w3 = kw["w3"]
-        return get_max_fee(w3=w3)
 
-
-__all__ = [
-    "get_transfer_gas_estimate",
-    "get_estimate_fee",
-    "get_max_fee",
-    "get_account_balance",
-    "get_token_information",
-]
+__all__ = ["get_account_balance"]

@@ -5,9 +5,8 @@ import ethereum
 from django.core.management.base import BaseCommand
 from eth_utils import to_checksum_address
 
-from hub20.apps.core.models import BaseWallet, KeystoreAccount, Token, TokenAmount
-from hub20.apps.ethereum.client import make_web3, mint_tokens
-from hub20.apps.ethereum.models import Web3Provider
+from hub20.apps.core.models import TokenAmount
+from hub20.apps.ethereum.models import BaseWallet, Chain, KeystoreAccount
 
 logger = logging.getLogger(__name__)
 
@@ -31,14 +30,12 @@ class Command(BaseCommand):
             assert generated_address == address, "Private Key does not match"
             account = KeystoreAccount(address=address, private_key=private_key)
 
-        provider = Web3Provider.available.get(chain_id=options["chain_id"])
-        w3 = make_web3(provider=provider)
-
-        if not provider.chain.is_testnet:
+        chain = Chain.objects.get(id=options["chain_id"])
+        if not chain.is_testnet:
             logger.error("Can only mint tokens on testnets")
             return
 
-        token = Token.make(options["token"], provider.chain)
+        token = chain.provider.save_token(options["token"])
 
         amount = TokenAmount(amount=options["amount"], currency=token)
-        mint_tokens(w3=w3, account=account, amount=amount)
+        chain.provider.mint_tokens(account=account, amount=amount)

@@ -17,7 +17,7 @@ from hub20.apps.core.admin import (
 
 from . import models
 from .forms import Erc20TokenForm, NativeTokenForm
-from .typing import EthereumAccount_T
+from .models import EthereumAccount_T
 from .validators import web3_url_validator
 
 
@@ -38,14 +38,14 @@ class ConnectedChainListFilter(admin.SimpleListFilter):
         if selection is None:
             return queryset
 
-        connected_q = Q(chain__blockchainpaymentnetwork__providers__is_active=True)
+        connected_q = Q(blockchainpaymentnetwork__providers__is_active=True)
 
         filter_type = queryset.filter if selection == "yes" else queryset.exclude
         return filter_type(connected_q)
 
 
 class TestChainListFilter(admin.SimpleListFilter):
-    title = _("testnets")
+    title = _("testnets of")
 
     parameter_name = "testnet"
 
@@ -66,7 +66,7 @@ class TestChainListFilter(admin.SimpleListFilter):
 
 
 class RollupListFilter(admin.SimpleListFilter):
-    title = _("rollups")
+    title = _("rollups for")
 
     parameter_name = "rollup"
 
