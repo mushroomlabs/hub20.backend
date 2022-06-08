@@ -3,24 +3,14 @@ from typing import Dict
 
 import celery_pubsub
 from celery import shared_task
-from django.db.models import Q
 from web3.datastructures import AttributeDict
-from web3.exceptions import TransactionNotFound
 
-from hub20.apps.core.models.tokens import BaseToken
 from hub20.apps.core.tasks import broadcast_event
 
-from . import signals
 from .abi.tokens import EIP20_ABI
 from .constants import Events
-from .models import (
-    BaseWallet,
-    Block,
-    Chain,
-    TransactionDataRecord,
-    WalletBalanceRecord,
-    Web3Provider,
-)
+from .models import BaseWallet, Block, WalletBalanceRecord, Web3Provider
+from .signals import block_sealed
 
 logger = logging.getLogger(__name__)
 
@@ -43,85 +33,7 @@ def notify_block_created(chain_id, block_data):
 def notify_new_block(chain_id, block_data: Dict, provider_url):
     block_data = AttributeDict(block_data)
     logger.debug(f"Sending notification of new block on chain #{chain_id}")
-    signals.block_sealed.send(sender=Block, chain_id=chain_id, block_data=block_data)
-
-
-@shared_task
-def check_pending_transaction_for_eth_transfer(chain_id, transaction_data):
-    chain = Chain.actve.get(id=chain_id)
-
-    sender = transaction_data["from"]
-    recipient = transaction_data["to"]
-
-    is_native_token_transfer = transaction_data.value != 0
-
-    if not is_native_token_transfer:
-        return
-
-    native_token = BaseToken.make_native(chain=chain)
-    amount = native_token.from_wei(transaction_data.value)
-
-    for account in BaseWallet.objects.filter(address=sender):
-        tx_data = TransactionDataRecord.make(tx_data=transaction_data, chain_id=chain_id)
-
-        signals.outgoing_transfer_broadcast.send(
-            sender=TransactionDataRecord,
-            account=account,
-            amount=amount,
-            transaction_data=tx_data,
-        )
-
-    for account in BaseWallet.objects.filter(address=recipient):
-        tx_data = TransactionDataRecord.make(tx_data=transaction_data, chain_id=chain_id)
-
-        signals.incoming_transfer_broadcast.send(
-            sender=BaseToken,
-            account=account,
-            amount=amount,
-            transaction_data=tx_data,
-        )
-
-
-@shared_task
-def check_pending_erc20_transfer_event(chain_id, event_data, provider_url):
-    try:
-        token = BaseToken.objects.get(chain_id=chain_id, address=event_data.address)
-    except BaseToken.DoesNotExist:
-        return
-
-    sender = event_data.args._from
-    recipient = event_data.args._to
-
-    if not BaseWallet.objects.filter(Q(address=sender) | Q(address=recipient)).exists():
-        return
-
-    amount = token.from_wei(event_data.args._value)
-
-    try:
-        provider = Web3Provider.objects.get(url=provider_url)
-        w3 = provider.w3
-        transaction_data = w3.eth.get_transaction(event_data.transactionHash)
-    except TransactionNotFound:
-        logger.warning(f"Failed to get transaction data {event_data.transactionHash.hex()}")
-        return
-
-    for account in BaseWallet.objects.filter(address=sender):
-        tx_data = TransactionDataRecord.make(tx_data=transaction_data, chain_id=chain_id)
-        signals.outgoing_transfer_broadcast.send(
-            sender=TransactionDataRecord,
-            account=account,
-            amount=amount,
-            transaction_data=tx_data,
-        )
-
-    for account in BaseWallet.objects.filter(address=recipient):
-        tx_data = TransactionDataRecord.make(tx_data=transaction_data, chain_id=chain_id)
-        signals.incoming_transfer_broadcast.send(
-            sender=TransactionDataRecord,
-            account=account,
-            amount=amount,
-            transaction_data=tx_data,
-        )
+    block_sealed.send(sender=Block, chain_id=chain_id, block_data=block_data)
 
 
 @shared_task
@@ -193,9 +105,3 @@ def update_wallet_native_token_balances():
 
 
 celery_pubsub.subscribe("blockchain.mined.block", notify_new_block)
-celery_pubsub.subscribe(
-    "blockchain.event.token_transfer.broadcast", check_pending_erc20_transfer_event
-)
-celery_pubsub.subscribe(
-    "blockchain.broadcast.transaction", check_pending_transaction_for_eth_transfer
-)
