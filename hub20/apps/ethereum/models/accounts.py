@@ -39,6 +39,9 @@ class BaseWallet(models.Model):
             block__number=Max("block__number")
         )
 
+        if not record_qs.exists():
+            return self.balance_records.none()
+
         filter_q = functools.reduce(lambda x, y: x | y, [Q(**r) for r in record_qs])
 
         return self.balance_records.filter(amount__gt=0).filter(filter_q)

@@ -11,7 +11,6 @@ from hub20.apps.core.models.accounting import PaymentNetworkAccount
 from hub20.apps.core.settings import app_settings
 from hub20.apps.core.tests import AccountingTestCase, TransferModelTestCase
 
-from ..client.web3 import Web3Client
 from ..factories import (
     BaseWalletFactory,
     BlockchainPaymentNetworkFactory,
@@ -28,7 +27,7 @@ from ..factories import (
     EtherPaymentConfirmationFactory,
     WalletBalanceRecordFactory,
 )
-from ..models import Block, BlockchainPayment
+from ..models import Block, BlockchainPayment, Web3Provider
 from ..signals import block_sealed
 from .mocks import BlockMock
 from .utils import add_eth_to_account, add_token_to_account
@@ -104,19 +103,19 @@ class BlockchainTransferTestCase(TransferModelTestCase):
             sender=self.sender, currency=self.credit.currency, amount=self.credit.amount
         )
 
-    @patch.object(Web3Client, "select_for_transfer")
+    @patch.object(Web3Provider, "select_for_transfer")
     def test_external_transfers_fail_without_funds(self, select_for_transfer):
         select_for_transfer.side_effect = ValueError("no wallet available")
         self.transfer.execute()
         self.assertTrue(self.transfer.is_failed)
         self.assertEqual(self.transfer.status, TRANSFER_STATUS.failed)
 
-    @patch.object(Web3Client, "select_for_transfer")
-    @patch.object(Web3Client, "transfer")
+    @patch.object(Web3Provider, "select_for_transfer")
+    @patch.object(Web3Provider, "transfer")
     def test_transfers_can_be_processed_with_enough_balance(
         self, web3_execute_transfer, select_for_transfer
     ):
-        select_for_transfer.return_value = Web3Client(self.wallet)
+        select_for_transfer.return_value = self.wallet
         web3_execute_transfer.return_value = Erc20TokenTransactionDataFactory(
             amount=self.credit,
             from_address=self.wallet.address,
@@ -138,8 +137,8 @@ class Web3AccountingTestCase(AccountingTestCase):
         )
         self.credit = payment_confirmation.payment.as_token_amount
 
-    @patch.object(Web3Client, "select_for_transfer")
-    @patch.object(Web3Client, "transfer")
+    @patch.object(Web3Provider, "select_for_transfer")
+    @patch.object(Web3Provider, "transfer")
     def test_external_transfers_generate_accounting_entries_for_treasury_and_external_address(
         self, web3_execute_transfer, select_for_transfer
     ):
@@ -153,7 +152,7 @@ class Web3AccountingTestCase(AccountingTestCase):
             from_address=self.wallet.address,
         )
 
-        select_for_transfer.return_value = Web3Client(self.wallet)
+        select_for_transfer.return_value = self.wallet
         web3_execute_transfer.return_value = payout_tx_data
 
         transfer.execute()
@@ -186,14 +185,14 @@ class Web3AccountingTestCase(AccountingTestCase):
             sender=self.user, currency=self.credit.currency, amount=self.credit.amount
         )
 
-        with patch.object(Web3Client, "select_for_transfer") as select:
-            with patch.object(Web3Client, "transfer") as web3_transfer_execute:
+        with patch.object(Web3Provider, "select_for_transfer") as select:
+            with patch.object(Web3Provider, "transfer") as web3_transfer_execute:
                 payout_tx_data = Erc20TokenTransactionDataFactory(
                     amount=transfer.as_token_amount,
                     recipient=transfer.address,
                     from_address=self.wallet.address,
                 )
-                select.return_value = Web3Client(self.wallet)
+                select.return_value = Web3Provider(self.wallet)
                 web3_transfer_execute.return_value = payout_tx_data
                 transfer.execute()
 

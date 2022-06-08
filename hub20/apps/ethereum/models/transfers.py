@@ -10,6 +10,7 @@ from hub20.apps.core.models import (
     TransferReceipt,
 )
 
+from .accounts import EthereumAccount_T
 from .blockchain import Transaction, TransactionDataRecord
 from .fields import EthereumAddressField
 
@@ -21,10 +22,13 @@ class BlockchainTransfer(Transfer):
 
     def _execute(self):
         try:
-            from hub20.apps.ethereum.client.web3 import Web3Client
+            assert self.provider is not None, "No active provider to execute transfer"
 
-            web3_client = Web3Client.select_for_transfer(amount=self.amount, address=self.address)
-            tx_data = web3_client.transfer(amount=self.as_token_amount, address=self.address)
+            account: EthereumAccount_T = self.provider.select_for_transfer(self.as_token_amount)
+            assert account is not None, "No account with enough balance to cover"
+            tx_data: TransactionDataRecord = self.provider.transfer(
+                amount=self.as_token_amount, address=self.address
+            )
             BlockchainTransferReceipt.objects.create(transfer=self, transaction_data=tx_data)
         except Exception as exc:
             raise TransferError(str(exc)) from exc

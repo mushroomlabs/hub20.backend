@@ -1,6 +1,4 @@
 import logging
-from contextlib import contextmanager
-from hashlib import md5
 
 import httpx
 from asgiref.sync import async_to_sync
@@ -8,10 +6,9 @@ from celery import shared_task
 from channels.layers import get_channel_layer
 from django.contrib.auth import get_user_model
 from django.contrib.sessions.models import Session
-from django.core.cache import cache
 from django.utils import timezone
 
-from .consumers import CheckoutConsumer, Events, SessionEventsConsumer
+from .consumers import CheckoutConsumer, SessionEventsConsumer
 from .models import Checkout, Transfer
 
 User = get_user_model()

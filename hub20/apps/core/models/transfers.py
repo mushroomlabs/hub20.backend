@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Union
 
 from django.conf import settings
 from django.db import models
@@ -13,6 +14,7 @@ from hub20.apps.core.models.tokens import TokenValueModel
 from ..exceptions import TransferError
 from .base import BaseModel
 from .networks import PaymentNetwork
+from .providers import PaymentNetworkProvider_T
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +81,10 @@ class Transfer(BaseModel, TimeStampedModel, TokenValueModel):
     @property
     def is_finalized(self) -> bool:
         return self.status != TRANSFER_STATUS.scheduled
+
+    @property
+    def provider(self) -> Union[PaymentNetworkProvider_T, None]:
+        return self.network.providers(manager="available").select_subclasses().first()
 
     def execute(self):
         if self.is_finalized:

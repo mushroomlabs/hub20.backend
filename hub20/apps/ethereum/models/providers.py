@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 from urllib.parse import urlparse
 
 import celery_pubsub
@@ -15,6 +15,7 @@ from requests.exceptions import ConnectionError, HTTPError
 from web3 import Web3
 from web3._utils.events import get_event_data
 from web3._utils.filters import construct_event_filter_params
+from web3.datastructures import AttributeDict
 from web3.exceptions import BlockNotFound, ExtraDataLengthError, LogTopicError, TransactionNotFound
 from web3.middleware import geth_poa_middleware
 from web3.providers import HTTPProvider, IPCProvider, WebsocketProvider
@@ -28,12 +29,20 @@ from hub20.apps.ethereum.exceptions import Web3TransactionError
 from .. import analytics
 from ..abi.tokens import EIP20_ABI, ERC223_ABI
 from ..constants import SENTINEL_ADDRESS, Events
+from ..typing import Address
 from .accounts import BaseWallet, EthereumAccount_T
-from .blockchain import Transaction, TransactionDataRecord, TransferEvent, serialize_web3_data
+from .blockchain import (
+    Block,
+    Transaction,
+    TransactionDataRecord,
+    TransferEvent,
+    serialize_web3_data,
+)
 from .fields import Web3ProviderURLField
-from .tokens import Erc20Token
+from .tokens import Erc20Token, EthereumToken_T
 
 GAS_REQUIRED_FOR_MINT: int = 100_000
+GAS_TRANSFER_LIMIT: int = 200_000
 
 logger = logging.getLogger(__name__)
 
@@ -481,6 +490,98 @@ class Web3Provider(PaymentNetworkProvider):
                 pass
 
             raise Web3TransactionError from exc
+
+    @atomic()
+    def update_account_balance(self, account: EthereumAccount_T, token: EthereumToken_T):
+        current_block = self.w3.eth.block_number
+        block_data = self.w3.eth.get_block(current_block)
+        if token.is_ERC20:
+            contract = self.w3.eth.contract(abi=EIP20_ABI, address=token.address)
+            current_balance = contract.functions.balanceOf(account.address).call()
+            balance = token.from_wei(current_balance)
+        else:
+            balance = token.from_wei(
+                self.w3.eth.get_balance(account.address, block_identifier=block_data.hash.hex())
+            )
+        block = Block.make(block_data=block_data, chain_id=self.chain.id)
+
+        account.balance_records.create(
+            currency=balance.currency, amount=balance.amount, block=block
+        )
+
+    def select_for_transfer(self, amount: TokenAmount) -> Union[EthereumAccount_T, None]:
+        native_token = self.chain.native_token
+        transferred_token = amount.currency.subclassed
+
+        assert (
+            transferred_token.chain == native_token.chain
+        ), "{transferred_token} and {native_token} are not on the same chain"
+
+        transfer_fee: TokenAmount = self.get_transfer_fee_estimate(token=transferred_token)
+
+        is_native_token_transfer = amount.currency.subclassed == native_token
+
+        if is_native_token_transfer:
+            amount += transfer_fee
+
+        for account in BaseWallet.objects.select_subclasses().order_by("?"):
+            self.update_account_balance(account=account, token=native_token)
+            if not is_native_token_transfer:
+                self.update_account_balance(account=account, token=transferred_token)
+
+            token_balance = account.current_balance(transferred_token)
+            native_token_balance = account.current_balance(native_token)
+
+            has_token_balance = token_balance and token_balance >= amount
+            has_fee_funds = native_token_balance and native_token_balance >= transfer_fee
+
+            if has_token_balance and has_fee_funds:
+                return account
+
+        else:
+            return None
+
+    def transfer(
+        self, account: EthereumAccount_T, amount: TokenAmount, address: Address, *args, **kw
+    ) -> TransactionDataRecord:
+        token: EthereumToken_T = amount.currency.subclassed
+
+        chain_id = self.chain.id
+
+        message = f"Connected to network {chain_id}, token {token.symbol} is on {token.chain_id}"
+        assert token.chain_id == chain_id, message
+
+        transaction_params = {
+            "chainId": chain_id,
+            "nonce": self.w3.eth.getTransactionCount(account.address),
+            "gasPrice": self.w3.eth.generateGasPrice(),
+            "gas": GAS_TRANSFER_LIMIT,
+            "from": account.address,
+        }
+
+        if token.is_ERC20:
+            transaction_params.update(
+                {"to": token.address, "value": 0, "data": encode_transfer_data(address, amount)}
+            )
+        else:
+            transaction_params.update({"to": address, "value": amount.as_wei})
+        return transaction_params
+
+        signed_tx = self.sign_transaction(transaction_data=transaction_params)
+        chain_id = self.chain.id
+        tx_hash = self.w3.eth.sendRawTransaction(signed_tx.rawTransaction)
+        try:
+            tx_data = self.w3.eth.get_transaction(tx_hash)
+            return TransactionDataRecord.make(chain_id=chain_id, tx_data=tx_data, force=True)
+        except TransactionNotFound:
+            return TransactionDataRecord.make(
+                chain_id=chain_id, tx_data=AttributeDict(transaction_params)
+            )
+
+    def sign_transaction(self, account: EthereumAccount_T, transaction_data, *args, **kw):
+        if not hasattr(account, "private_key"):
+            raise NotImplementedError(f"{account} can not sign transactions")
+        return self.w3.eth.account.signTransaction(transaction_data, account.private_key)
 
     def run(self):
         MIN_TIMEOUT = 2

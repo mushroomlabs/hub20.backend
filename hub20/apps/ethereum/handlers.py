@@ -15,8 +15,6 @@ from hub20.apps.core.tasks import call_checkout_webhook, publish_checkout_event,
 from . import signals, tasks
 from .constants import Events
 from .models import (
-    AccountErc20TokenTransferIndexer,
-    AccountTransactionIndexer,
     BaseWallet,
     Block,
     BlockchainPayment,
@@ -30,7 +28,6 @@ from .models import (
     TransactionDataRecord,
     TransactionFee,
     TransferEvent,
-    Web3Provider,
     serialize_web3_data,
 )
 
