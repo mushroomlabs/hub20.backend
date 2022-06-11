@@ -10,6 +10,7 @@ from model_utils.choices import Choices
 from model_utils.managers import QueryManager
 from model_utils.models import StatusModel
 
+from hub20.apps.core.models.networks import PaymentNetwork_T
 from hub20.apps.core.models.tokens import TokenAmount, TokenAmountField
 from hub20.apps.core.settings import app_settings
 from hub20.apps.core.validators import uri_parsable_scheme_validator
@@ -49,6 +50,10 @@ class Raiden(models.Model):
     @property
     def hostname(self):
         return urlparse(self.url).hostname
+
+    @property
+    def payment_network(self) -> PaymentNetwork_T:
+        return self.chain.raidenpaymentnetwork
 
     @property
     def token_networks(self):

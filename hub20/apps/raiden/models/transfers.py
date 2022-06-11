@@ -4,10 +4,12 @@ from django.contrib.postgres.fields import HStoreField
 from django.db import models
 
 from hub20.apps.core.exceptions import TransferError
+from hub20.apps.core.models.networks import PaymentNetwork_T
 from hub20.apps.core.models.transfers import Transfer, TransferConfirmation, TransferReceipt
 from hub20.apps.ethereum.models import EthereumAddressField
 
 from ..exceptions import RaidenPaymentError
+from .networks import RaidenPaymentNetwork
 from .raiden import Payment
 
 
@@ -20,6 +22,7 @@ class RaidenTransferConfirmation(TransferConfirmation):
 
 
 class RaidenTransfer(Transfer):
+    NETWORK: PaymentNetwork_T = RaidenPaymentNetwork
     address = EthereumAddressField(db_index=True)
 
     def _execute(self):
