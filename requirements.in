@@ -4,8 +4,7 @@ channels
 channels_redis
 django>=4
 django-allauth
-git+https://github.com/celery/django-celery-beat
-# django-celery-beat
+django-celery-beat
 dj-rest-auth
 django-admin-interface
 django-celery-results
@@ -32,7 +31,6 @@ pydantic
 pycryptodome
 pyjwt
 qr3
-raiden_contracts
 uritemplate
 uvicorn
 web3
