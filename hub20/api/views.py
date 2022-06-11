@@ -12,7 +12,7 @@ from hub20.apps.core.models import PaymentNetwork
 from hub20.apps.core.serializers.accounting import HyperlinkedTokenBalanceSerializer
 from hub20.apps.core.serializers.tokens import TokenSerializer
 from hub20.apps.core.views.tokens import BaseTokenViewSet
-from hub20.apps.ethereum.views import EthereumTokenFilter
+from hub20.apps.ethereum.filters import EthereumTokenFilter
 
 from . import VERSION, serializers
 
@@ -28,7 +28,7 @@ class IndexView(APIView):
         return Response(
             {
                 "current_user_url": reverse_lazy("rest_user_details", request=request),
-                "blockchains_url": reverse_lazy("blockchain:chain-list", request=request),
+                "networks_url": reverse_lazy("network-list", request=request),
                 "accounting_report_url": reverse_lazy("accounting-report", request=request),
                 "tokens_url": reverse_lazy("token-list", request=request),
                 "users_url": reverse_lazy("users-list", request=request),

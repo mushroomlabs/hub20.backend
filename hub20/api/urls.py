@@ -42,8 +42,6 @@ urlpatterns = [
     make_auth_view("session/logout", LogoutView, "rest_logout"),
     path("my/profile", UserDetailsView.as_view(), name="rest_user_details"),
     path("register/", include("dj_rest_auth.registration.urls")),
-    path("networks/blockchains/", include("hub20.apps.ethereum.api", namespace="blockchain")),
-    path("networks/raiden/", include("hub20.apps.raiden.api")),
     path("", IndexView.as_view(), name="index"),
 ]
 
