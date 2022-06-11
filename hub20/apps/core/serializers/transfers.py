@@ -1,6 +1,14 @@
 from rest_framework import serializers
 
-from ..models import InternalTransfer, TokenAmount, Transfer, TransferConfirmation
+from ..models import (
+    InternalPaymentNetwork,
+    InternalTransfer,
+    PaymentNetwork_T,
+    TokenAmount,
+    Transfer,
+    TransferConfirmation,
+)
+from .base import PolymorphicModelSerializer
 from .tokens import HyperlinkedRelatedTokenField, TokenValueField
 from .users import UserRelatedField
 
@@ -48,7 +56,36 @@ class TransferSerializer(serializers.ModelSerializer):
             "identifier",
             "status",
         )
-        read_only_fields = ("status",)
+        read_only_fields = (
+            "url",
+            "status",
+        )
+
+
+class BaseWithdrawalSerializer(TransferSerializer):
+    url = serializers.HyperlinkedIdentityField(view_name="user-withdrawal-detail")
+
+    @classmethod
+    def get_subclassed_serializer(cls, network: PaymentNetwork_T):
+        """
+        Each Transfer class needs to define its network type. With
+        this, we can define what serializer to use for a withdrawal
+        """
+        return {c.Meta.model.NETWORK: c for c in cls.__subclasses__()}.get(type(network), cls)
+
+    def create(self, validated_data):
+        request = self.context["request"]
+        view = self.context["view"]
+
+        network = view.get_network()
+        return self.Meta.model.objects.create(
+            sender=request.user, network=network, **validated_data
+        )
+
+    class Meta:
+        model = Transfer
+        fields = TransferSerializer.Meta.fields
+        read_only_fields = TransferSerializer.Meta.read_only_fields
 
 
 class InternalTransferSerializer(TransferSerializer):
@@ -60,6 +97,16 @@ class InternalTransferSerializer(TransferSerializer):
         if value == request.user:
             raise serializers.ValidationError("You can not make a transfer to yourself")
         return value
+
+    def validate(self, data):
+        data = super().validate(data)
+        data["network"] = InternalPaymentNetwork.objects.first()
+        return data
+
+    def create(self, validated_data):
+        request = self.context["request"]
+
+        return self.Meta.model.objects.create(sender=request.user, **validated_data)
 
     class Meta:
         model = InternalTransfer
@@ -81,4 +128,5 @@ __all__ = [
     "TransferSerializer",
     "TransferConfirmationSerializer",
     "InternalTransferSerializer",
+    "BaseWithdrawalSerializer",
 ]

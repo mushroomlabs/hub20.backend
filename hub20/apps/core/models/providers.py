@@ -37,15 +37,6 @@ class PaymentNetworkProvider(BaseModel, PolymorphicModelMixin):
         self.is_active = True
         self.save()
 
-    def sync(self):
-        pass
-
-    def check_open_payments(self):
-        pass
-
-    def execute_transfers(self):
-        pass
-
     def __str__(self):
         return f"{self.subclassed.__class__.__name__} for {self.network.subclassed.name}"
 

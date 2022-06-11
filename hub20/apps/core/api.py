@@ -23,8 +23,11 @@ router.register("my/stores", views.UserStoreViewSet, basename="user-store")
 router.register("my/tokens", views.UserTokenViewSet, basename="user-token")
 router.register("my/tokenlists", views.UserTokenListViewSet, basename="user-tokenlist")
 router.register("my/deposits", views.DepositViewSet, basename="user-deposit")
-router.register("my/transfers", views.TransferViewSet, basename="user-transfer")
+router.register("my/transfers", views.TransferViewSet, basename="user-transfer"),
+router.register("my/withdrawals", views.WithdrawalViewSet, basename="user-withdrawal"),
 router.register("my/balances", views.TokenBalanceListViewSet, basename="balance"),
+router.register("my/credits", views.AccountCreditViewSet, basename="user-credit"),
+router.register("my/debits", views.AccountDebitViewSet, basename="user-debit"),
 
 checkout_router = NestedSimpleRouter(router, "checkout", lookup="checkout")
 checkout_router.register("routes", views.CheckoutRoutesViewSet, basename="checkout-routes")
@@ -32,17 +35,20 @@ checkout_router.register("routes", views.CheckoutRoutesViewSet, basename="checko
 deposit_router = NestedSimpleRouter(router, "my/deposits", lookup="deposit")
 deposit_router.register("routes", views.DepositRoutesViewSet, basename="deposit-routes")
 
+network_router = NestedSimpleRouter(router, "networks", lookup="network")
+network_router.register(
+    "withdrawals", views.NetworkWithdrawalViewSet, basename="network-withdrawals"
+)
 
 urlpatterns = (
     [
-        path("credits", views.AccountCreditEntryList.as_view(), name="credit-list"),
-        path("debits", views.AccountDebitEntryList.as_view(), name="debit-list"),
         path("accounting/report", views.AccountingReportView.as_view(), name="accounting-report"),
         path("my/settings", views.UserPreferencesView.as_view(), name="user-preferences"),
     ]
     + router.urls
     + checkout_router.urls
     + deposit_router.urls
+    + network_router.urls
 )
 
 

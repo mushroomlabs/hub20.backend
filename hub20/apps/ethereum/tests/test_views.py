@@ -9,6 +9,7 @@ from ..factories import FAKER
 from ..factories.checkout import Erc20TokenCheckoutFactory
 from ..factories.networks import BlockchainPaymentNetworkFactory
 from ..factories.tokens import Erc20TokenFactory
+from ..factories.transfers import BlockchainTransferFactory
 
 
 class CheckoutRoutesViewTestCase(TestCase):
@@ -53,18 +54,28 @@ class BlockchainPaymentNetworkViewTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
 
 
-class TransferViewTestCase(BaseTransferTestCase):
+class BlockchainWithdrawalViewTestCase(BaseTransferTestCase):
     def setUp(self):
         super().setUp()
         self.user = UserFactory()
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
         self.token = Erc20TokenFactory()
+        self.network = BlockchainPaymentNetworkFactory(chain=self.token.chain)
         self.target_address = FAKER.ethereum_address()
+
+    def test_get_blockchain_serializer_on_polymorphic_endpoint(self):
+        transfer = BlockchainTransferFactory(sender=self.user, address=self.target_address)
+        response = self.client.get(reverse("user-withdrawal-detail", kwargs={"pk": transfer.pk}))
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(
+            "address" in response.data, "transfer endpoint does not include address detail"
+        )
+        self.assertEqual(response.data["address"], self.target_address)
 
     def test_no_balance_returns_error(self):
         response = self.client.post(
-            reverse("user-transfer-list"),
+            reverse("network-withdrawals-list", kwargs={"network_pk": self.network.pk}),
             {
                 "address": self.target_address,
                 "payment_network": "blockchain",
@@ -90,7 +101,7 @@ class TransferViewTestCase(BaseTransferTestCase):
         )
 
         response = self.client.post(
-            reverse("user-transfer-list"),
+            reverse("network-withdrawals-list", kwargs={"network_pk": self.network.pk}),
             {
                 "address": self.target_address,
                 "payment_network": "blockchain",
@@ -113,5 +124,5 @@ class TransferViewTestCase(BaseTransferTestCase):
 __all__ = [
     "CheckoutRoutesViewTestCase",
     "BlockchainPaymentNetworkViewTestCase",
-    "TransferViewTestCase",
+    "BlockchainWithdrawalViewTestCase",
 ]

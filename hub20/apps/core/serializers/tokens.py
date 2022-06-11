@@ -26,6 +26,7 @@ class TokenSerializer(serializers.ModelSerializer):
         model = models.BaseToken
         fields = read_only_fields = (
             "url",
+            "id",
             "symbol",
             "name",
             "decimals",

@@ -2,7 +2,6 @@ from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
 from ..models import BaseToken
-from .fields import AddressSerializerField
 from .tokens import HyperlinkedRelatedTokenField, TokenSerializer
 
 User = get_user_model()
@@ -32,8 +31,6 @@ class UserSerializer(serializers.ModelSerializer):
 class UserTokenSerializer(TokenSerializer):
     url = serializers.HyperlinkedIdentityField(view_name="user-token-detail")
     token = serializers.HyperlinkedIdentityField(view_name="token-detail", read_only=True)
-    address = AddressSerializerField(read_only=True)
-    chain_id = serializers.PrimaryKeyRelatedField(read_only=True)
 
     class Meta:
         model = TokenSerializer.Meta.model

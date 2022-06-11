@@ -29,7 +29,7 @@ def broadcast_event(**kw):
 @shared_task
 def execute_transfer(transfer_id):
     try:
-        transfer = Transfer.pending.get(id=transfer_id)
+        transfer = Transfer.pending.get_subclass(id=transfer_id)
         transfer.execute()
     except Transfer.DoesNotExist:
         logger.warning(f"Transfer {transfer_id} not found or already confirmed")
@@ -37,7 +37,7 @@ def execute_transfer(transfer_id):
 
 @shared_task
 def execute_pending_transfers():
-    for transfer in Transfer.pending.exclude(execute_on__gt=timezone.now()):
+    for transfer in Transfer.pending.exclude(execute_on__gt=timezone.now()).select_subclasses():
         transfer.execute()
 
 

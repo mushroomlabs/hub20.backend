@@ -16,6 +16,7 @@ class Command(BaseCommand):
         try:
             PROCESSING_THREADS = {}
             while True:
+                PROCESSING_THREADS = {r: t for r, t in PROCESSING_THREADS.items() if t.is_alive()}
                 for provider in PaymentNetworkProvider.available.select_subclasses():
                     if provider.id not in PROCESSING_THREADS:
                         logger.info(f"Starting provider {provider}")

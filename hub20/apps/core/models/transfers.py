@@ -13,7 +13,7 @@ from hub20.apps.core.models.tokens import TokenValueModel
 
 from ..exceptions import TransferError
 from .base import BaseModel
-from .networks import PaymentNetwork
+from .networks import InternalPaymentNetwork, PaymentNetwork
 from .providers import PaymentNetworkProvider_T
 
 logger = logging.getLogger(__name__)
@@ -114,8 +114,12 @@ class Transfer(BaseModel, TimeStampedModel, TokenValueModel):
     def _execute(self):
         raise NotImplementedError()
 
+    class Meta:
+        ordering = ("created",)
+
 
 class InternalTransfer(Transfer):
+    NETWORK = InternalPaymentNetwork
     receiver = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,

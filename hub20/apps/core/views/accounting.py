@@ -1,36 +1,31 @@
 from django.db.models.query import QuerySet
 from django.shortcuts import get_object_or_404
-from rest_framework import generics
 from rest_framework.filters import OrderingFilter
-from rest_framework.mixins import ListModelMixin, RetrieveModelMixin
-from rest_framework.permissions import IsAdminUser, IsAuthenticated
+from rest_framework.permissions import IsAdminUser
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.viewsets import GenericViewSet
 
 from hub20.apps.core.models.tokens import BaseToken
 
 from .. import models, serializers
+from .base import UserDataViewSet
 
 
-class AccountCreditEntryList(generics.ListAPIView):
-    permission_classes = (IsAuthenticated,)
+class AccountCreditViewSet(UserDataViewSet):
     serializer_class = serializers.CreditSerializer
 
     def get_queryset(self) -> QuerySet:
-        return models.Credit.objects.filter(book__account__user=self.request.user)
+        return self.request.user.account.credits.all()
 
 
-class AccountDebitEntryList(generics.ListAPIView):
-    permission_classes = (IsAuthenticated,)
+class AccountDebitViewSet(UserDataViewSet):
     serializer_class = serializers.DebitSerializer
 
     def get_queryset(self) -> QuerySet:
         return self.request.user.account.debits.all()
 
 
-class TokenBalanceListViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
-    permission_classes = (IsAuthenticated,)
+class TokenBalanceListViewSet(UserDataViewSet):
     serializer_class = serializers.HyperlinkedTokenBalanceSerializer
     filter_backends = (OrderingFilter,)
     ordering = ("symbol",)
@@ -62,8 +57,8 @@ class AccountingReportView(APIView):
 
 
 __all__ = [
-    "AccountCreditEntryList",
-    "AccountDebitEntryList",
+    "AccountCreditViewSet",
+    "AccountDebitViewSet",
     "TokenBalanceListViewSet",
     "AccountingReportView",
 ]

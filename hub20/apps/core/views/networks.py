@@ -1,10 +1,10 @@
 from django_filters import rest_framework as filters
+from rest_framework.decorators import action
 from rest_framework.filters import SearchFilter
-from rest_framework.mixins import ListModelMixin, RetrieveModelMixin
-from rest_framework.permissions import AllowAny
-from rest_framework.viewsets import GenericViewSet
+from rest_framework.response import Response
 
 from .. import models, serializers
+from .base import PolymorphicModelViewSet
 
 
 class PaymentNetworkFilter(filters.FilterSet):
@@ -24,12 +24,11 @@ class PaymentNetworkFilter(filters.FilterSet):
         fields = ("available", "connected")
 
 
-class PaymentNetworkViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
+class PaymentNetworkViewSet(PolymorphicModelViewSet):
     """
     This represents a list of all payment networks known by this hub.
     """
 
-    permission_classes = (AllowAny,)
     serializer_class = serializers.PaymentNetworkSerializer
     filterset_class = PaymentNetworkFilter
     filter_backends = (
@@ -38,10 +37,25 @@ class PaymentNetworkViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
     )
     search_fields = ("name",)
 
+    def get_serializer_class(self, **kw):
+        if self.action == "status":
+            network = self.get_object()
+            return serializers.PaymentNetworkStatusSerializer.get_subclassed_serializer(network)
+
+        return super().get_serializer_class()
+
     def get_queryset(self, *args, **kw):
+        active_providers = models.PaymentNetworkProvider.active.all()
         return models.PaymentNetwork.objects.filter(
-            providers__in=models.PaymentNetworkProvider.active.all()
+            providers__in=active_providers
         ).select_subclasses()
+
+    @action(detail=True, methods=["GET"], name="Network Status")
+    def status(self, request, **kw):
+        network = self.get_object().subclassed
+        serializer_class = self.get_serializer_class()
+        serializer = serializer_class(network, context={"request": request})
+        return Response(serializer.data)
 
 
 __all__ = ["PaymentNetworkViewSet"]

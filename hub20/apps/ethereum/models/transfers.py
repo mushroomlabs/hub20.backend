@@ -3,6 +3,7 @@ import logging
 from django.db import models
 
 from hub20.apps.core.models import (
+    PaymentNetwork_T,
     TokenAmount,
     Transfer,
     TransferConfirmation,
@@ -13,11 +14,13 @@ from hub20.apps.core.models import (
 from .accounts import EthereumAccount_T
 from .blockchain import Transaction, TransactionDataRecord
 from .fields import EthereumAddressField
+from .networks import BlockchainPaymentNetwork
 
 logger = logging.getLogger(__name__)
 
 
 class BlockchainTransfer(Transfer):
+    NETWORK: PaymentNetwork_T = BlockchainPaymentNetwork
     address = EthereumAddressField(db_index=True)
 
     def _execute(self):
