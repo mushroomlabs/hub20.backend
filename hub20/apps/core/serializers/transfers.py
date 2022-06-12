@@ -8,7 +8,6 @@ from ..models import (
     Transfer,
     TransferConfirmation,
 )
-from .base import PolymorphicModelSerializer
 from .tokens import HyperlinkedRelatedTokenField, TokenValueField
 from .users import UserRelatedField
 
@@ -50,8 +49,8 @@ class TransferSerializer(serializers.ModelSerializer):
         model = Transfer
         fields = (
             "url",
-            "amount",
             "token",
+            "amount",
             "memo",
             "identifier",
             "status",
@@ -64,6 +63,7 @@ class TransferSerializer(serializers.ModelSerializer):
 
 class BaseWithdrawalSerializer(TransferSerializer):
     url = serializers.HyperlinkedIdentityField(view_name="user-withdrawal-detail")
+    network = serializers.HyperlinkedRelatedField(view_name="network-detail", read_only=True)
 
     @classmethod
     def get_subclassed_serializer(cls, network: PaymentNetwork_T):
@@ -84,8 +84,8 @@ class BaseWithdrawalSerializer(TransferSerializer):
 
     class Meta:
         model = Transfer
-        fields = TransferSerializer.Meta.fields
-        read_only_fields = TransferSerializer.Meta.read_only_fields
+        fields = TransferSerializer.Meta.fields + ("network",)
+        read_only_fields = TransferSerializer.Meta.read_only_fields + ("network",)
 
 
 class InternalTransferSerializer(TransferSerializer):
