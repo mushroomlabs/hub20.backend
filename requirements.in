@@ -20,7 +20,7 @@ django-money
 django-taggit
 drf-nested-routers
 drf-yasg
-ethereum
+eth-account
 hdwallet
 httpx
 jsonschema
@@ -33,7 +33,8 @@ pyjwt
 qr3
 uritemplate
 uvicorn
-web3
+web3>=6.0.0b3
+web3[tester]
 
 # Testing / CI / Document Generation
 bump2version

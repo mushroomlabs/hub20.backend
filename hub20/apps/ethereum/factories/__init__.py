@@ -2,8 +2,8 @@ import decimal
 import os
 import random
 
-import ethereum
 import factory
+from eth_account.account import Account
 from faker import Faker
 from faker.providers import BaseProvider
 from hexbytes import HexBytes
@@ -20,8 +20,8 @@ from .wallets import *  # noqa
 class EthereumProvider(BaseProvider):
     def ethereum_address(self):
         private_key = os.urandom(32)
-        address = ethereum.utils.privtoaddr(private_key)
-        return ethereum.utils.checksum_encode(address)
+        account = Account.from_key(private_key)
+        return account.address
 
     def hex64(self):
         return HexBytes(os.urandom(32))

@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Union
 import requests
 from django.contrib.auth import get_user_model
 from django.utils.timezone import make_aware
-from ethereum.utils import checksum_encode
+from web3 import Web3
 from web3.datastructures import AttributeDict
 
 from hub20.apps.core.models.tokens import TokenAmount
@@ -195,7 +195,7 @@ class RaidenClient:
     def get_node_account_address(cls, url) -> Address:
         response = _make_request(f"{url}{cls.URL_BASE_PATH}/address")
         assert isinstance(response, dict)
-        return checksum_encode(response.get("our_address"))
+        return Web3.toChecksumAddress(response.get("our_address"))
 
     @classmethod
     def make_raiden(cls, url, chain: Chain) -> Raiden:

@@ -3,9 +3,9 @@ import logging
 import os
 from typing import Optional, TypeVar
 
-import ethereum
 from django.db import models
 from django.db.models import Max, Q
+from eth_account.account import Account
 from hdwallet import HDWallet
 from hdwallet.symbols import ETH
 from model_utils.managers import InheritanceManager
@@ -87,9 +87,8 @@ class KeystoreAccount(BaseWallet):
     @classmethod
     def _generate(cls):
         private_key = os.urandom(32)
-        address = ethereum.utils.privtoaddr(private_key)
-        checksum_address = ethereum.utils.checksum_encode(address.hex())
-        return cls.objects.create(address=checksum_address, private_key=private_key.hex())
+        account = Account.from_key(private_key)
+        return cls.objects.create(address=account.address, private_key=account.key)
 
 
 class HierarchicalDeterministicWallet(BaseWallet):

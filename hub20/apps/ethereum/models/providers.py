@@ -9,8 +9,6 @@ import celery_pubsub
 from django.db import models
 from django.db.transaction import atomic
 from django.db.utils import IntegrityError
-from eth_utils import to_checksum_address
-from ethereum.abi import ContractTranslator
 from requests.exceptions import ConnectionError, HTTPError
 from web3 import Web3
 from web3._utils.events import get_event_data
@@ -87,12 +85,6 @@ def historical_trend_price_strategy(w3: Web3, *args, **kw):
     return analytics.estimate_gas_price(w3.eth.chain_id)
 
 
-def encode_transfer_data(recipient_address, amount: TokenAmount):
-    translator = ContractTranslator(EIP20_ABI)
-    encoded_data = translator.encode_function_call("transfer", (recipient_address, amount.as_wei))
-    return f"0x{encoded_data.hex()}"
-
-
 class Web3Provider(PaymentNetworkProvider):
     DEFAULT_BLOCK_CREATION_INTERVAL = 10
     DEFAULT_MAX_BLOCK_SCAN_RANGE = 5000
@@ -137,7 +129,7 @@ class Web3Provider(PaymentNetworkProvider):
         price_strategy = (
             eip1559_price_strategy if self.supports_eip1559 else historical_trend_price_strategy
         )
-        w3.eth.setGasPriceStrategy(price_strategy)
+        w3.eth.set_gas_price_strategy(price_strategy)
 
         return w3
 
@@ -359,7 +351,7 @@ class Web3Provider(PaymentNetworkProvider):
     def mint_tokens(self, account: EthereumAccount_T, amount: TokenAmount):
         logger.debug(f"Minting {amount.formatted}")
         token_proxy = self.w3.eth.contract(
-            address=to_checksum_address(amount.currency.address),
+            address=Web3.toChecksumAddress(amount.currency.address),
             abi=ERC223_ABI,
         )
 
@@ -371,7 +363,7 @@ class Web3Provider(PaymentNetworkProvider):
         )
 
     def save_token(self, token_address) -> Erc20Token:
-        address = to_checksum_address(token_address)
+        address = Web3.toChecksumAddress(token_address)
         contract = self.w3.eth.contract(abi=EIP20_ABI, address=address)
         token_data = {
             "name": contract.functions.name().call(),
@@ -385,10 +377,17 @@ class Web3Provider(PaymentNetworkProvider):
         return token
 
     def get_erc20_token_transfer_filter(self, token, start_block, end_block):
-        contract = self.w3.eth.contract(abi=EIP20_ABI, address=to_checksum_address(token.address))
+        contract = self.w3.eth.contract(
+            abi=EIP20_ABI, address=Web3.toChecksumAddress(token.address)
+        )
         return contract.events.Transfer.createFilter(
             dict(fromBlock=start_block, toBlock=end_block, address=token.address)
         )
+
+    def encode_transfer_call(self, recipient_address, amount: TokenAmount):
+        contract = self.w3.eth.contract(address=amount.currency.subclassed.address, abi=EIP20_ABI)
+
+        return contract.encodeABI("transfer", [recipient_address, amount.as_wei])
 
     def extract_native_token_transfers(self, block_data):
         transactions = block_data["transactions"]
@@ -561,7 +560,11 @@ class Web3Provider(PaymentNetworkProvider):
 
         if token.is_ERC20:
             transaction_params.update(
-                {"to": token.address, "value": 0, "data": encode_transfer_data(address, amount)}
+                {
+                    "to": token.address,
+                    "value": 0,
+                    "data": self.encode_transfer_call(address, amount),
+                }
             )
         else:
             transaction_params.update({"to": address, "value": amount.as_wei})

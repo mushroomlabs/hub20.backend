@@ -1,7 +1,7 @@
 from django.db import connection, models
 from django.utils.translation import gettext_lazy as _
-from ethereum.utils import checksum_encode
 from hexbytes import HexBytes
+from web3 import Web3
 
 from ..validators import validate_checksumed_address, web3_url_validator
 
@@ -28,11 +28,11 @@ class EthereumAddressField(models.CharField):
 
     def to_python(self, value):
         value = super().to_python(value)
-        return value and checksum_encode(value)
+        return value and Web3.toChecksumAddress(value)
 
     def get_prep_value(self, value):
         value = super().get_prep_value(value)
-        return value and checksum_encode(value)
+        return value and Web3.toChecksumAddress(value)
 
 
 class Uint256Field(models.DecimalField):

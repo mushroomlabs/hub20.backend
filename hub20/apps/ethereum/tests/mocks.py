@@ -14,8 +14,8 @@ from ..factories import (
     Erc20TokenAmountFactory,
     EtherAmountFactory,
     EthereumProvider,
+    encode_transfer_data,
 )
-from ..models.providers import encode_transfer_data
 
 factory.Faker.add_provider(EthereumProvider)
 
@@ -150,7 +150,9 @@ class EtherTransferDataMock(TransactionDataMock):
 class Erc20TokenTransferDataMock(TransactionDataMock):
     from_address = factory.Faker("ethereum_address")
     to = factory.LazyAttribute(lambda obj: obj.amount.currency.address)
-    input = factory.LazyAttribute(lambda obj: encode_transfer_data(obj.recipient, obj.amount))
+    input = factory.LazyAttribute(
+        lambda obj: encode_transfer_data(obj.recipient, obj.amount.as_wei)
+    )
 
     class Params:
         recipient = factory.Faker("ethereum_address")

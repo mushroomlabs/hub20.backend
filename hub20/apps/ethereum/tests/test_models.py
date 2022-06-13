@@ -3,7 +3,7 @@ from unittest.mock import patch
 from django.contrib.contenttypes.models import ContentType
 from django.db import IntegrityError
 from django.test import TestCase
-from eth_utils import is_checksum_address
+from web3 import Web3
 
 from hub20.apps.core.choices import TRANSFER_STATUS
 from hub20.apps.core.factories import InternalPaymentNetworkFactory
@@ -233,7 +233,7 @@ class WalletTestCase(TestCase):
         self.wallet = BaseWalletFactory()
 
     def test_address_is_checksummed(self):
-        self.assertTrue(is_checksum_address(self.wallet.address))
+        self.assertTrue(Web3.isChecksumAddress(self.wallet.address))
 
     def test_can_read_current_balances(self):
         first_token = Erc20TokenFactory()

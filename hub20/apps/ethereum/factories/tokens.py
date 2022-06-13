@@ -1,4 +1,5 @@
 import factory
+from web3 import EthereumTesterProvider, Web3
 
 from hub20.apps.core.factories.tokens import (
     BaseTokenFactory,
@@ -7,10 +8,18 @@ from hub20.apps.core.factories.tokens import (
     TokenValueModelFactory,
 )
 from hub20.apps.core.models.tokens import WrappedToken
+from hub20.apps.core.typing import Wei
 
+from ..abi.tokens import EIP20_ABI
 from ..models import Erc20Token, NativeToken, TransferEvent
-from ..models.providers import encode_transfer_data
 from .blockchain import SyncedChainFactory, TransactionDataFactory, TransactionFactory
+
+w3 = Web3(EthereumTesterProvider())
+
+
+def encode_transfer_data(address, amount: Wei):
+    contract = w3.eth.contract(abi=EIP20_ABI)
+    return contract.encodeABI("transfer", [address, amount])
 
 
 class EtherFactory(BaseTokenFactory):
@@ -79,7 +88,7 @@ class Erc20TokenTransactionDataFactory(TransactionDataFactory):
             "blockNumber": obj.block_number,
             "blockHash": obj.block_hash,
             "gasUsed": obj.gas_used,
-            "logs": [encode_transfer_data(obj.recipient, obj.amount)],
+            "logs": [encode_transfer_data(obj.recipient, obj.amount.as_wei)],
         }
     )
 
@@ -118,6 +127,7 @@ class Erc20TokenTransferEventFactory(factory.django.DjangoModelFactory):
 
 
 __all__ = [
+    "encode_transfer_data",
     "EtherFactory",
     "Erc20TokenFactory",
     "WrappedEtherFactory",

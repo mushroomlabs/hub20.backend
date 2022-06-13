@@ -3,7 +3,6 @@ from decimal import Decimal
 import pytest
 from asgiref.sync import sync_to_async
 from channels.testing import WebsocketCommunicator
-from eth_utils import is_0x_prefixed
 from web3 import Web3
 
 from hub20.apps.core.factories.networks import InternalPaymentNetworkFactory, SiteFactory
@@ -22,6 +21,17 @@ from ..factories import (
 from ..models import BaseWallet, Block, Chain
 from ..signals import block_sealed
 from .mocks import BlockMock, Erc20TokenTransferDataMock, Erc20TokenTransferReceiptMock
+
+
+def is_hex_string(value: str):
+    if not isinstance(value, str):
+        return False
+
+    try:
+        int(value, 16)
+        return True
+    except ValueError:
+        return False
 
 
 def deposit_account(payment_request):
@@ -140,7 +150,7 @@ async def test_session_receives_token_deposit_received(
     assert "data" in payment_message
 
     payment_data = payment_message["data"]
-    assert is_0x_prefixed(payment_data["transaction"])
+    assert is_hex_string(payment_data["transaction"])
 
 
 @pytest.mark.asyncio
@@ -202,8 +212,8 @@ async def test_checkout_receives_transaction_mined_notification(
     assert len(payment_messages) == 1, "we should have received one payment received message"
 
     payment_data = payment_messages[0]
-    assert is_0x_prefixed(payment_data["transaction"])
-    assert is_0x_prefixed(payment_data["token"])
+    assert is_hex_string(payment_data["transaction"])
+    assert Web3.isAddress(payment_data["token"])
     assert (
         Decimal(payment_data["amount"]) == checkout.order.amount
     ), "payment amount does not match"
@@ -244,8 +254,8 @@ async def test_checkout_receives_transaction_broadcast_notification(
     assert len(payment_messages) == 1, "we should have received one payment sent message"
 
     payment_data = payment_messages[0]
-    assert is_0x_prefixed(payment_data["transaction"])
-    assert is_0x_prefixed(payment_data["token"])
+    assert is_hex_string(payment_data["transaction"])
+    assert Web3.isAddress(payment_data["token"])
     assert (
         Decimal(payment_data["amount"]) == checkout.order.amount
     ), "payment amount does not match"

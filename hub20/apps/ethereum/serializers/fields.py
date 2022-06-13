@@ -1,8 +1,8 @@
 from django.utils.translation import gettext_lazy as _
-from ethereum.utils import checksum_encode, normalize_address
 from hexbytes import HexBytes
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
+from web3 import Web3
 
 
 class AddressSerializerField(serializers.Field):
@@ -26,7 +26,7 @@ class AddressSerializerField(serializers.Field):
             elif int(data, 16) == 1 and not self.allow_sentinel_address:
                 raise ValidationError("0x1 address is not allowed")
 
-            return checksum_encode(normalize_address(int(data, 16)))
+            return Web3.toChecksumAddress(data)
         except Exception:
             raise ValidationError("Address %s is not valid" % data)
 
