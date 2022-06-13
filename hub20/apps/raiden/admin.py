@@ -4,7 +4,6 @@ from django.contrib import admin
 from django.http import HttpRequest
 
 from . import forms, models
-from .client.node import RaidenClient
 
 
 class ReadOnlyModelAdmin(admin.ModelAdmin):
@@ -18,20 +17,21 @@ class ReadOnlyModelAdmin(admin.ModelAdmin):
         return False
 
 
+@admin.register(models.RaidenProvider)
+class RaidenProviderAdmin(admin.ModelAdmin):
+    list_display = ("raiden", "connected", "synced")
+    autocomplete_fields = ("network",)
+
+
 @admin.register(models.Raiden)
 class RaidenAdmin(admin.ModelAdmin):
     form = forms.RaidenForm
-    list_display = ("url", "chain")
+    list_display = ("hostname", "address", "chain")
     fields = (
         "url",
+        "address",
         "chain",
     )
-
-    def save_form(self, request, form, change):
-        return RaidenClient.make_raiden(**form.cleaned_data)
-
-    def save_related(self, request, form, formsets, change):
-        pass
 
     def has_add_permission(self, request: HttpRequest, obj: Optional[Any] = None) -> bool:
         return request.user.is_superuser

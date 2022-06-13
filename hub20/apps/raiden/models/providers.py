@@ -6,18 +6,18 @@ from types import FunctionType
 from typing import Any, Dict, List, Optional, Union
 
 import requests
-from django.contrib.auth import get_user_model
+from django.db import models
 from django.utils.timezone import make_aware
 from web3 import Web3
 from web3.datastructures import AttributeDict
 
+from hub20.apps.core.models.providers import PaymentNetworkProvider
 from hub20.apps.core.models.tokens import TokenAmount
-from hub20.apps.ethereum.models import BaseWallet, Chain
+from hub20.apps.ethereum.models import Chain
 from hub20.apps.ethereum.typing import Address
-from hub20.apps.raiden.exceptions import RaidenConnectionError, RaidenPaymentError
-from hub20.apps.raiden.models import Channel, Payment, Raiden, TokenNetwork
 
-User = get_user_model()
+from ..exceptions import RaidenConnectionError, RaidenPaymentError
+from .raiden import Channel, Payment, Raiden, TokenNetwork
 
 logger = logging.getLogger(__name__)
 
@@ -43,11 +43,10 @@ def _make_request(url: str, method: str = "GET", **payload: Any) -> Union[List, 
         raise RaidenConnectionError(f"Could not connect to {url}")
 
 
-class RaidenClient:
+class RaidenProvider(PaymentNetworkProvider):
     URL_BASE_PATH = "/api/v1"
 
-    def __init__(self, raiden_node: Raiden) -> None:
-        self.raiden = raiden_node
+    raiden = models.OneToOneField(Raiden, related_name="provider", on_delete=models.CASCADE)
 
     def _parse_payment(self, payment_data: Dict, channel: Channel) -> Optional[AttributeDict]:
         event_name = payment_data.pop("event")
@@ -74,6 +73,10 @@ class RaidenClient:
         Channel.make(channel.raiden, **channel_data)
         channel.refresh_from_db()
         return channel
+
+    @property
+    def hostname(self):
+        return self.raiden.hostname
 
     @property
     def raiden_root_endpoint(self) -> str:
@@ -199,36 +202,9 @@ class RaidenClient:
 
     @classmethod
     def make_raiden(cls, url, chain: Chain) -> Raiden:
-        account_address: Address = cls.get_node_account_address(url)
-
-        account, _ = BaseWallet.objects.get_or_create(address=account_address)
-        raiden_node, _ = Raiden.objects.get_or_create(url=url, account=account, chain=chain)
+        address: Address = cls.get_node_account_address(url)
+        raiden_node, _ = Raiden.objects.get_or_create(url=url, address=address, chain=chain)
         return raiden_node
 
-    @classmethod
-    def select_for_transfer(
-        cls,
-        amount: TokenAmount,
-        receiver: Optional[User] = None,
-        address: Optional[Address] = None,
-    ) -> Optional[RaidenClient]:
-        if address is None:
-            return None
 
-        # Token is not part of a token network.
-        if not hasattr(amount.currency, "tokennetwork"):
-            return None
-
-        token_channels = Channel.available.filter(
-            token_network__token=amount.currency, balance__gte=amount.amount
-        )
-
-        if not token_channels.exists():
-            return None
-
-        if not amount.currency.tokennetwork.can_reach(address):
-            return None
-
-        raiden_node = Raiden.objects.first()
-
-        return raiden_node and cls(raiden_node=raiden_node)
+__all__ = ["RaidenProvider"]

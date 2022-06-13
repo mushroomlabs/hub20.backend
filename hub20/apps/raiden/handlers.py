@@ -17,6 +17,7 @@ from .models import (
     RaidenPayment,
     RaidenPaymentNetwork,
     RaidenPaymentRoute,
+    RaidenProvider,
     RaidenTransfer,
     RaidenTransferConfirmation,
 )
@@ -31,8 +32,15 @@ def on_raiden_created_create_payment_network(sender, **kw):
     if kw["created"]:
         RaidenPaymentNetwork.objects.update_or_create(
             chain=raiden.chain,
-            defaults={"name": f"Raiden Node {raiden.address} @ {raiden.chain.name}"},
+            defaults={"name": f"Raiden @ {raiden.chain.name}"},
         )
+
+
+@receiver(post_save, sender=RaidenPaymentNetwork)
+def on_raiden_payment_network_created_create_provider(sender, **kw):
+    network = kw["instance"]
+    if kw["created"]:
+        RaidenProvider.objects.update_or_create(raiden=network.chain.raiden_node, network=network)
 
 
 @receiver(post_save, sender=Payment)

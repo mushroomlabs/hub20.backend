@@ -46,9 +46,11 @@ class PaymentNetworkViewSet(PolymorphicModelViewSet):
 
     def get_queryset(self, *args, **kw):
         active_providers = models.PaymentNetworkProvider.active.all()
-        return models.PaymentNetwork.objects.filter(
-            providers__in=active_providers
-        ).select_subclasses()
+        return (
+            models.PaymentNetwork.objects.filter(providers__in=active_providers)
+            .select_subclasses()
+            .distinct()
+        )
 
     @action(detail=True, methods=["GET"], name="Network Status")
     def status(self, request, **kw):

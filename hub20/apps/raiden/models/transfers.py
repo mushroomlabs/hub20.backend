@@ -10,7 +10,7 @@ from hub20.apps.ethereum.models import EthereumAddressField
 
 from ..exceptions import RaidenPaymentError
 from .networks import RaidenPaymentNetwork
-from .raiden import Payment
+from .raiden import Payment, Raiden
 
 
 class RaidenTransferReceipt(TransferReceipt):
@@ -26,16 +26,31 @@ class RaidenTransfer(Transfer):
     address = EthereumAddressField(db_index=True)
 
     def _execute(self):
-        try:
-            from ..client import RaidenClient
+        if not hasattr(self.currency.subclassed, "tokennetwork"):
+            raise TransferError(f"token {self.currency} is not available on Raiden")
 
-            raiden_client = RaidenClient.select_for_transfer(
-                amount=self.amount, address=self.address
-            )
-            payment_data = raiden_client.transfer(
+        funded_nodes = Raiden.objects.filter(
+            channels__token_network__token=self.currency, channels__balance__gte=self.amount
+        )
+
+        raiden = funded_nodes.order_by("?").first()
+
+        if raiden is None:
+            raise TransferError("No funds available on the any of the connected raiden nodes")
+
+        provider = raiden.provider
+
+        try:
+            assert provider.is_online, f"{provider.raiden.hostname} is not available"
+        except AssertionError as exc:
+            raise TransferError(str(exc)) from exc
+
+        try:
+            identifier = provider._ensure_valid_identifier(self.identifier)
+            payment_data = raiden.provider.transfer(
                 amount=self.as_token_amount,
                 address=self.address,
-                identifier=raiden_client._ensure_valid_identifier(self.identifier),
+                identifier=identifier,
             )
             RaidenTransferReceipt.objects.create(transfer=self, payment_data=payment_data)
         except AssertionError:

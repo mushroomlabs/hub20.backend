@@ -78,7 +78,7 @@ class Raiden(models.Model):
         return Payment.sent.filter(channel__raiden=self)
 
     def __str__(self):
-        return f"Raiden @ {self.url} (Chain #{self.chain_id})"
+        return f"{self.hostname} ({self.chain.short_name}:{self.address})"
 
 
 class Channel(StatusModel):

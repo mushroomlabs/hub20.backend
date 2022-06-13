@@ -7,21 +7,19 @@ from hub20.apps.core.factories import InternalPaymentNetworkFactory
 from hub20.apps.core.tests import AccountingTestCase
 from hub20.apps.ethereum.factories import Erc20TokenPaymentOrderFactory
 
-from ..client.node import RaidenClient
 from ..factories import (
     ChannelFactory,
     PaymentEventFactory,
+    RaidenFactory,
     RaidenPaymentFactory,
-    RaidenPaymentNetworkFactory,
     RaidenTransferFactory,
     TokenNetworkFactory,
 )
-from ..models import RaidenPaymentRoute
+from ..models import RaidenPaymentRoute, RaidenProvider
 
 
 class RaidenPaymentTestCase(TestCase):
     def setUp(self):
-        RaidenPaymentNetworkFactory()
         InternalPaymentNetworkFactory()
         token_network = TokenNetworkFactory()
         self.channel = ChannelFactory(token_network=token_network)
@@ -44,7 +42,8 @@ class RaidenPaymentTestCase(TestCase):
 class RaidenAccountingTestCase(AccountingTestCase):
     def setUp(self):
         super().setUp()
-        raiden_network = RaidenPaymentNetworkFactory()
+        raiden = RaidenFactory()
+        raiden_network = raiden.chain.raidenpaymentnetwork
         self.treasury = self.hub.account
         self.raiden_account = raiden_network.account
 
@@ -53,10 +52,10 @@ class RaidenAccountingTestCase(AccountingTestCase):
         )
         self.credit = raiden_deposit.as_token_amount
 
-    @patch.object(RaidenClient, "select_for_transfer")
-    @patch.object(RaidenClient, "transfer")
+    @patch.object(RaidenProvider, "is_online")
+    @patch.object(RaidenProvider, "transfer")
     def test_raiden_transfers_create_entries_for_raiden_account_and_treasury(
-        self, raiden_transfer, select_for_transfer
+        self, raiden_transfer, is_online
     ):
         transfer = RaidenTransferFactory(
             sender=self.user,
@@ -72,7 +71,7 @@ class RaidenAccountingTestCase(AccountingTestCase):
             receiver_address=transfer.address,
             identifier=transfer.identifier,
         )
-        select_for_transfer.return_value = RaidenClient(raiden_node=channel.raiden)
+        is_online.return_value = True
         raiden_transfer.return_value = dict(identifier=raiden_payment.identifier)
 
         transfer.execute()

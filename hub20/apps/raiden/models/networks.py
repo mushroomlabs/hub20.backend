@@ -7,7 +7,7 @@ from hub20.apps.ethereum.models import Chain
 
 
 class RaidenPaymentNetwork(PaymentNetwork):
-    chain = models.OneToOneField(Chain, on_delete=models.CASCADE)
+    chain = models.OneToOneField(Chain, on_delete=models.CASCADE, db_column="base_chain_id")
 
 
 __all__ = ["RaidenPaymentNetwork"]
