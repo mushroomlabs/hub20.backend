@@ -7,7 +7,7 @@ from .models import Chain
 
 
 class EthereumTokenFilter(BaseTokenFilter):
-    chain_id = filters.ModelChoiceFilter(queryset=Chain.active.all())
+    chain_id = filters.ModelChoiceFilter(label="chain", queryset=Chain.active.distinct())
     native = filters.BooleanFilter(label="native", method="filter_native")
 
     def token_search(self, queryset, name, value):
@@ -21,4 +21,4 @@ class EthereumTokenFilter(BaseTokenFilter):
     class Meta:
         model = BaseTokenFilter.Meta.model
         ordering_fields = ("symbol",)
-        fields = ("symbol", "native", "stable_tokens", "fiat")
+        fields = ("symbol", "native", "stable_tokens", "fiat", "chain_id")

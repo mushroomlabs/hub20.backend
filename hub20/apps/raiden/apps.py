@@ -11,4 +11,5 @@ class RaidenConfig(AppConfig, Hub20PaymentNetworkConfig):
 
     def ready(self):
         from . import handlers  # noqa
+        from . import serializers  # noqa
         from . import signals  # noqa

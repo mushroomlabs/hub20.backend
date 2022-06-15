@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+import time
 from typing import Optional
 
 from django.db import models
@@ -14,8 +15,10 @@ from hub20.apps.core.models.payments import (
     PaymentRouteQuerySet,
 )
 from hub20.apps.core.settings import app_settings
+from hub20.apps.core.tasks import broadcast_event
 from hub20.apps.ethereum.models import Erc20Token
 
+from ..constants import Events
 from .networks import RaidenPaymentNetwork
 from .raiden import Channel, Payment, Raiden
 
@@ -93,6 +96,17 @@ class RaidenPaymentRoute(PaymentRoute):
             raise RoutingError(
                 f"No raiden node available to accept {deposit.currency.symbol} payments"
             )
+
+    def process(self):
+        self.provider.run_checks()
+        self.provider.get_channels()
+
+        while self.is_open:
+            self.provider.get_new_payments()
+            time.sleep(1)
+
+        if self.is_expired:
+            broadcast_event(event=Events.ROUTE_EXPIRED.value, identifier=self.identifier)
 
 
 class RaidenPayment(BasePayment):

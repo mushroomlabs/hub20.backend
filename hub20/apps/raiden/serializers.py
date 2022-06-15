@@ -7,25 +7,19 @@ from hub20.apps.core.serializers import (
 )
 
 from . import models
-from .client import RaidenClient
 
 
 class RaidenPaymentNetworkSerializer(PaymentNetworkSerializer):
     chain_id = serializers.PrimaryKeyRelatedField(read_only=True)
 
     class Meta:
-        model = models.RaidenPaymentNetworkSerializer
-        fields = read_only_fields = PaymentNetworkSerializer.Meta.read_only_fields + ("chain",)
+        model = models.RaidenPaymentNetwork
+        fields = read_only_fields = PaymentNetworkSerializer.Meta.read_only_fields + ("chain_id",)
 
 
 class RaidenStatusSerializer(PaymentNetworkStatusSerializer):
     hostname = serializers.CharField(source="chain.raiden_node.hostname")
-
-    online = serializers.SerializerMethodField()
-
-    def get_online(self, obj):
-        client = RaidenClient(raiden_node=obj.chain.raiden_node)
-        return "ready" == client.get_status()
+    online = serializers.CharField(source="provider.is_online")
 
     class Meta:
         model = models.RaidenPaymentNetwork
@@ -45,3 +39,6 @@ class RaidenPaymentSerializer(PaymentSerializer):
             "identifier",
             "raiden",
         )
+
+
+__all__ = ["RaidenPaymentNetworkSerializer", "RaidenStatusSerializer", "RaidenPaymentSerializer"]

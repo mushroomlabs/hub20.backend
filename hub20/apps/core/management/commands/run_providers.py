@@ -17,7 +17,7 @@ class Command(BaseCommand):
             PROCESSING_THREADS = {}
             while True:
                 PROCESSING_THREADS = {r: t for r, t in PROCESSING_THREADS.items() if t.is_alive()}
-                for provider in PaymentNetworkProvider.available.select_subclasses():
+                for provider in PaymentNetworkProvider.active.select_subclasses():
                     if provider.id not in PROCESSING_THREADS:
                         logger.info(f"Starting provider {provider}")
                         thread = threading.Thread(target=provider.run, daemon=True)

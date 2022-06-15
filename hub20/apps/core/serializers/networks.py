@@ -6,6 +6,10 @@ from .base import PolymorphicModelSerializer
 
 class PaymentNetworkSerializer(PolymorphicModelSerializer):
     url = serializers.HyperlinkedIdentityField(view_name="network-detail")
+    description = serializers.SerializerMethodField()
+
+    def get_description(self, obj):
+        return obj.description or obj.default_description
 
     class Meta:
         model = PaymentNetwork

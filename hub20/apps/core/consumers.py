@@ -1,6 +1,5 @@
 import logging
 import uuid
-from enum import Enum
 from typing import Union
 
 from asgiref.sync import async_to_sync
@@ -9,15 +8,6 @@ from channels.generic.websocket import JsonWebsocketConsumer
 from . import models
 
 logger = logging.getLogger(__name__)
-
-
-class Events(Enum):
-    INTERNAL_DEPOSIT_CONFIRMED = "internal.deposit.confirmed"
-    BLOCKCHAIN_BLOCK_CREATED = "blockchain.block.created"
-    BLOCKCHAIN_DEPOSIT_BROADCAST = "blockchain.deposit.broadcast"
-    BLOCKCHAIN_DEPOSIT_CONFIRMED = "blockchain.deposit.confirmed"
-    BLOCKCHAIN_ROUTE_EXPIRED = "blockchain.payment_route.expired"
-    RAIDEN_ROUTE_EXPIRED = "raiden.payment_route.expired"
 
 
 def accept_subprotocol(consumer):

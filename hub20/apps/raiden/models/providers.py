@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from datetime import datetime
 from types import FunctionType
 from typing import Any, Dict, List, Optional, Union
@@ -13,9 +14,10 @@ from web3.datastructures import AttributeDict
 
 from hub20.apps.core.models.providers import PaymentNetworkProvider
 from hub20.apps.core.models.tokens import TokenAmount
-from hub20.apps.ethereum.models import Chain
+from hub20.apps.core.tasks import broadcast_event
 from hub20.apps.ethereum.typing import Address
 
+from ..constants import Events
 from ..exceptions import RaidenConnectionError, RaidenPaymentError
 from .raiden import Channel, Payment, Raiden, TokenNetwork
 
@@ -194,17 +196,37 @@ class RaidenProvider(PaymentNetworkProvider):
             message = error.response.json().get("errors")
             raise RaidenPaymentError(error_code=error_code, message=message) from error
 
-    @classmethod
-    def get_node_account_address(cls, url) -> Address:
-        response = _make_request(f"{url}{cls.URL_BASE_PATH}/address")
-        assert isinstance(response, dict)
-        return Web3.toChecksumAddress(response.get("our_address"))
+    def run_checks(self):
+        logger.debug(f"Checking connection with Raiden node on {self.hostname}")
+        response = _make_request(f"{self.raiden_root_endpoint}/address")
+        assert isinstance(response, dict), f"Could not get proper response from {self.hostname}"
+        node_address = Web3.toChecksumAddress(response.get("our_address"))
+        msg = f"Node {self.hostname} reported address {node_address}, we are {self.raiden.address}"
+        assert node_address == self.raiden.address, msg
 
-    @classmethod
-    def make_raiden(cls, url, chain: Chain) -> Raiden:
-        address: Address = cls.get_node_account_address(url)
-        raiden_node, _ = Raiden.objects.get_or_create(url=url, address=address, chain=chain)
-        return raiden_node
+    def run(self):
+        INTERVAL = 60
+        while True:
+            try:
+                self.synced = False
+                self.run_checks()
+                self.get_channels()
+                self.get_new_payments()
+                self.synced = True
+            except AssertionError:
+                logger.exception(f"Info reported by {self.hostname} does not match our records")
+                self.connected = False
+            except RaidenConnectionError:
+                logger.exception(f"Connection with {self.hostname} lost")
+                self.connected = False
+                broadcast_event.delay(
+                    event=Events.PROVIDER_OFFLINE.value, raiden=self.raiden.hostname
+                )
+            except Exception as exc:
+                logger.exception(f"Error when querying {self.hostname}: {exc}")
+            finally:
+                self.save()
+                time.sleep(INTERVAL)
 
 
 __all__ = ["RaidenProvider"]

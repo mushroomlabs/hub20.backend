@@ -130,3 +130,10 @@ class StableTokenPairAdmin(admin.ModelAdmin):
 class PaymentNetworkAdmin(admin.ModelAdmin):
     list_display = ("name", "description")
     search_fields = ("name",)
+
+
+@admin.register(models.PaymentNetworkProvider)
+class PaymentNetworkProviderAdmin(admin.ModelAdmin):
+    list_display = ("network", "is_active", "connected", "synced")
+    list_filter = ("is_active", "connected", "synced")
+    search_fields = ("network__name",)

@@ -7,7 +7,7 @@ from .fields import AddressSerializerField
 
 
 class NativeTokenSerializer(TokenSerializer):
-    chain_id = serializers.PrimaryKeyRelatedField(queryset=Chain.active.all())
+    chain_id = serializers.PrimaryKeyRelatedField(queryset=Chain.active.distinct())
 
     class Meta:
         model = NativeToken
@@ -15,7 +15,7 @@ class NativeTokenSerializer(TokenSerializer):
 
 
 class Erc20TokenSerializer(TokenSerializer):
-    chain_id = serializers.PrimaryKeyRelatedField(queryset=Chain.active.all())
+    chain_id = serializers.PrimaryKeyRelatedField(queryset=Chain.active.distinct())
     address = AddressSerializerField()
 
     class Meta:

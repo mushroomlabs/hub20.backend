@@ -16,6 +16,10 @@ class PaymentNetwork(BaseModel, PolymorphicModelMixin):
     def type(self) -> str:
         return self.subclassed._meta.app_config.network_name
 
+    @property
+    def default_description(self) -> str:
+        return self.subclassed._meta.app_config.description
+
     def supports_token(self, token) -> bool:
         return False
 

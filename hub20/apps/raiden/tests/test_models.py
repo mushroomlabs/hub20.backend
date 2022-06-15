@@ -5,7 +5,11 @@ from django.test import TestCase
 
 from hub20.apps.core.factories import InternalPaymentNetworkFactory
 from hub20.apps.core.tests import AccountingTestCase
-from hub20.apps.ethereum.factories import Erc20TokenPaymentOrderFactory
+from hub20.apps.ethereum.factories import (
+    ChainFactory,
+    Erc20TokenFactory,
+    Erc20TokenPaymentOrderFactory,
+)
 
 from ..factories import (
     ChannelFactory,
@@ -37,6 +41,25 @@ class RaidenPaymentTestCase(TestCase):
             receiver_address=self.channel.raiden.address,
         )
         self.assertTrue(self.order.is_paid)
+
+
+class RaidenPaymentNetworkTestCase(TestCase):
+    def setUp(self):
+        raiden = RaidenFactory()
+        self.token_network = TokenNetworkFactory(token__chain=raiden.chain)
+        self.raiden_network = raiden.chain.raidenpaymentnetwork
+
+    def test_network_supports_token(self):
+        self.assertTrue(self.raiden_network.supports_token(self.token_network.token))
+
+    def test_network_does_not_support_token_from_different_chain(self):
+        chain = ChainFactory(id=self.token_network.token.chain_id + 1, name="A different chain")
+        token = Erc20TokenFactory(chain=chain)
+        self.assertFalse(self.raiden_network.supports_token(token))
+
+    def test_network_does_not_support_unlisted_tokens(self):
+        token = Erc20TokenFactory(is_listed=False)
+        self.assertFalse(self.raiden_network.supports_token(token))
 
 
 class RaidenAccountingTestCase(AccountingTestCase):

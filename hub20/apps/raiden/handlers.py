@@ -40,7 +40,9 @@ def on_raiden_created_create_payment_network(sender, **kw):
 def on_raiden_payment_network_created_create_provider(sender, **kw):
     network = kw["instance"]
     if kw["created"]:
-        RaidenProvider.objects.update_or_create(raiden=network.chain.raiden_node, network=network)
+        RaidenProvider.objects.update_or_create(
+            network=network, defaults={"raiden": network.chain.raiden_node}
+        )
 
 
 @receiver(post_save, sender=Payment)

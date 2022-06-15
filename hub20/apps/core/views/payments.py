@@ -52,7 +52,11 @@ class DepositRoutesViewSet(GenericViewSet, ListModelMixin, CreateModelMixin, Ret
 
     def get_queryset(self, *args, **kw):
         deposit_id = self.kwargs["deposit_pk"]
-        return models.PaymentRoute.objects.filter(deposit_id=deposit_id).select_subclasses()
+        return (
+            models.PaymentRoute.objects.filter(deposit_id=deposit_id)
+            .select_subclasses()
+            .order_by("created")
+        )
 
     def get_deposit(self):
         return models.Deposit.objects.get(id=self.kwargs["deposit_pk"])
