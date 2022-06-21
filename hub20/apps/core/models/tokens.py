@@ -186,7 +186,7 @@ class TokenAmount:
     @classmethod
     def aggregated(cls, queryset, currency: BaseToken):
         entries = queryset.filter(currency=currency)
-        amount = entries.aggregate(total=Sum("amount")).get("total") or TokenAmount(0)
+        amount = entries.aggregate(total=Sum("amount")).get("total") or 0
         return cls(amount=amount, currency=currency)
 
 
