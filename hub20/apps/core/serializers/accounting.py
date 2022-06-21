@@ -1,7 +1,14 @@
 from rest_framework import serializers
 from rest_framework.reverse import reverse
 
-from ..models import Credit, Debit, PaymentConfirmation, Transfer, TransferConfirmation
+from ..models import (
+    Credit,
+    Debit,
+    InternalTransfer,
+    PaymentConfirmation,
+    Transfer,
+    TransferConfirmation,
+)
 from .tokens import TokenSerializer, TokenValueField
 
 
@@ -56,23 +63,28 @@ class BookEntrySerializer(serializers.ModelSerializer):
 
     def get_summary(self, obj):
         return {
-            Transfer: "transfer",
-            TransferConfirmation: "transfer sent",
-            PaymentConfirmation: "payment received",
+            InternalTransfer: "Internal Transfer",
+            Transfer: "Withdrawal",
+            TransferConfirmation: "Received Transfer",
+            PaymentConfirmation: "Received Payment",
         }.get(type(obj.reference))
 
     def get_reference(self, obj):
         params = {
+            Transfer: lambda: {
+                "viewname": "user-withdrawal-detail",
+                "kwargs": {"pk": obj.reference.pk},
+            },
             TransferConfirmation: lambda: {
-                "viewname": "transfer-detail",
+                "viewname": "user-transfer-detail",
                 "kwargs": {"pk": obj.reference.transfer.pk},
             },
             PaymentConfirmation: lambda: {
                 "viewname": "payments-detail",
                 "kwargs": {"pk": obj.reference.payment.pk},
             },
-            Transfer: lambda: {
-                "viewname": "transfer-detail",
+            InternalTransfer: lambda: {
+                "viewname": "user-transfer-detail",
                 "kwargs": {"pk": obj.reference.pk},
             },
         }.get(type(obj.reference))

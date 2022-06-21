@@ -13,7 +13,7 @@ class PaymentNetworkSerializer(PolymorphicModelSerializer):
 
     class Meta:
         model = PaymentNetwork
-        fields = read_only_fields = ("url", "name", "type", "description")
+        fields = read_only_fields = ("url", "id", "name", "type", "description")
 
 
 class PaymentNetworkStatusSerializer(PolymorphicModelSerializer):
