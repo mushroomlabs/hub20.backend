@@ -19,7 +19,7 @@ class RaidenPaymentNetworkSerializer(PaymentNetworkSerializer):
 
 class RaidenStatusSerializer(PaymentNetworkStatusSerializer):
     hostname = serializers.CharField(source="chain.raiden_node.hostname")
-    online = serializers.CharField(source="provider.is_online")
+    online = serializers.BooleanField(source="provider.is_online")
 
     class Meta:
         model = models.RaidenPaymentNetwork
