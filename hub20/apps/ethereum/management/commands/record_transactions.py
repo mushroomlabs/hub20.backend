@@ -4,7 +4,6 @@ import logging
 from django.core.management.base import BaseCommand
 from web3.exceptions import TransactionNotFound
 
-from hub20.apps.ethereum.client import make_web3
 from hub20.apps.ethereum.models import Chain, Transaction, TransactionDataRecord
 
 logger = logging.getLogger(__name__)
@@ -21,7 +20,6 @@ class Command(BaseCommand):
 
         chain_id = options["chain_id"]
         chain = Chain.active.get(id=chain_id)
-        w3 = make_web3(provider=chain.provider)
 
         txs = options["transactions"]
         already_recorded = Transaction.objects.filter(
@@ -32,6 +30,8 @@ class Command(BaseCommand):
             logger.info(f"Transactions {', '.join(already_recorded)} already recorded")
 
         to_record = set(txs) - set(already_recorded)
+
+        w3 = chain.provider.w3
 
         for tx_hash in to_record:
             try:
