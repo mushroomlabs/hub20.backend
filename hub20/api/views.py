@@ -55,6 +55,17 @@ class TokenBrowserViewSet(BaseTokenViewSet):
         else:
             return super().get_serializer_class()
 
+    def _serialize_queryset(self, qs, request):
+        serializer_classes = TokenSerializer.__subclasses__()
+        data = []
+        for token in qs:
+            token_model = type(token)
+            serializer_class = {s.Meta.model: s for s in serializer_classes}.get(
+                token_model, TokenSerializer
+            )
+            data.append(serializer_class(token, context={"request": request}).data)
+        return data
+
     def get_queryset(self) -> QuerySet:
         qs = super().get_queryset()
         return qs.annotate(
@@ -65,8 +76,17 @@ class TokenBrowserViewSet(BaseTokenViewSet):
             )
         )
 
+    def list(self, request, **kw):
+        queryset = self.filter_queryset(self.get_queryset())
+
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            return self.get_paginated_response(self._serialize_queryset(page, request))
+
+        return Response(self._serialize_queryset(queryset, request))
+
     @action(detail=True)
-    def transfer_cost(self, request, **kwargs):
+    def transfer_cost(self, request, **kw):
         """
         Returns estimated cost in Wei to execute a transfer on all networks that support the token
 
@@ -90,7 +110,7 @@ class TokenBrowserViewSet(BaseTokenViewSet):
             return Response(status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
     @action(detail=True, permission_classes=(IsAuthenticated,))
-    def balance(self, request, **kwargs):
+    def balance(self, request, **kw):
         """
         Returns user balance for that token
         """
@@ -103,7 +123,7 @@ class TokenBrowserViewSet(BaseTokenViewSet):
             raise Http404
 
     @action(detail=True)
-    def routes(self, request, **kwargs):
+    def routes(self, request, **kw):
         """
         Returns list of all routes that can be used for deposits/withdrawals in the hub
         """
