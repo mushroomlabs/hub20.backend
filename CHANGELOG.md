@@ -5,39 +5,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+
+### Changed
+  - Complete refactor of application structure: core app now defines
+    all base classes, and each ethereum/raiden integration are
+    implemented as django apps that depend on core
+  - ethereum (tasks): RPC providers for rollups/sidechains do not
+    need to rely on peer count to determine if it is online
+  - tokens are not listed by default. Hub Operators need to
+    list them through the admin
+  - only shows listed tokens (the ones approved by operator)
+  - deposit/payment order: routes are no longer created automatically.
+  - checkout: Checkout instance points to payment order (instead of
+    deriving from it)
+  - information on "network" endpoints is now generalized to all
+    payment networks: ethereum/raiden
+  - background processes do not index all transactions from the
+    blockchain, it just goes back in some point in history (default
+    5000 blocks) and then just listens to new blocks
+
 ### Added
 
   - admin: new filters for list of tokens
   - admin: new filters for list of stable tokens
   - admin: actions to list/de-list tokens
   - admin: new filter for listing chains (active providers only)
-  - blockchain app: add model for chain metadata, to determine if is
-    test network/rollup/sidechain
   - checkout (API): added endpoint to create new route from checkout
   - payment order (models): add "reference" field
-
-### Changed
-  - blockchain (tasks): RPC providers for rollups/sidechains do not
-    need to rely on peer count to determine if it is online
-  - erc20: tokens are not listed by default. Hub Operators need to
-    list them through the admin
-  - erc20 (API): only shows listed tokens (the ones approved by operator)
-  - erc20 (tokenlist.org schema): polygon chain uses long tags,
-    increased MaxLength
-  - deposit/payment order: routes are no longer created automatically.
-  - checkout: Checkout instance points to payment order (instead of
-    deriving from it)
+  - command `run_payment_processors` to listen to all open payment routes.
 
 ### Removed
-  - blockchain (models): removed is_mainnet field from Chain.
+  - Raiden (API): Removed channel/UDC management endpoints. Operators
+    should connect directly to node and use its API and/or the Web UI.
+  - Raiden (models): removed tracking of Channel Events on TokenNetworks.
   - erc20 (API): users are no longer able to add new tokens (potential
     security risk)
   - erc20 (API): removed "listed" filter from token list endpoint.
   - checkout: removed external_identifier field, as it is serving the
     same purpose as payment order "reference"
+  - admin: removed "internal apps" (celery tasks, groups, etc). Admin
+    site is meant to be used by operators.
 
 ### Fixed
   - Avoid celery flooding task server with periodic tasks
+  - tokenlist.org schema definition: polygon chain uses long tags,
+    increased MaxLength
 
 
 ## [0.4.2] - 2022-03-25

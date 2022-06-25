@@ -15,6 +15,7 @@ variables:
   HUB20_STATIC_ROOT: "/var/hub20/static"
   HUB20_SECRET_KEY: "base-hub20-secret-key"
   HUB20_RAIDEN_ADDRESS_URL: "http://raiden.example.com:5001"
+  HUB20_WALLET_MODEL: "ethereum.KeystoreAccount"
 
 cache:
   paths:
