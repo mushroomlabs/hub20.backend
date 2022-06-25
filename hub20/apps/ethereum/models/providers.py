@@ -435,14 +435,14 @@ class Web3Provider(PaymentNetworkProvider):
 
     def get_erc20_token_transfer_gas_estimate(self, token: Erc20Token):
         contract = self.w3.eth.contract(abi=EIP20_ABI, address=token.address)
-        return contract.functions.transfer(SENTINEL_ADDRESS, 0).estimateGas(
+        return contract.functions.transfer(SENTINEL_ADDRESS, 0).estimate_gas(
             {"from": SENTINEL_ADDRESS}
         )
 
     def get_transfer_fee_estimate(self, token: Token_T) -> TokenAmount:
         native_token = token.chain.native_token
 
-        gas_price = self.w3.eth.generateGasPrice()
+        gas_price = self.w3.eth.generate_gas_price()
         gas_estimate = (
             self.get_erc20_token_transfer_gas_estimate(token=token) if token.is_ERC20 else 21000
         )
@@ -461,7 +461,7 @@ class Web3Provider(PaymentNetworkProvider):
         transaction_params = {
             "chainId": int(self.w3.net.version),
             "nonce": nonce,
-            "gasPrice": kw.pop("gas_price", self.w3.eth.generateGasPrice()),
+            "gasPrice": kw.pop("gas_price", self.w3.eth.generate_gas_price()),
             "gas": gas,
         }
 
@@ -553,7 +553,7 @@ class Web3Provider(PaymentNetworkProvider):
         transaction_params = {
             "chainId": chain_id,
             "nonce": self.w3.eth.getTransactionCount(account.address),
-            "gasPrice": self.w3.eth.generateGasPrice(),
+            "gasPrice": self.w3.eth.generate_gas_price(),
             "gas": GAS_TRANSFER_LIMIT,
             "from": account.address,
         }
