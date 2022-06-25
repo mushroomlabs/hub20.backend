@@ -46,7 +46,7 @@ class TokenBrowserViewSet(BaseTokenViewSet):
     def get_serializer_class(self):
         if self.action == "balance":
             return HyperlinkedTokenBalanceSerializer
-        elif self.action == "routes":
+        elif self.action == "networks":
             return serializers.TokenRouteDescriptorSerializer
         elif self.action == "retrieve":
             token_model = type(self.get_object())
@@ -123,9 +123,9 @@ class TokenBrowserViewSet(BaseTokenViewSet):
             raise Http404
 
     @action(detail=True)
-    def routes(self, request, **kw):
+    def networks(self, request, **kw):
         """
-        Returns list of all routes that can be used for deposits/withdrawals in the hub
+        Returns list of all networks where the token is available
         """
         token = self.get_object()
         serializer = self.get_serializer(instance=token)

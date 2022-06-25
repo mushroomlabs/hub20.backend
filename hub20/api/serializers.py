@@ -16,7 +16,7 @@ class UserProfileSerializer(UserDetailsSerializer):
 
 
 class TokenRouteDescriptorSerializer(TokenSerializer):
-    url = serializers.HyperlinkedIdentityField(view_name="token-routes")
+    url = serializers.HyperlinkedIdentityField(view_name="token-networks")
     token = serializers.HyperlinkedIdentityField(view_name="token-detail")
     networks = serializers.SerializerMethodField()
 

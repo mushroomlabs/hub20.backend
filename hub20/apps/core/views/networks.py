@@ -1,3 +1,4 @@
+from django.db.models import Q
 from django_filters import rest_framework as filters
 from rest_framework.decorators import action
 from rest_framework.filters import SearchFilter
@@ -12,12 +13,17 @@ class PaymentNetworkFilter(filters.FilterSet):
     connected = filters.BooleanFilter(label="connected", method="filter_connected")
 
     def filter_available(self, queryset, name, value):
+        available_providers_q = Q(providers__in=models.PaymentNetworkProvider.available.all())
+        internal_network_q = Q(internalpaymentnetwork__isnull=False)
         action = queryset.filter if value else queryset.exclude
-        return action(providers__in=models.PaymentNetworkProvider.available.all())
+        return action(available_providers_q | internal_network_q)
 
     def filter_connected(self, queryset, name, value):
+        connected_providers_q = Q(providers__in=models.PaymentNetworkProvider.connected.all())
+        internal_network_q = Q(internalpaymentnetwork__isnull=False)
+
         action = queryset.filter if value else queryset.exclude
-        return action(providers__in=models.PaymentNetworkProvider.connected.all())
+        return action(connected_providers_q | internal_network_q)
 
     class Meta:
         model = models.PaymentNetwork
@@ -45,9 +51,10 @@ class PaymentNetworkViewSet(PolymorphicModelViewSet):
         return super().get_serializer_class()
 
     def get_queryset(self, *args, **kw):
-        active_providers = models.PaymentNetworkProvider.active.all()
+        active_q = Q(providers__in=models.PaymentNetworkProvider.active.all())
+        internal_q = Q(internalpaymentnetwork__isnull=False)
         return (
-            models.PaymentNetwork.objects.filter(providers__in=active_providers)
+            models.PaymentNetwork.objects.filter(active_q | internal_q)
             .select_subclasses()
             .distinct()
         )
