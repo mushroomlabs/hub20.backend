@@ -21,7 +21,7 @@ class RaidenPaymentNetwork(PaymentNetwork):
             (
                 token.is_listed,
                 token.chain_id == self.chain_id,
-                TokenNetwork.objects.filter(token=token).exists(),
+                TokenNetwork.objects.filter(token_id=token.id).exists(),
             )
         )
 

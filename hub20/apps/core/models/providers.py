@@ -1,10 +1,11 @@
-from typing import TypeVar
+from typing import TypeVar, Union
 
 from django.db import models
 from model_utils.managers import InheritanceManager
 
 from .base import BaseModel, PolymorphicModelMixin
 from .networks import PaymentNetwork
+from .tokens import Token_T, TokenAmount
 
 
 class ActiveProviderManager(InheritanceManager):
@@ -39,6 +40,9 @@ class PaymentNetworkProvider(BaseModel, PolymorphicModelMixin):
 
     def __str__(self):
         return f"{self.subclassed.__class__.__name__} for {self.network.subclassed.name}"
+
+    def get_transfer_fee_estimate(self, token: Token_T) -> Union[TokenAmount, None]:
+        return None
 
 
 PaymentNetworkProvider_T = TypeVar("PaymentNetworkProvider_T", bound=PaymentNetworkProvider)

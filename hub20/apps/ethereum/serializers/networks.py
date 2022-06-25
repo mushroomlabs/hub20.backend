@@ -7,7 +7,7 @@ from ..models import BlockchainPaymentNetwork
 
 
 class BlockchainPaymentNetworkSerializer(PaymentNetworkSerializer):
-    short_name = serializers.CharField(source="chain.short_name")
+    short_name = serializers.CharField(source="chain.info.short_name")
     chain_id = serializers.IntegerField(source="chain.id")
     token = serializers.HyperlinkedRelatedField(
         view_name="token-detail", source="chain.native_token", read_only=True
