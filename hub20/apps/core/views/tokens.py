@@ -9,6 +9,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet, ModelViewSet
 
+from hub20.apps.core.views.base import PolymorphicModelViewSet
+
 from .. import models, serializers
 
 
@@ -33,7 +35,7 @@ class BaseTokenFilter(filters.FilterSet):
         fields = ("symbol", "stable_tokens", "fiat")
 
 
-class BaseTokenViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
+class BaseTokenViewSet(PolymorphicModelViewSet):
     serializer_class = serializers.HyperlinkedTokenSerializer
     filterset_class = BaseTokenFilter
     filter_backends = (
@@ -53,7 +55,7 @@ class BaseTokenViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
     def get_serializer_class(self):
         if self.action == "info":
             return serializers.TokenInfoSerializer
-        return self.serializer_class
+        return super().get_serializer_class()
 
     @action(detail=True)
     def info(self, request, **kwargs):

@@ -76,15 +76,6 @@ class TokenBrowserViewSet(BaseTokenViewSet):
             )
         )
 
-    def list(self, request, **kw):
-        queryset = self.filter_queryset(self.get_queryset())
-
-        page = self.paginate_queryset(queryset)
-        if page is not None:
-            return self.get_paginated_response(self._serialize_queryset(page, request))
-
-        return Response(self._serialize_queryset(queryset, request))
-
     @action(detail=True)
     def transfer_cost(self, request, **kw):
         """
