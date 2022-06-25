@@ -12,6 +12,7 @@ x-envvars: &ci_environment
     HUB20_EMAIL_MAILER_ADDRESS: noreply@hub20.example.com
     HUB20_EMAIL_BACKEND: django.core.mail.backends.console.EmailBackend
     HUB20_SECRET_KEY: base-hub20-secret-key
+    HUB20_WALLET_MODEL: ethereum.KeystoreAccount
 
 services:
   db:
