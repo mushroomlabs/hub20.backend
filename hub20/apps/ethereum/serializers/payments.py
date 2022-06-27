@@ -23,15 +23,18 @@ class BlockchainPaymentSerializer(PaymentSerializer):
 class BlockchainPaymentRouteSerializer(PaymentRouteSerializer):
     address = AddressSerializerField(source="account.address", read_only=True)
     expiration_block = serializers.IntegerField(source="expiration_block_number", read_only=True)
+    start_block = serializers.IntegerField(source="start_block_number", read_only=True)
 
     class Meta:
         model = BlockchainPaymentRoute
         fields = PaymentRouteSerializer.Meta.fields + (
             "address",
+            "start_block",
             "expiration_block",
         )
         read_only_fields = PaymentRouteSerializer.Meta.read_only_fields + (
             "address",
+            "start_block",
             "expiration_block",
         )
 
