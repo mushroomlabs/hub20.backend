@@ -8,6 +8,7 @@ from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
 from rest_framework.viewsets import GenericViewSet
 
 from .. import models, serializers
+from .base import PolymorphicModelViewSet
 
 
 class DepositFilter(filters.FilterSet):
@@ -47,7 +48,7 @@ class DepositRoutesViewSet(GenericViewSet, ListModelMixin, CreateModelMixin, Ret
 
     def get_serializer_class(self):
         if self.action == "retrieve":
-            return serializers.PaymentRouteSerializer.get_serializer_class(route=self.get_object())
+            return serializers.PaymentRouteSerializer.get_subclassed_serializer(self.get_object())
         return self.serializer_class
 
     def get_queryset(self, *args, **kw):
@@ -62,8 +63,9 @@ class DepositRoutesViewSet(GenericViewSet, ListModelMixin, CreateModelMixin, Ret
         return models.Deposit.objects.get(id=self.kwargs["deposit_pk"])
 
 
-class PaymentViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
+class PaymentViewSet(PolymorphicModelViewSet):
     lookup_value_regex = "[0-9a-f-]{36}"
+    serializer_class = serializers.PaymentSerializer
 
     def get_queryset(self):
         return models.Payment.objects.all()
@@ -71,18 +73,6 @@ class PaymentViewSet(GenericViewSet, ListModelMixin, RetrieveModelMixin):
     def get_permissions(self):
         permission_class = IsAdminUser if self.action == "list" else AllowAny
         return (permission_class(),)
-
-    def get_serializer_class(self):
-        if self.action == "list":
-            return serializers.PaymentSerializer
-
-        payment = self.get_object()
-
-        return {
-            models.InternalPayment: serializers.InternalPaymentSerializer,
-            models.BlockchainPayment: serializers.BlockchainPaymentSerializer,
-            models.RaidenPayment: serializers.RaidenPaymentSerializer,
-        }.get(type(payment), serializers.PaymentSerializer)
 
     def get_object(self):
         try:

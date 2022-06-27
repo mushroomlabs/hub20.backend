@@ -16,6 +16,7 @@ from ..models import (
     PaymentOrder,
     PaymentRoute,
 )
+from .base import PolymorphicModelSerializer
 from .tokens import HyperlinkedRelatedTokenField, TokenSerializer, TokenValueField
 
 
@@ -24,7 +25,7 @@ class PaymentRouteNetworkSelectorField(serializers.HyperlinkedRelatedField):
         return PaymentNetwork.objects.filter(providers__is_active=True).select_subclasses()
 
 
-class PaymentRouteSerializer(serializers.ModelSerializer):
+class PaymentRouteSerializer(PolymorphicModelSerializer):
     network = PaymentRouteNetworkSelectorField(view_name="network-detail")
 
     class Meta:
@@ -38,16 +39,6 @@ class PaymentRouteSerializer(serializers.ModelSerializer):
             "is_used",
         )
 
-    @staticmethod
-    def get_serializer_class(route):
-        """
-        Finds which derived serializer to use for the route, based on the
-        model in `Meta`
-        """
-        return {c.Meta.model: c for c in PaymentRouteSerializer.__subclasses__()}.get(
-            type(route), PaymentRouteSerializer
-        )
-
 
 class InternalPaymentRouteSerializer(PaymentRouteSerializer):
     class Meta:
@@ -55,7 +46,7 @@ class InternalPaymentRouteSerializer(PaymentRouteSerializer):
         fields = read_only_fields = ("recipient",)
 
 
-class PaymentSerializer(serializers.ModelSerializer):
+class PaymentSerializer(PolymorphicModelSerializer):
     url = serializers.HyperlinkedIdentityField(view_name="payments-detail")
     currency = TokenSerializer()
     confirmed = serializers.BooleanField(source="is_confirmed", read_only=True)
