@@ -9,9 +9,4 @@ ERC20_TRANSFER_TOPIC: str = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a1162
 
 class Events(Enum):
     BLOCK_CREATED = "ethereum.block.created"
-    DEPOSIT_RECEIVED = "ethereum.deposit.received"
     DEPOSIT_BROADCAST = "ethereum.deposit.broadcast"
-    DEPOSIT_CONFIRMED = "ethereum.deposit.confirmed"
-    ROUTE_EXPIRED = "ethereum.route.expired"
-    PROVIDER_OFFLINE = "ethereum.provider.offline"
-    PROVIDER_ONLINE = "ethereum.provider.online"

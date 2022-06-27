@@ -200,7 +200,10 @@ class RaidenProvider(PaymentNetworkProvider):
         logger.debug(f"Checking connection with Raiden node on {self.hostname}")
         response = _make_request(f"{self.raiden_root_endpoint}/address")
         assert isinstance(response, dict), f"Could not get proper response from {self.hostname}"
-        node_address = Web3.toChecksumAddress(response.get("our_address"))
+        try:
+            node_address = Web3.toChecksumAddress(response["our_address"])
+        except KeyError:
+            raise AssertionError(f"Node {self.hostname} can not provide its account address")
         msg = f"Node {self.hostname} reported address {node_address}, we are {self.raiden.address}"
         assert node_address == self.raiden.address, msg
 
@@ -220,7 +223,8 @@ class RaidenProvider(PaymentNetworkProvider):
                 logger.exception(f"Connection with {self.hostname} lost")
                 self.connected = False
                 broadcast_event.delay(
-                    event=Events.PROVIDER_OFFLINE.value, raiden=self.raiden.hostname
+                    event=self.network.EVENT_MESSAGES.PROVIDER_OFFLINE.value,
+                    raiden=self.raiden.hostname,
                 )
             except Exception as exc:
                 logger.exception(f"Error when querying {self.hostname}: {exc}")

@@ -47,7 +47,7 @@ def on_payment_confirmed_publish_checkout(sender, **kw):
         checkout_id,
         amount=str(payment.amount),
         token=payment.currency.pk,
-        event=f"{payment_method}.deposit.confirmed",
+        event=payment.route.network.EVENT_MESSAGES.DEPOSIT_CONFIRMED.value,
         payment_method=payment_method,
     )
 

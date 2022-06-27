@@ -118,19 +118,21 @@ def on_blockchain_payment_received_send_notification(sender, **kw):
         token=payment.currency.address,
         transaction=payment.transaction.hash.hex(),
         block_number=payment.transaction.block.number,
+        payment_request_id=str(payment.route.deposit.id),
     )
+
+    deposit_received_event = payment.route.network.EVENT_MESSAGES.DEPOSIT_RECEIVED
 
     if deposit and deposit.session_key:
         send_session_event.delay(
             session_key=deposit.session_key,
-            event=Events.DEPOSIT_RECEIVED.value,
-            deposit_id=str(payment.route.deposit.id),
+            event=deposit_received_event.value,
             **payment_data,
         )
 
     if checkout:
         publish_checkout_event.delay(
-            checkout.id, event=Events.DEPOSIT_RECEIVED.value, **payment_data
+            checkout.id, event=deposit_received_event.value, **payment_data
         )
 
 
@@ -231,7 +233,7 @@ def on_block_added_publish_expired_blockchain_routes(sender, **kw):
     for route in expiring_routes:
         publish_checkout_event.delay(
             route.deposit_id,
-            event=Events.ROUTE_EXPIRED.value,
+            event=route.network.EVENT_MESSAGES.ROUTE_EXPIRED.value,
             route=route.account.address,
         )
 

@@ -26,7 +26,7 @@ from hub20.apps.ethereum.exceptions import Web3TransactionError
 
 from .. import analytics
 from ..abi.tokens import EIP20_ABI, ERC223_ABI
-from ..constants import SENTINEL_ADDRESS, Events
+from ..constants import SENTINEL_ADDRESS
 from ..typing import Address
 from .accounts import BaseWallet, EthereumAccount_T
 from .blockchain import (
@@ -177,13 +177,17 @@ class Web3Provider(PaymentNetworkProvider):
             logger.info(f"Node {self.hostname} is disconnected")
             self.connected = False
             self.save()
-            broadcast_event(event=Events.PROVIDER_OFFLINE.value, chain_id=self.chain.id)
+            broadcast_event(
+                event=self.network.EVENT_MESSAGES.PROVIDER_OFFLINE.value, chain_id=self.chain.id
+            )
 
         elif is_connected and not self.connected:
             logger.info(f"Node {self.hostname} is reconnected")
             self.connected = True
             self.save()
-            broadcast_event(event=Events.PROVIDER_ONLINE.value, chain_id=self.chain.id)
+            broadcast_event(
+                event=self.network.EVENT_MESSAGES.PROVIDER_ONLINE.value, chain_id=self.chain.id
+            )
 
     def _check_node_is_synced(self):
         is_synced = self._is_node_synced()
@@ -192,13 +196,17 @@ class Web3Provider(PaymentNetworkProvider):
             logger.info(f"Node {self.hostname} is out of sync")
             self.synced = False
             self.save()
-            broadcast_event(event=Events.PROVIDER_OFFLINE.value, chain_id=self.chain.id)
+            broadcast_event(
+                event=self.network.EVENT_MESSAGES.PROVIDER_OFFLINE.value, chain_id=self.chain.id
+            )
 
         elif is_synced and not self.synced:
             logger.info(f"Node {self.hostname} is back in sync")
             self.synced = True
             self.save()
-            broadcast_event(event=Events.PROVIDER_ONLINE.value, chain_id=self.chain.id)
+            broadcast_event(
+                event=self.network.EVENT_MESSAGES.PROVIDER_ONLINE.value, chain_id=self.chain.id
+            )
 
     @atomic
     def _check_chain_reorganization(self):
