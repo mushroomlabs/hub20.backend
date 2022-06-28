@@ -91,6 +91,10 @@ class BlockchainPaymentRoute(PaymentRoute):
         return f"Blockchain Route {self.id} ('{self.identifier}' on blocks {self.payment_window})"
 
     def _process_native_token(self):
+        if self.provider is None:
+            logger.warning("No provider available")
+            return
+
         while self.is_open:
             current_block = self.provider.w3.eth.block_number
             if not (self.start_block_number < current_block <= self.expiration_block_number):
@@ -116,15 +120,20 @@ class BlockchainPaymentRoute(PaymentRoute):
             time.sleep(1)
 
     def _process_erc20_token(self):
+        if self.provider is None:
+            logger.warning("No provider available")
+            return
+
         erc20_filter = self.provider.get_erc20_token_transfer_filter(
             token=self.deposit.currency.subclassed,
             start_block=self.start_block_number,
             end_block=self.expiration_block_number,
         )
-        token: Erc20Token = self.currency.subclassed
+
+        token: Erc20Token = self.deposit.currency.subclassed
 
         if self.provider.supports_pending_filters:
-            erc20_pending_filter = self.provider.get_erc20_token_transfer(
+            erc20_pending_filter = self.provider.get_erc20_token_transfer_filter(
                 token=self.deposit.currency.subclassed, start_block="pending", end_block="pending"
             )
         while self.is_open:

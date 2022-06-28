@@ -8,22 +8,18 @@ from django.contrib.auth import get_user_model
 from django.contrib.sessions.models import Session
 from django.utils import timezone
 
-from .consumers import CheckoutConsumer, SessionEventsConsumer
+from .consumers import CheckoutConsumer, PaymentNetworkEventsConsumer
 from .models import Checkout, Transfer
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
 
 
-def _get_open_session_keys():
-    now = timezone.now()
-    return Session.objects.filter(expire_date__gt=now).values_list("session_key", flat=True)
-
-
 @shared_task
-def broadcast_event(**kw):
-    for session_key in _get_open_session_keys():
-        send_session_event(session_key, **kw)
+def broadcast_event(event, **event_data):
+    layer = get_channel_layer()
+    event_data.update({"type": "notify_event", "event": event})
+    async_to_sync(layer.group_send)(PaymentNetworkEventsConsumer.GROUP_NAME, event_data)
 
 
 @shared_task
@@ -39,15 +35,6 @@ def execute_transfer(transfer_id):
 def execute_pending_transfers():
     for transfer in Transfer.pending.exclude(execute_on__gt=timezone.now()).select_subclasses():
         transfer.execute()
-
-
-@shared_task
-def send_session_event(session_key, event, **event_data):
-    layer = get_channel_layer()
-    channel_group_name = SessionEventsConsumer.get_group_name(session_key)
-    event_data.update({"type": "notify_event", "event": event})
-    logger.info(f"Sending {event} to session {session_key}")
-    async_to_sync(layer.group_send)(channel_group_name, event_data)
 
 
 @shared_task

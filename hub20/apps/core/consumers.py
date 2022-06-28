@@ -18,26 +18,21 @@ def accept_subprotocol(consumer):
         consumer.accept()
 
 
-class SessionEventsConsumer(JsonWebsocketConsumer):
-    @classmethod
-    def get_group_name(cls, session_key: str) -> str:
-        return f"events.{session_key}"
+class PaymentNetworkEventsConsumer(JsonWebsocketConsumer):
+    GROUP_NAME = "network.events"
 
     def connect(self):
-        session = self.scope["session"]
-        session.save()
         accept_subprotocol(self)
-        group_name = self.__class__.get_group_name(session.session_key)
-        async_to_sync(self.channel_layer.group_add)(group_name, self.channel_name)
-        logger.debug(f"Session Event consumer {group_name} connected")
+        async_to_sync(self.channel_layer.group_add)(self.GROUP_NAME, self.channel_name)
 
     def notify_event(self, message):
-        logger.info(f"Message received: {message}")
         message.pop("type", None)
         event = message.pop("event", "notification")
-        logger.debug(f"Sending {event} notification... {message}")
-
         self.send_json({"event": event, "data": message})
+
+    def disconnect(self, code):
+        async_to_sync(self.channel_layer.group_discard)(self.GROUP_NAME, self.channel_name)
+        return super().disconnect(code)
 
 
 class CheckoutConsumer(JsonWebsocketConsumer):

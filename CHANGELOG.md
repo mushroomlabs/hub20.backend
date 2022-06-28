@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - background processes do not index all transactions from the
     blockchain, it just goes back in some point in history (default
     5000 blocks) and then just listens to new blocks
+  - events websocket is now public and should be used exclusively to
+    send public messages about network events.
+  - messages about deposit on networks now carry only identifiers, such as
+    Deposit id / payment id.
 
 ### Added
 

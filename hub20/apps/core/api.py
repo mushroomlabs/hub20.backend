@@ -3,7 +3,7 @@ from rest_framework.routers import SimpleRouter
 from rest_framework_nested.routers import NestedSimpleRouter
 
 from . import views
-from .consumers import CheckoutConsumer, SessionEventsConsumer
+from .consumers import CheckoutConsumer, PaymentNetworkEventsConsumer
 
 app_name = "hub20"
 
@@ -53,6 +53,6 @@ urlpatterns = (
 
 
 consumer_patterns = [
-    path("events", SessionEventsConsumer.as_asgi()),
+    path("events", PaymentNetworkEventsConsumer.as_asgi()),
     path("checkout/<uuid:pk>", CheckoutConsumer.as_asgi()),
 ]

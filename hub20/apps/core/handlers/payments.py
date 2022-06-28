@@ -4,7 +4,8 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 
 from hub20.apps.core import tasks
-from hub20.apps.core.models import Checkout, InternalPayment, Payment, PaymentConfirmation
+from hub20.apps.core.models import Checkout, Deposit, InternalPayment, Payment, PaymentConfirmation
+from hub20.apps.core.signals import payment_received
 
 logger = logging.getLogger(__name__)
 
@@ -52,8 +53,32 @@ def on_payment_confirmed_publish_checkout(sender, **kw):
     )
 
 
+@receiver(payment_received)
+def on_payment_received_send_notification(sender, **kw):
+    payment = kw["payment"]
+    deposit = Deposit.objects.filter(routes__payments=payment).first()
+
+    checkout = Checkout.objects.filter(order__routes__payments=payment).first()
+
+    payment_data = dict(
+        payment_id=str(payment.id),
+        payment_request_id=str(payment.route.deposit.id),
+    )
+
+    deposit_received_event = payment.route.network.EVENT_MESSAGES.DEPOSIT_RECEIVED
+
+    if deposit:
+        tasks.broadcast_event.delay(event=deposit_received_event.value, **payment_data)
+
+    if checkout:
+        tasks.publish_checkout_event.delay(
+            checkout.id, event=deposit_received_event.value, **payment_data
+        )
+
+
 __all__ = [
     "on_internal_payment_create_confirmation",
     "on_payment_confirmed_call_checkout_webhooks",
     "on_payment_confirmed_publish_checkout",
+    "on_payment_received_send_notification",
 ]

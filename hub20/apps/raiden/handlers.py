@@ -22,7 +22,6 @@ from .models import (
     RaidenTransfer,
     RaidenTransferConfirmation,
 )
-from .signals import raiden_payment_sent
 
 logger = logging.getLogger(__name__)
 
@@ -49,42 +48,26 @@ def on_raiden_payment_network_created_create_provider(sender, **kw):
 @receiver(post_save, sender=Payment)
 def on_payment_created_check_received(sender, **kw):
     payment = kw["instance"]
+
     if kw["created"]:
         if payment.receiver_address == payment.channel.raiden.address:
             logger.info(f"New payment received by {payment.channel}")
-            payment_received.send(sender=Payment, payment=payment)
 
+            payment_route = RaidenPaymentRoute.objects.filter(
+                identifier=payment.identifier,
+                raiden=payment.channel.raiden,
+            ).first()
 
-@receiver(post_save, sender=Payment)
-def on_payment_created_check_sent(sender, **kw):
-    payment = kw["instance"]
-    if kw["created"]:
-        if payment.sender_address == payment.channel.raiden.address:
-            logger.info(f"New payment sent by {payment.channel}")
-            raiden_payment_sent.send(sender=Payment, payment=payment)
+            if payment_route is not None:
+                amount = payment.as_token_amount
+                raiden_payment = RaidenPayment.objects.create(
+                    route=payment_route,
+                    amount=amount.amount,
+                    currency=payment.token,
+                    payment=payment,
+                )
 
-
-@receiver(payment_received, sender=Payment)
-def on_payment_received_check_raiden_payments(sender, **kw):
-    raiden_payment = kw["payment"]
-
-    if RaidenPayment.objects.filter(payment=raiden_payment).exists():
-        logger.info(f"Payment {raiden_payment} is already recorded")
-        return
-
-    payment_route = RaidenPaymentRoute.objects.filter(
-        identifier=raiden_payment.identifier,
-        raiden=raiden_payment.channel.raiden,
-    ).first()
-
-    if payment_route is not None:
-        amount = raiden_payment.as_token_amount
-        RaidenPayment.objects.create(
-            route=payment_route,
-            amount=amount.amount,
-            currency=raiden_payment.token,
-            payment=raiden_payment,
-        )
+                payment_received.send(sender=Payment, payment=raiden_payment)
 
 
 @receiver(post_save, sender=RaidenPayment)
@@ -167,8 +150,6 @@ def on_transfer_confirmed_move_funds_from_treasury_to_raiden(sender, **kw):
 __all__ = [
     "on_raiden_created_create_payment_network",
     "on_payment_created_check_received",
-    "on_payment_created_check_sent",
-    "on_payment_received_check_raiden_payments",
     "on_payment_create_confirmation",
     "on_payment_sent_record_confirmation",
     "on_payment_received_move_funds_from_raiden_to_treasury",

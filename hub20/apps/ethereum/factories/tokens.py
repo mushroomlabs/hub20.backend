@@ -79,6 +79,26 @@ class EtherAmountFactory(TokenAmountFactory):
     currency = factory.SubFactory(EtherFactory)
 
 
+class EtherTransactionFactory(TransactionFactory):
+    to_address = factory.LazyAttribute(lambda obj: obj.recipient)
+    receipt = factory.LazyAttribute(
+        lambda obj: {
+            "from": obj.from_address,
+            "to": obj.to_address,
+            "status": obj.status,
+            "blockNumber": obj.block.number,
+            "blockHash": obj.block.hash,
+            "gasUsed": obj.gas_used,
+            "effectiveGasPrice": obj.gas_price,
+            "value": obj.amount.as_wei,
+        }
+    )
+
+    class Params:
+        recipient = factory.Faker("ethereum_address")
+        amount = factory.SubFactory(EtherAmountFactory)
+
+
 class Erc20TokenTransactionDataFactory(TransactionDataFactory):
     data = factory.LazyAttribute(
         lambda obj: {
@@ -129,15 +149,16 @@ class Erc20TokenTransferEventFactory(factory.django.DjangoModelFactory):
 __all__ = [
     "encode_transfer_data",
     "EtherFactory",
-    "Erc20TokenFactory",
-    "WrappedEtherFactory",
-    "WrappedTokenFactory",
+    "EtherAmountFactory",
     "EtherValueModelFactory",
+    "EtherTransactionFactory",
+    "Erc20TokenFactory",
     "Erc20TokenValueModelFactory",
     "Erc20TokenAmountFactory",
-    "EtherAmountFactory",
     "Erc20StableTokenFactory",
     "Erc20TokenTransactionDataFactory",
     "Erc20TokenTransactionFactory",
     "Erc20TokenTransferEventFactory",
+    "WrappedEtherFactory",
+    "WrappedTokenFactory",
 ]

@@ -389,7 +389,7 @@ class Web3Provider(PaymentNetworkProvider):
             abi=EIP20_ABI, address=Web3.toChecksumAddress(token.address)
         )
         return contract.events.Transfer.createFilter(
-            dict(fromBlock=start_block, toBlock=end_block, address=token.address)
+            fromBlock=start_block, toBlock=end_block, address=token.address
         )
 
     def encode_transfer_call(self, recipient_address, amount: TokenAmount):
@@ -418,6 +418,9 @@ class Web3Provider(PaymentNetworkProvider):
                 block_data=block_data,
                 tx_receipt=tx_receipt,
             )
+
+            for wallet in BaseWallet.objects.filter(address__in=[sender, recipient]):
+                wallet.transactions.add(tx)
 
             try:
                 TransferEvent.objects.get_or_create(

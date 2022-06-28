@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 @shared_task
 def notify_block_created(chain_id, block_data):
-    logger.debug(f"Sending notification of of block created on #{chain_id}")
+    logger.debug(f"Broadcast event of new block on #{chain_id}")
     block_data = AttributeDict(block_data)
     broadcast_event(
         event=Events.BLOCK_CREATED.value,

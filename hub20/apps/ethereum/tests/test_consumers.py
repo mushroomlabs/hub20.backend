@@ -1,15 +1,13 @@
-from decimal import Decimal
-
 import pytest
 from asgiref.sync import sync_to_async
 from channels.testing import WebsocketCommunicator
 from web3 import Web3
 
 from hub20.apps.core.factories.networks import InternalPaymentNetworkFactory, SiteFactory
+from hub20.apps.core.handlers.payments import on_payment_received_send_notification
 from hub20.apps.core.settings import app_settings
 from hub20.apps.core.tests.asgi import application
 
-from .. import handlers
 from ..abi.tokens import EIP20_ABI
 from ..constants import Events
 from ..factories import (
@@ -17,6 +15,13 @@ from ..factories import (
     Erc20TokenBlockchainPaymentFactory,
     Erc20TokenCheckoutFactory,
     Erc20TokenPaymentOrderFactory,
+    EtherBlockchainPaymentFactory,
+    EtherCheckoutFactory,
+    EtherPaymentOrderFactory,
+)
+from ..handlers import (
+    on_chain_updated_check_payment_confirmations,
+    on_incoming_transfer_broadcast_notify_open_checkouts,
 )
 from ..models import BaseWallet, Block, Chain
 from ..signals import block_sealed
@@ -107,8 +112,25 @@ def checkout():
 
 
 @pytest.fixture
+def ether_checkout():
+    checkout = EtherCheckoutFactory()
+    checkout.store.accepted_token_list.tokens.add(checkout.order.currency)
+    return checkout
+
+
+@pytest.fixture
 def erc20_payment_request(client):
     return Erc20TokenPaymentOrderFactory(session_key=client.session.session_key)
+
+
+@pytest.fixture
+def ether_payment_request(client):
+    return EtherPaymentOrderFactory(session_key=client.session.session_key)
+
+
+@pytest.fixture
+def ether_blockchain_payment(ether_payment_request):
+    return EtherBlockchainPaymentFactory(route__deposit=ether_payment_request)
 
 
 @pytest.fixture
@@ -127,14 +149,14 @@ def erc20_blockchain_checkout_payment(checkout):
 
 @pytest.mark.asyncio
 @pytest.mark.django_db(transaction=True)
-async def test_session_receives_token_deposit_received(
+async def test_session_erc20_token_deposit_received(
     session_events_communicator, erc20_blockchain_payment, network_event_messages
 ):
 
     ok, protocol_or_error = await session_events_communicator.connect()
     assert ok, "Failed to connect"
 
-    await sync_to_async(handlers.on_blockchain_payment_received_send_notification)(
+    await sync_to_async(on_payment_received_send_notification)(
         sender=erc20_blockchain_payment.__class__, payment=erc20_blockchain_payment
     )
 
@@ -154,7 +176,41 @@ async def test_session_receives_token_deposit_received(
     assert "data" in payment_message
 
     payment_data = payment_message["data"]
-    assert is_hex_string(payment_data["transaction"])
+    assert "payment_request_id" in payment_data
+    assert "payment_id" in payment_data
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_session_native_token_deposit_received(
+    session_events_communicator, ether_blockchain_payment, network_event_messages
+):
+
+    ok, protocol_or_error = await session_events_communicator.connect()
+    assert ok, "Failed to connect"
+
+    await sync_to_async(on_payment_received_send_notification)(
+        sender=ether_blockchain_payment.__class__, payment=ether_blockchain_payment
+    )
+
+    messages = []
+    while not await session_events_communicator.receive_nothing(timeout=0.25):
+        messages.append(await session_events_communicator.receive_json_from())
+
+    await session_events_communicator.disconnect()
+
+    assert len(messages) != 0, "we should have received something here"
+    payment_received_event = network_event_messages.DEPOSIT_RECEIVED.value
+
+    payment_received_messages = [msg for msg in messages if msg["event"] == payment_received_event]
+    assert len(payment_received_messages) == 1, "we should have a payment received message"
+
+    payment_message = payment_received_messages[0]
+    assert "data" in payment_message
+
+    payment_data = payment_message["data"]
+    assert "payment_request_id" in payment_data
+    assert "payment_id" in payment_data
 
 
 @pytest.mark.asyncio
@@ -199,7 +255,7 @@ async def test_checkout_receives_transaction_mined_notification(
 
     payment = erc20_blockchain_checkout_payment
 
-    await sync_to_async(handlers.on_blockchain_payment_received_send_notification)(
+    await sync_to_async(on_payment_received_send_notification)(
         sender=payment.__class__, payment=payment
     )
 
@@ -216,11 +272,8 @@ async def test_checkout_receives_transaction_mined_notification(
     assert len(payment_messages) == 1, "we should have received one payment received message"
 
     payment_data = payment_messages[0]
-    assert is_hex_string(payment_data["transaction"])
-    assert Web3.isAddress(payment_data["token"])
-    assert (
-        Decimal(payment_data["amount"]) == checkout.order.amount
-    ), "payment amount does not match"
+    assert "payment_request_id" in payment_data
+    assert "payment_id" in payment_data
 
 
 @pytest.mark.asyncio
@@ -238,7 +291,7 @@ async def test_checkout_receives_transaction_broadcast_notification(
     tx_params = await sync_to_async(deposit_transaction_params)(order)
     tx_data = deposit_tx_data(tx_params)
 
-    await sync_to_async(handlers.on_incoming_transfer_broadcast_notify_open_checkouts)(
+    await sync_to_async(on_incoming_transfer_broadcast_notify_open_checkouts)(
         sender=tx_data.__class__,
         account=account,
         amount=order.as_token_amount,
@@ -260,9 +313,6 @@ async def test_checkout_receives_transaction_broadcast_notification(
     payment_data = payment_messages[0]
     assert is_hex_string(payment_data["transaction"])
     assert Web3.isAddress(payment_data["token"])
-    assert (
-        Decimal(payment_data["amount"]) == checkout.order.amount
-    ), "payment amount does not match"
 
 
 @pytest.mark.asyncio
@@ -281,7 +331,7 @@ async def test_checkout_receives_confirmation_notification(
     block = await sync_to_async(BlockFactory)(number=confirmation_block_number)
     block.chain.highest_block = confirmation_block_number
 
-    await sync_to_async(handlers.on_chain_updated_check_payment_confirmations)(
+    await sync_to_async(on_chain_updated_check_payment_confirmations)(
         sender=Chain, instance=block.chain
     )
 
@@ -299,7 +349,8 @@ async def test_checkout_receives_confirmation_notification(
 
 
 __all__ = [
-    "test_session_receives_token_deposit_received",
+    "test_session_erc20_token_deposit_received",
+    "test_session_native_token_deposit_received",
     "test_checkout_receives_transaction_mined_notification",
     "test_checkout_receives_transaction_broadcast_notification",
     "test_checkout_receives_confirmation_notification",

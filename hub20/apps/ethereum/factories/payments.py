@@ -1,5 +1,4 @@
 import factory
-from factory import fuzzy
 
 from hub20.apps.core.factories.payments import PaymentOrderFactory, PaymentRouteFactory
 from hub20.apps.core.models.payments import PaymentConfirmation
@@ -10,7 +9,9 @@ from .tokens import (
     Erc20TokenAmountFactory,
     Erc20TokenFactory,
     Erc20TokenTransactionFactory,
+    EtherAmountFactory,
     EtherFactory,
+    EtherTransactionFactory,
 )
 from .wallets import BaseWalletFactory
 
@@ -48,7 +49,7 @@ class Erc20TokenBlockchainPaymentRouteFactory(EtherBlockchainPaymentRouteFactory
 class EtherBlockchainPaymentFactory(factory.django.DjangoModelFactory):
     route = factory.SubFactory(EtherBlockchainPaymentRouteFactory)
     transaction = factory.SubFactory(
-        Erc20TokenTransactionFactory,
+        EtherTransactionFactory,
         recipient=factory.SelfAttribute("..route.account.address"),
         amount=factory.SelfAttribute("..payment_amount"),
     )
@@ -59,11 +60,19 @@ class EtherBlockchainPaymentFactory(factory.django.DjangoModelFactory):
         model = BlockchainPayment
 
     class Params:
-        payment_amount = factory.SubFactory(Erc20TokenAmountFactory)
+        payment_amount = factory.SubFactory(EtherAmountFactory)
 
 
 class Erc20TokenBlockchainPaymentFactory(EtherBlockchainPaymentFactory):
     route = factory.SubFactory(Erc20TokenBlockchainPaymentRouteFactory)
+    transaction = factory.SubFactory(
+        Erc20TokenTransactionFactory,
+        recipient=factory.SelfAttribute("..route.account.address"),
+        amount=factory.SelfAttribute("..payment_amount"),
+    )
+
+    class Params:
+        payment_amount = factory.SubFactory(Erc20TokenAmountFactory)
 
 
 class EtherPaymentConfirmationFactory(factory.django.DjangoModelFactory):

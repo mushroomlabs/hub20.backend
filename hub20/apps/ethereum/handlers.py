@@ -7,10 +7,10 @@ from django.dispatch import receiver
 
 from hub20.apps.core.models import get_treasury_account
 from hub20.apps.core.models.checkout import Checkout
-from hub20.apps.core.models.payments import Deposit, PaymentConfirmation
+from hub20.apps.core.models.payments import PaymentConfirmation
 from hub20.apps.core.settings import app_settings
 from hub20.apps.core.signals import payment_received
-from hub20.apps.core.tasks import call_checkout_webhook, publish_checkout_event, send_session_event
+from hub20.apps.core.tasks import broadcast_event, call_checkout_webhook, publish_checkout_event
 
 from . import signals, tasks
 from .constants import Events
@@ -106,37 +106,6 @@ def on_transfer_event_created_check_for_payments_received(sender, **kw):
 
 
 @receiver(payment_received, sender=BlockchainPayment)
-def on_blockchain_payment_received_send_notification(sender, **kw):
-    payment = kw["payment"]
-
-    deposit = Deposit.objects.filter(routes__payments=payment).first()
-
-    checkout = Checkout.objects.filter(order__routes__payments=payment).first()
-
-    payment_data = dict(
-        amount=str(payment.amount),
-        token=payment.currency.address,
-        transaction=payment.transaction.hash.hex(),
-        block_number=payment.transaction.block.number,
-        payment_request_id=str(payment.route.deposit.id),
-    )
-
-    deposit_received_event = payment.route.network.EVENT_MESSAGES.DEPOSIT_RECEIVED
-
-    if deposit and deposit.session_key:
-        send_session_event.delay(
-            session_key=deposit.session_key,
-            event=deposit_received_event.value,
-            **payment_data,
-        )
-
-    if checkout:
-        publish_checkout_event.delay(
-            checkout.id, event=deposit_received_event.value, **payment_data
-        )
-
-
-@receiver(payment_received, sender=BlockchainPayment)
 def on_blockchain_payment_received_call_checkout_webhooks(sender, **kw):
     payment = kw["payment"]
 
@@ -148,7 +117,6 @@ def on_blockchain_payment_received_call_checkout_webhooks(sender, **kw):
 @receiver(signals.incoming_transfer_broadcast, sender=TransactionDataRecord)
 def on_incoming_transfer_broadcast_notify_active_sessions(sender, **kw):
     recipient = kw["account"]
-    payment_amount = kw["amount"]
     tx_data = kw["transaction_data"]
 
     route = BlockchainPaymentRoute.objects.open().filter(account=recipient).first()
@@ -156,15 +124,16 @@ def on_incoming_transfer_broadcast_notify_active_sessions(sender, **kw):
     if not route:
         return
 
-    if route.deposit.session_key:
-        send_session_event.delay(
-            route.deposit.session_key,
-            event=Events.DEPOSIT_BROADCAST.value,
-            deposit_id=str(route.deposit.id),
-            amount=str(payment_amount.amount),
-            token=payment_amount.currency.address,
-            transaction=tx_data.hash.hex(),
-        )
+    try:
+        transaction_hash = tx_data.hash.hex()
+    except AttributeError:
+        transaction_hash = tx_data.hash
+
+    broadcast_event.delay(
+        event=Events.DEPOSIT_BROADCAST.value,
+        deposit_id=str(route.deposit.id),
+        transaction=transaction_hash,
+    )
 
 
 @receiver(signals.incoming_transfer_broadcast, sender=TransactionDataRecord)
@@ -374,11 +343,12 @@ __all__ = [
     "on_chain_created_register_payment_network",
     "on_chain_created_create_metadata_entry",
     "on_chain_updated_check_payment_confirmations",
-    "on_blockchain_payment_received_send_notification",
     "on_incoming_transfer_broadcast_notify_active_sessions",
     "on_incoming_transfer_broadcast_notify_open_checkouts",
     "on_block_sealed_publish_block_created_event",
     "on_block_sealed_check_confirmed_payments",
+    "on_transfer_event_created_check_for_payments_received",
+    "on_transfer_event_created_record_book_entries",
     "on_transaction_created_record_fee",
     "on_block_created_check_confirmed_payments",
     "on_block_added_publish_expired_blockchain_routes",

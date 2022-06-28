@@ -51,16 +51,6 @@ class PaymentSerializer(PolymorphicModelSerializer):
     currency = TokenSerializer()
     confirmed = serializers.BooleanField(source="is_confirmed", read_only=True)
 
-    @staticmethod
-    def get_serializer_class(payment):
-        """
-        Finds which derived serializer to use for the payment, based on the
-        model in `Meta`
-        """
-        return {c.Meta.model: c for c in PaymentSerializer.__subclasses__()}.get(
-            type(payment), PaymentSerializer
-        )
-
     class Meta:
         model = Payment
         fields = read_only_fields = (
@@ -92,20 +82,21 @@ class DepositSerializer(serializers.ModelSerializer):
     def create(self, validated_data: Dict):
         request = self.context["request"]
         with transaction.atomic():
+            request.session.save()  # Ensure it has a key
             return self.Meta.model.objects.create(
                 user=request.user, session_key=request.session.session_key, **validated_data
             )
 
     def get_routes(self, obj):
         def get_route_serializer(route):
-            serializer_class = PaymentRouteSerializer.get_serializer_class(route)
+            serializer_class = PaymentRouteSerializer.get_subclassed_serializer(route)
             return serializer_class(route, context=self.context)
 
         return [get_route_serializer(route).data for route in obj.routes.select_subclasses()]
 
     def get_payments(self, obj):
         def get_payment_serializer(payment):
-            serializer_class = PaymentSerializer.get_serializer_class(payment)
+            serializer_class = PaymentSerializer.get_subclassed_serializer(payment)
             return serializer_class(payment, context=self.context)
 
         return [get_payment_serializer(payment).data for payment in obj.payments]
