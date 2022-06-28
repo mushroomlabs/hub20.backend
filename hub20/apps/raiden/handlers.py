@@ -7,6 +7,7 @@ from django.dispatch import receiver
 
 from hub20.apps.core.models import get_treasury_account
 from hub20.apps.core.models.payments import PaymentConfirmation
+from hub20.apps.core.signals import payment_received
 
 # FIXME: need to find a better distinction between Payment / RaidenPayment
 # Payment -> the record of the payment on the node
@@ -21,7 +22,7 @@ from .models import (
     RaidenTransfer,
     RaidenTransferConfirmation,
 )
-from .signals import raiden_payment_received, raiden_payment_sent
+from .signals import raiden_payment_sent
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +52,7 @@ def on_payment_created_check_received(sender, **kw):
     if kw["created"]:
         if payment.receiver_address == payment.channel.raiden.address:
             logger.info(f"New payment received by {payment.channel}")
-            raiden_payment_received.send(sender=Payment, payment=payment)
+            payment_received.send(sender=Payment, payment=payment)
 
 
 @receiver(post_save, sender=Payment)
@@ -63,8 +64,8 @@ def on_payment_created_check_sent(sender, **kw):
             raiden_payment_sent.send(sender=Payment, payment=payment)
 
 
-@receiver(raiden_payment_received, sender=Payment)
-def on_raiden_payment_received_check_raiden_payments(sender, **kw):
+@receiver(payment_received, sender=Payment)
+def on_payment_received_check_raiden_payments(sender, **kw):
     raiden_payment = kw["payment"]
 
     if RaidenPayment.objects.filter(payment=raiden_payment).exists():
@@ -87,13 +88,13 @@ def on_raiden_payment_received_check_raiden_payments(sender, **kw):
 
 
 @receiver(post_save, sender=RaidenPayment)
-def on_raiden_payment_create_confirmation(sender, **kw):
+def on_payment_create_confirmation(sender, **kw):
     if kw["created"]:
         PaymentConfirmation.objects.create(payment=kw["instance"])
 
 
 @receiver(post_save, sender=Payment)
-def on_raiden_payment_sent_record_confirmation(sender, **kw):
+def on_payment_sent_record_confirmation(sender, **kw):
     if kw["created"]:
         payment = kw["instance"]
 
@@ -111,7 +112,7 @@ def on_raiden_payment_sent_record_confirmation(sender, **kw):
 # Accounting
 @atomic()
 @receiver(post_save, sender=RaidenPayment)
-def on_raiden_payment_received_move_funds_from_raiden_to_treasury(sender, **kw):
+def on_payment_received_move_funds_from_raiden_to_treasury(sender, **kw):
     if kw["created"]:
         raiden_payment = kw["instance"]
         payment = raiden_payment.payment
@@ -140,7 +141,7 @@ def on_raiden_payment_received_move_funds_from_raiden_to_treasury(sender, **kw):
 
 @atomic()
 @receiver(post_save, sender=RaidenTransferConfirmation)
-def on_raiden_transfer_confirmed_move_funds_from_treasury_to_raiden(sender, **kw):
+def on_transfer_confirmed_move_funds_from_treasury_to_raiden(sender, **kw):
     if kw["created"]:
         confirmation = kw["instance"]
         transfer = confirmation.transfer
@@ -167,9 +168,9 @@ __all__ = [
     "on_raiden_created_create_payment_network",
     "on_payment_created_check_received",
     "on_payment_created_check_sent",
-    "on_raiden_payment_received_check_raiden_payments",
-    "on_raiden_payment_create_confirmation",
-    "on_raiden_payment_sent_record_confirmation",
-    "on_raiden_payment_received_move_funds_from_raiden_to_treasury",
-    "on_raiden_transfer_confirmed_move_funds_from_treasury_to_raiden",
+    "on_payment_received_check_raiden_payments",
+    "on_payment_create_confirmation",
+    "on_payment_sent_record_confirmation",
+    "on_payment_received_move_funds_from_raiden_to_treasury",
+    "on_transfer_confirmed_move_funds_from_treasury_to_raiden",
 ]
