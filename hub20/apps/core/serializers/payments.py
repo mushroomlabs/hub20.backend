@@ -48,6 +48,9 @@ class InternalPaymentRouteSerializer(PaymentRouteSerializer):
 
 class PaymentSerializer(PolymorphicModelSerializer):
     url = serializers.HyperlinkedIdentityField(view_name="payments-detail")
+    network = serializers.HyperlinkedRelatedField(
+        view_name="network-detail", source="route.network", read_only=True
+    )
     currency = TokenSerializer()
     confirmed = serializers.BooleanField(source="is_confirmed", read_only=True)
 
@@ -57,6 +60,7 @@ class PaymentSerializer(PolymorphicModelSerializer):
             "id",
             "url",
             "created",
+            "network",
             "currency",
             "amount",
             "confirmed",
