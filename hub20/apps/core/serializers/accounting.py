@@ -72,7 +72,7 @@ class BookEntrySerializer(serializers.ModelSerializer):
     def get_reference(self, obj):
         params = {
             Transfer: lambda: {
-                "viewname": "user-withdrawal-detail",
+                "viewname": "user-transfer-detail",
                 "kwargs": {"pk": obj.reference.pk},
             },
             TransferConfirmation: lambda: {
@@ -82,10 +82,6 @@ class BookEntrySerializer(serializers.ModelSerializer):
             PaymentConfirmation: lambda: {
                 "viewname": "payments-detail",
                 "kwargs": {"pk": obj.reference.payment.pk},
-            },
-            InternalTransfer: lambda: {
-                "viewname": "user-transfer-detail",
-                "kwargs": {"pk": obj.reference.pk},
             },
         }.get(type(obj.reference))
 

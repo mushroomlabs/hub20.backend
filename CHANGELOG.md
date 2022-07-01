@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     send public messages about network events.
   - messages about deposit on networks now carry only identifiers, such as
     Deposit id / payment id.
+  - transfers endpoints is now read-only. To create a transfer the
+    endpoint is /networks/<network_id>/transfers
 
 ### Added
 

@@ -8,13 +8,16 @@ from ..models import (
     Transfer,
     TransferConfirmation,
 )
+from .base import PolymorphicModelSerializer
 from .tokens import HyperlinkedRelatedTokenField, TokenValueField
 from .users import UserRelatedField
 
 
-class TransferSerializer(serializers.ModelSerializer):
+class BaseTransferSerializer(PolymorphicModelSerializer):
+    url = serializers.HyperlinkedIdentityField(view_name="user-transfer-detail")
     token = HyperlinkedRelatedTokenField(source="currency")
     status = serializers.CharField(read_only=True)
+    network = serializers.HyperlinkedRelatedField(view_name="network-detail", read_only=True)
 
     def validate(self, data):
         # We do need to check the balance here though because the amount
@@ -45,26 +48,6 @@ class TransferSerializer(serializers.ModelSerializer):
 
         return self.Meta.model.objects.create(sender=request.user, **validated_data)
 
-    class Meta:
-        model = Transfer
-        fields = (
-            "url",
-            "token",
-            "amount",
-            "memo",
-            "identifier",
-            "status",
-        )
-        read_only_fields = (
-            "url",
-            "status",
-        )
-
-
-class BaseWithdrawalSerializer(TransferSerializer):
-    url = serializers.HyperlinkedIdentityField(view_name="user-withdrawal-detail")
-    network = serializers.HyperlinkedRelatedField(view_name="network-detail", read_only=True)
-
     @classmethod
     def get_subclassed_serializer(cls, network: PaymentNetwork_T):
         """
@@ -73,6 +56,31 @@ class BaseWithdrawalSerializer(TransferSerializer):
         """
         return {c.Meta.model.NETWORK: c for c in cls.__subclasses__()}.get(type(network), cls)
 
+    class Meta:
+        model = Transfer
+        fields = (
+            "url",
+            "id",
+            "created",
+            "execute_on",
+            "network",
+            "token",
+            "amount",
+            "memo",
+            "identifier",
+            "status",
+        )
+        read_only_fields = (
+            "url",
+            "id",
+            "execute_on",
+            "created",
+            "network",
+            "status",
+        )
+
+
+class BaseWithdrawalSerializer(BaseTransferSerializer):
     def create(self, validated_data):
         request = self.context["request"]
         view = self.context["view"]
@@ -84,12 +92,11 @@ class BaseWithdrawalSerializer(TransferSerializer):
 
     class Meta:
         model = Transfer
-        fields = TransferSerializer.Meta.fields + ("network",)
-        read_only_fields = TransferSerializer.Meta.read_only_fields + ("network",)
+        fields = BaseTransferSerializer.Meta.fields
+        read_only_fields = BaseTransferSerializer.Meta.read_only_fields
 
 
-class InternalTransferSerializer(TransferSerializer):
-    url = serializers.HyperlinkedIdentityField(view_name="user-transfer-detail")
+class InternalTransferSerializer(BaseTransferSerializer):
     recipient = UserRelatedField(source="receiver")
 
     def validate_recipient(self, value):
@@ -110,8 +117,8 @@ class InternalTransferSerializer(TransferSerializer):
 
     class Meta:
         model = InternalTransfer
-        fields = TransferSerializer.Meta.fields + ("recipient",)
-        read_only_fields = TransferSerializer.Meta.read_only_fields
+        fields = BaseTransferSerializer.Meta.fields + ("recipient",)
+        read_only_fields = BaseTransferSerializer.Meta.read_only_fields
 
 
 class TransferConfirmationSerializer(serializers.ModelSerializer):
@@ -125,8 +132,8 @@ class TransferConfirmationSerializer(serializers.ModelSerializer):
 
 
 __all__ = [
-    "TransferSerializer",
-    "TransferConfirmationSerializer",
-    "InternalTransferSerializer",
+    "BaseTransferSerializer",
     "BaseWithdrawalSerializer",
+    "InternalTransferSerializer",
+    "TransferConfirmationSerializer",
 ]

@@ -5,15 +5,8 @@ from .. import models, serializers
 from .base import PolymorphicModelViewSet, UserDataViewSet
 
 
-class TransferViewSet(UserDataViewSet, CreateModelMixin):
-    serializer_class = serializers.InternalTransferSerializer
-
-    def get_queryset(self) -> QuerySet:
-        return models.InternalTransfer.objects.filter(sender=self.request.user)
-
-
-class WithdrawalViewSet(PolymorphicModelViewSet, UserDataViewSet):
-    serializer_class = serializers.BaseWithdrawalSerializer
+class TransferViewSet(PolymorphicModelViewSet, UserDataViewSet):
+    serializer_class = serializers.BaseTransferSerializer
 
     def get_serializer_class(self):
         if self.action == "retrieve":
@@ -23,9 +16,7 @@ class WithdrawalViewSet(PolymorphicModelViewSet, UserDataViewSet):
         return self.serializer_class
 
     def get_queryset(self) -> QuerySet:
-        return self.request.user.transfers_sent.exclude(
-            internaltransfer__isnull=False
-        ).select_subclasses()
+        return models.Transfer.objects.filter(sender=self.request.user).select_subclasses()
 
 
 class NetworkWithdrawalViewSet(PolymorphicModelViewSet, UserDataViewSet, CreateModelMixin):
@@ -33,7 +24,7 @@ class NetworkWithdrawalViewSet(PolymorphicModelViewSet, UserDataViewSet, CreateM
     Sets up a new withdraw action on this payment network
     """
 
-    serializer_class = serializers.BaseWithdrawalSerializer
+    serializer_class = serializers.BaseTransferSerializer
 
     def get_network(self):
         return models.PaymentNetwork.objects.get_subclass(id=self.kwargs["network_pk"])
@@ -48,4 +39,4 @@ class NetworkWithdrawalViewSet(PolymorphicModelViewSet, UserDataViewSet, CreateM
         ).select_subclasses()
 
 
-__all__ = ["TransferViewSet", "WithdrawalViewSet", "NetworkWithdrawalViewSet"]
+__all__ = ["TransferViewSet", "NetworkWithdrawalViewSet"]

@@ -1,10 +1,12 @@
 from rest_framework import serializers
 
 from hub20.apps.core.serializers import (
+    BaseTransferSerializer,
     PaymentNetworkSerializer,
     PaymentNetworkStatusSerializer,
     PaymentSerializer,
 )
+from hub20.apps.ethereum.serializers.fields import AddressSerializerField
 
 from . import models
 
@@ -41,4 +43,17 @@ class RaidenPaymentSerializer(PaymentSerializer):
         )
 
 
-__all__ = ["RaidenPaymentNetworkSerializer", "RaidenStatusSerializer", "RaidenPaymentSerializer"]
+class RaidenTransferSerializer(BaseTransferSerializer):
+    address = AddressSerializerField()
+
+    class Meta:
+        model = models.RaidenTransfer
+        fields = BaseTransferSerializer.Meta.fields + ("address",)
+
+
+__all__ = [
+    "RaidenPaymentNetworkSerializer",
+    "RaidenStatusSerializer",
+    "RaidenPaymentSerializer",
+    "RaidenTransferSerializer",
+]

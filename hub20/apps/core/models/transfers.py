@@ -28,6 +28,8 @@ class TransferStatusQueryManager(InheritanceManagerMixin, QueryManagerMixin, mod
 
 
 class Transfer(BaseModel, TimeStampedModel, TokenValueModel):
+    NETWORK = PaymentNetwork
+
     sender = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="transfers_sent"
     )

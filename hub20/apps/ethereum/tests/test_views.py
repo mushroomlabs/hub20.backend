@@ -66,7 +66,7 @@ class BlockchainWithdrawalViewTestCase(BaseTransferTestCase):
 
     def test_get_blockchain_serializer_on_polymorphic_endpoint(self):
         transfer = BlockchainTransferFactory(sender=self.user, address=self.target_address)
-        response = self.client.get(reverse("user-withdrawal-detail", kwargs={"pk": transfer.pk}))
+        response = self.client.get(reverse("user-transfer-detail", kwargs={"pk": transfer.pk}))
         self.assertEqual(response.status_code, 200)
         self.assertTrue(
             "address" in response.data, "transfer endpoint does not include address detail"
@@ -75,7 +75,7 @@ class BlockchainWithdrawalViewTestCase(BaseTransferTestCase):
 
     def test_no_balance_returns_error(self):
         response = self.client.post(
-            reverse("network-withdrawals-list", kwargs={"network_pk": self.network.pk}),
+            reverse("network-transfers-list", kwargs={"network_pk": self.network.pk}),
             {
                 "address": self.target_address,
                 "payment_network": "blockchain",
@@ -101,7 +101,7 @@ class BlockchainWithdrawalViewTestCase(BaseTransferTestCase):
         )
 
         response = self.client.post(
-            reverse("network-withdrawals-list", kwargs={"network_pk": self.network.pk}),
+            reverse("network-transfers-list", kwargs={"network_pk": self.network.pk}),
             {
                 "address": self.target_address,
                 "payment_network": "blockchain",

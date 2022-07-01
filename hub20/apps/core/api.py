@@ -24,7 +24,6 @@ router.register("my/tokens", views.UserTokenViewSet, basename="user-token")
 router.register("my/tokenlists", views.UserTokenListViewSet, basename="user-tokenlist")
 router.register("my/deposits", views.DepositViewSet, basename="user-deposit")
 router.register("my/transfers", views.TransferViewSet, basename="user-transfer"),
-router.register("my/withdrawals", views.WithdrawalViewSet, basename="user-withdrawal"),
 router.register("my/balances", views.TokenBalanceListViewSet, basename="balance"),
 router.register("my/credits", views.AccountCreditViewSet, basename="user-credit"),
 router.register("my/debits", views.AccountDebitViewSet, basename="user-debit"),
@@ -36,9 +35,7 @@ deposit_router = NestedSimpleRouter(router, "my/deposits", lookup="deposit")
 deposit_router.register("routes", views.DepositRoutesViewSet, basename="deposit-routes")
 
 network_router = NestedSimpleRouter(router, "networks", lookup="network")
-network_router.register(
-    "withdrawals", views.NetworkWithdrawalViewSet, basename="network-withdrawals"
-)
+network_router.register("transfers", views.NetworkWithdrawalViewSet, basename="network-transfers")
 
 urlpatterns = (
     [

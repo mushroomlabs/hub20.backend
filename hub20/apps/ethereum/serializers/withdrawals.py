@@ -1,15 +1,15 @@
-from hub20.apps.core.serializers import BaseWithdrawalSerializer
+from hub20.apps.core.serializers import BaseTransferSerializer
 
 from ..models import BlockchainTransfer
 from .fields import AddressSerializerField
 
 
-class BlockchainWithdrawalSerializer(BaseWithdrawalSerializer):
+class BlockchainWithdrawalSerializer(BaseTransferSerializer):
     address = AddressSerializerField()
 
     class Meta:
         model = BlockchainTransfer
-        fields = BaseWithdrawalSerializer.Meta.fields + ("address",)
+        fields = BaseTransferSerializer.Meta.fields + ("address",)
 
 
 __all__ = ["BlockchainWithdrawalSerializer"]

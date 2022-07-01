@@ -178,7 +178,8 @@ class Web3Provider(PaymentNetworkProvider):
             self.connected = False
             self.save()
             broadcast_event(
-                event=self.network.EVENT_MESSAGES.PROVIDER_OFFLINE.value, chain_id=self.chain.id
+                event=self.network.EVENT_MESSAGES.PROVIDER_OFFLINE.value,
+                network_id=self.network.id,
             )
 
         elif is_connected and not self.connected:
@@ -186,7 +187,7 @@ class Web3Provider(PaymentNetworkProvider):
             self.connected = True
             self.save()
             broadcast_event(
-                event=self.network.EVENT_MESSAGES.PROVIDER_ONLINE.value, chain_id=self.chain.id
+                event=self.network.EVENT_MESSAGES.PROVIDER_ONLINE.value, network=self.network.id
             )
 
     def _check_node_is_synced(self):
@@ -197,7 +198,7 @@ class Web3Provider(PaymentNetworkProvider):
             self.synced = False
             self.save()
             broadcast_event(
-                event=self.network.EVENT_MESSAGES.PROVIDER_OFFLINE.value, chain_id=self.chain.id
+                event=self.network.EVENT_MESSAGES.PROVIDER_OFFLINE.value, network=self.network.id
             )
 
         elif is_synced and not self.synced:
@@ -205,7 +206,7 @@ class Web3Provider(PaymentNetworkProvider):
             self.synced = True
             self.save()
             broadcast_event(
-                event=self.network.EVENT_MESSAGES.PROVIDER_ONLINE.value, chain_id=self.chain.id
+                event=self.network.EVENT_MESSAGES.PROVIDER_ONLINE.value, network=self.network.id
             )
 
     @atomic
