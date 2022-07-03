@@ -468,7 +468,7 @@ class Web3Provider(PaymentNetworkProvider):
         contract_args: Optional[Tuple] = None,
         **kw,
     ) -> TxReceipt:
-        nonce = kw.pop("nonce", self.w3.eth.getTransactionCount(account.address))
+        nonce = kw.pop("nonce", self.w3.eth.get_transaction_count(account.address))
 
         transaction_params = {
             "chainId": int(self.w3.net.version),
@@ -483,17 +483,17 @@ class Web3Provider(PaymentNetworkProvider):
             result = contract_function(*contract_args) if contract_args else contract_function()
             transaction_data = result.buildTransaction(transaction_params)
             signed = self.w3.eth.account.signTransaction(transaction_data, account.private_key)
-            tx_hash = self.w3.eth.sendRawTransaction(signed.rawTransaction)
-            return self.w3.eth.waitForTransactionReceipt(tx_hash)
+            tx_hash = self.w3.eth.send_raw_transaction(signed.rawTransaction)
+            return self.w3.eth.wait_for_transaction_receipt(tx_hash)
         except ValueError as exc:
             try:
                 if exc.args[0].get("message") == "nonce too low":
                     logger.warning("Node reported that nonce is too low. Trying tx again...")
                     kw["nonce"] = nonce + 1
                     return self.send_transaction(
-                        contract_function,
-                        account,
-                        gas,
+                        contract_function=contract_function,
+                        account=account,
+                        gas=gas,
                         contract_args=contract_args,
                         **kw,
                     )
@@ -536,6 +536,9 @@ class Web3Provider(PaymentNetworkProvider):
             amount += transfer_fee
 
         for account in BaseWallet.objects.select_subclasses().order_by("?"):
+            if not hasattr(account, "private_key"):
+                logger.debug(f"Can not use {account.address} for transfers")
+                continue
             self.update_account_balance(account=account, token=native_token)
             if not is_native_token_transfer:
                 self.update_account_balance(account=account, token=transferred_token)
@@ -564,7 +567,7 @@ class Web3Provider(PaymentNetworkProvider):
 
         transaction_params = {
             "chainId": chain_id,
-            "nonce": self.w3.eth.getTransactionCount(account.address),
+            "nonce": self.w3.eth.get_transaction_count(account.address),
             "gasPrice": self.w3.eth.generate_gas_price(),
             "gas": GAS_TRANSFER_LIMIT,
             "from": account.address,
@@ -580,11 +583,10 @@ class Web3Provider(PaymentNetworkProvider):
             )
         else:
             transaction_params.update({"to": address, "value": amount.as_wei})
-        return transaction_params
 
-        signed_tx = self.sign_transaction(transaction_data=transaction_params)
+        signed_tx = self.sign_transaction(account=account, transaction_data=transaction_params)
         chain_id = self.chain.id
-        tx_hash = self.w3.eth.sendRawTransaction(signed_tx.rawTransaction)
+        tx_hash = self.w3.eth.send_raw_transaction(signed_tx.rawTransaction)
         try:
             tx_data = self.w3.eth.get_transaction(tx_hash)
             return TransactionDataRecord.make(chain_id=chain_id, tx_data=tx_data, force=True)

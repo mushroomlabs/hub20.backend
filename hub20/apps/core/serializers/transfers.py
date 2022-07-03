@@ -45,8 +45,13 @@ class BaseTransferSerializer(PolymorphicModelSerializer):
 
     def create(self, validated_data):
         request = self.context["request"]
+        view = self.context["view"]
 
-        return self.Meta.model.objects.create(sender=request.user, **validated_data)
+        network = view.get_network()
+
+        return self.Meta.model.objects.create(
+            sender=request.user, network=network, **validated_data
+        )
 
     @classmethod
     def get_subclassed_serializer(cls, network: PaymentNetwork_T):
@@ -78,22 +83,6 @@ class BaseTransferSerializer(PolymorphicModelSerializer):
             "network",
             "status",
         )
-
-
-class BaseWithdrawalSerializer(BaseTransferSerializer):
-    def create(self, validated_data):
-        request = self.context["request"]
-        view = self.context["view"]
-
-        network = view.get_network()
-        return self.Meta.model.objects.create(
-            sender=request.user, network=network, **validated_data
-        )
-
-    class Meta:
-        model = Transfer
-        fields = BaseTransferSerializer.Meta.fields
-        read_only_fields = BaseTransferSerializer.Meta.read_only_fields
 
 
 class InternalTransferSerializer(BaseTransferSerializer):
@@ -133,7 +122,6 @@ class TransferConfirmationSerializer(serializers.ModelSerializer):
 
 __all__ = [
     "BaseTransferSerializer",
-    "BaseWithdrawalSerializer",
     "InternalTransferSerializer",
     "TransferConfirmationSerializer",
 ]

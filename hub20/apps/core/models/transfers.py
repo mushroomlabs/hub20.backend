@@ -4,6 +4,7 @@ import logging
 from typing import Union
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 from model_utils.managers import InheritanceManager, InheritanceManagerMixin, QueryManagerMixin
 from model_utils.models import TimeStampedModel
@@ -94,6 +95,9 @@ class Transfer(BaseModel, TimeStampedModel, TokenValueModel):
             return
 
         try:
+            # Ensure that all conditions are valid
+            self.full_clean()
+
             # The user has already been deducted from the transfer amount upon
             # creation. This check here just enforces that the transfer is not
             # doing double spend of reserved funds.
@@ -106,12 +110,15 @@ class Transfer(BaseModel, TimeStampedModel, TokenValueModel):
                 raise TransferError("Insufficient balance")
 
             self._execute()
+        except ValidationError as exc:
+            logger.info(f"Rejecting to execute transfer {self.id}: {exc}")
+            TransferFailure.objects.create(transfer=self)
         except TransferError as exc:
             logger.info(f"{self} failed: {str(exc)}")
             TransferFailure.objects.create(transfer=self)
-        except Exception as exc:
+        except Exception:
             TransferFailure.objects.create(transfer=self)
-            logger.exception(exc)
+            logger.exception("Unknown exception when executing transfer")
 
     def _execute(self):
         raise NotImplementedError()

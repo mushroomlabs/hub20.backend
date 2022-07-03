@@ -138,7 +138,7 @@ class TokenAmount:
         return hex(self.as_wei)
 
     def _check_currency_type(self, other: TokenAmount):
-        if not self.currency == other.currency:
+        if not self.currency.id == other.currency.id:
             raise ValueError(f"Can not operate {self.currency} and {other.currency}")
 
     def __add__(self, other: TokenAmount) -> TokenAmount:

@@ -1,6 +1,7 @@
 from unittest.mock import patch
 
 from django.contrib.contenttypes.models import ContentType
+from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 from django.test import TestCase
 from web3 import Web3
@@ -102,6 +103,17 @@ class BlockchainTransferTestCase(TransferModelTestCase):
         self.transfer = BlockchainTransferFactory(
             sender=self.sender, currency=self.credit.currency, amount=self.credit.amount
         )
+
+    def test_can_not_send_to_token_address(self):
+        token_address = self.credit.currency.subclassed.address
+        bad_transfer = BlockchainTransferFactory(
+            sender=self.sender,
+            currency=self.credit.currency,
+            amount=self.credit.amount,
+            address=token_address,
+        )
+        with self.assertRaises(ValidationError):
+            bad_transfer.full_clean()
 
     @patch.object(Web3Provider, "select_for_transfer")
     def test_external_transfers_fail_without_funds(self, select_for_transfer):
