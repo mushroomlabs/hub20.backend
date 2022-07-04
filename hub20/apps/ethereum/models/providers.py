@@ -481,7 +481,7 @@ class Web3Provider(PaymentNetworkProvider):
 
         try:
             result = contract_function(*contract_args) if contract_args else contract_function()
-            transaction_data = result.buildTransaction(transaction_params)
+            transaction_data = result.build_transaction(transaction_params)
             signed = self.w3.eth.account.signTransaction(transaction_data, account.private_key)
             tx_hash = self.w3.eth.send_raw_transaction(signed.rawTransaction)
             return self.w3.eth.wait_for_transaction_receipt(tx_hash)
