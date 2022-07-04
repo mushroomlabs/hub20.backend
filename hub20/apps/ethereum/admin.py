@@ -1,6 +1,5 @@
 from typing import Optional
 
-from django import forms
 from django.contrib import admin
 from django.db.models import Q
 from django.http import HttpRequest
@@ -16,9 +15,8 @@ from hub20.apps.core.admin import (
 )
 
 from . import models
-from .forms import Erc20TokenForm, NativeTokenForm
+from .forms import Erc20TokenForm, NativeTokenForm, Web3ProviderForm
 from .models import EthereumAccount_T
-from .validators import web3_url_validator
 
 
 class ConnectedChainListFilter(admin.SimpleListFilter):
@@ -147,17 +145,6 @@ class ChainFilter(admin.SimpleListFilter):
         return queryset.filter(chain_id=selection)
 
 
-class Web3URLField(forms.URLField):
-    default_validators = [web3_url_validator]
-
-
-Web3ProviderForm = forms.modelform_factory(
-    model=models.Web3Provider,
-    fields=["network", "url", "max_block_scan_range", "is_active", "connected", "synced"],
-    field_classes={"url": Web3URLField},
-)
-
-
 class ChainMetadataInline(admin.StackedInline):
     model = models.ChainMetadata
     autocomplete_fields = ("testing_for", "rollup_for", "sidechain_for")
@@ -193,7 +180,7 @@ class Web3ProviderAdmin(admin.ModelAdmin):
     )
     autocomplete_fields = ("network",)
     list_filter = ("is_active", "connected", "synced")
-    readonly_fields = ("connected", "synced")
+    readonly_fields = ("network", "connected", "synced")
     search_fields = (
         "url",
         "network__name",
